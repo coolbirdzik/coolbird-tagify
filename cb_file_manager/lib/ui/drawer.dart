@@ -1,6 +1,12 @@
 import 'package:flutter/material.dart';
+import './main_ui.dart';
+import './utils/route.dart';
+import './home.dart';
 
 class CBDrawer extends StatelessWidget {
+  CBDrawer(BuildContext context);
+
+  
   @override
   Widget build(BuildContext context) {
     // TODO: implement build
@@ -17,6 +23,13 @@ class CBDrawer extends StatelessWidget {
             ),
           ),
         ),
+        ListTile(
+          leading: Icon(Icons.home),
+          title: Text('Homepage'),
+          onTap: () {
+            RouteUtils.toNewScreen(context, new MyHomePage());
+          },
+        ),
         ExpansionTile(
           title: Row(children: <Widget>[
             Container(
@@ -30,7 +43,9 @@ class CBDrawer extends StatelessWidget {
               contentPadding: EdgeInsets.only(left: 30),
               leading: Icon(Icons.home),
               title: Text('Homepage'),
-              onTap: () {},
+              onTap: () {
+                RouteUtils.toNewScreen(context, new LocalHome());
+              },
             )
           ],
         ),
