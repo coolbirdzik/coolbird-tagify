@@ -1,5 +1,8 @@
+import 'package:cb_file_manager/ui/home/storage_list/storage_list.dart';
+import 'package:cb_file_manager/ui/home/storage_list/storage_list_bloc.dart';
 import 'package:flutter/material.dart';
 import 'package:cb_file_manager/ui/template.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 
 class LocalHome extends StatefulWidget {
   @override
@@ -14,7 +17,10 @@ class _LocalHome extends State<LocalHome> {
     return CBTemplate({
       'appBarTitle': 'Local file manager',
       'body': Container(
-          child: Text('Local Home')
+          child: BlocProvider<StorageListBloc>(
+            create: (context) => StorageListBloc(),
+            child: StorageListWidget(),
+          )
       )
     });
   }
