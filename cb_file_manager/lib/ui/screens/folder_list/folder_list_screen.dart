@@ -2,10 +2,12 @@ import 'dart:io';
 
 import 'package:cb_file_manager/helpers/io_extensions.dart';
 import 'package:cb_file_manager/helpers/batch_tag_manager.dart';
+import 'package:cb_file_manager/helpers/tag_manager.dart';
 import 'package:cb_file_manager/ui/screens/folder_list/file_details_screen.dart';
 import 'package:cb_file_manager/ui/screens/media_gallery/image_gallery_screen.dart';
 import 'package:cb_file_manager/ui/screens/media_gallery/video_gallery_screen.dart';
 import 'package:cb_file_manager/ui/utils/base_screen.dart';
+import 'package:cb_file_manager/ui/components/shared_action_bar.dart'; // Import SharedActionBar
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:path/path.dart' as pathlib;
@@ -15,6 +17,9 @@ import 'package:cb_file_manager/main.dart'; // Import for goHome function
 import 'folder_list_bloc.dart';
 import 'folder_list_event.dart';
 import 'folder_list_state.dart';
+
+// Import all components using index file
+import 'components/index.dart';
 
 class FolderListScreen extends StatefulWidget {
   final String path;
@@ -84,6 +89,7 @@ class _FolderListScreenState extends State<FolderListScreen> {
     super.dispose();
   }
 
+  // Helper methods
   Future<void> _saveLastAccessedFolder() async {
     try {
       final directory = Directory(widget.path);
@@ -188,6 +194,46 @@ class _FolderListScreenState extends State<FolderListScreen> {
     });
   }
 
+  void _clearSelection() {
+    setState(() {
+      _isSelectionMode = false;
+      _selectedFilePaths.clear();
+    });
+  }
+
+  void _toggleViewMode() {
+    final newMode = _viewMode == ViewMode.list ? ViewMode.grid : ViewMode.list;
+    _folderListBloc.add(SetViewMode(newMode));
+    _saveViewModeSetting(newMode);
+    setState(() {
+      _viewMode = newMode;
+    });
+  }
+
+  void _refreshFileList() {
+    _folderListBloc.add(FolderListLoad(widget.path));
+  }
+
+  void _showSearchScreen(BuildContext context, FolderListState state) {
+    showDialog(
+      context: context,
+      builder: (context) => SearchDialog(
+        currentPath: widget.path,
+        files: state.files.whereType<File>().toList(),
+        folders: state.folders.whereType<Directory>().toList(),
+      ),
+    );
+  }
+
+  void _navigateToPath(String path) {
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (context) => FolderListScreen(path: path),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return BlocProvider<FolderListBloc>.value(
@@ -197,718 +243,215 @@ class _FolderListScreenState extends State<FolderListScreen> {
           _currentSearchTag = state.currentSearchTag;
           _currentFilter = state.currentFilter;
 
-          return BaseScreen(
-            title: pathlib.basename(widget.path),
-            actions: _isSelectionMode
-                ? [
-                    IconButton(
-                      icon: const Icon(Icons.close),
-                      onPressed: _toggleSelectionMode,
-                      tooltip: 'Cancel Selection',
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.select_all),
-                      onPressed: () {
-                        setState(() {
-                          _selectedFilePaths.clear();
-                          for (var file in state.files) {
-                            if (file is File) {
-                              _selectedFilePaths.add(file.path);
-                            }
-                          }
-                        });
-                      },
-                      tooltip: 'Select All',
-                    ),
-                    IconButton(
+          // Sử dụng SharedActionBar nếu không ở chế độ chọn
+          List<Widget> actions = _isSelectionMode
+              ? []
+              : SharedActionBar.buildCommonActions(
+                  context: context,
+                  onSearchPressed: () => _showSearchScreen(context, state),
+                  onSortOptionSelected: (SortOption option) {
+                    _folderListBloc.add(SetSortOption(option));
+                    _saveSortSetting(option);
+                  },
+                  currentSortOption: state.sortOption,
+                  viewMode: state.viewMode,
+                  onViewModeToggled: _toggleViewMode,
+                  onRefresh: _refreshFileList,
+                  onGridSizePressed: state.viewMode == ViewMode.grid
+                      ? () => SharedActionBar.showGridSizeDialog(
+                            context,
+                            currentGridSize: state.gridZoomLevel,
+                            onApply: _handleGridZoomChange,
+                          )
+                      : null,
+                  onSelectionModeToggled: _toggleSelectionMode,
+                  onManageTagsPressed: () {
+                    showManageTagsDialog(context, state.allTags.toList());
+                  },
+                  onGallerySelected: (value) {
+                    if (value == 'image_gallery') {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => ImageGalleryScreen(
+                            path: widget.path,
+                            recursive: false,
+                          ),
+                        ),
+                      );
+                    } else if (value == 'video_gallery') {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => VideoGalleryScreen(
+                            path: widget.path,
+                            recursive: false,
+                          ),
+                        ),
+                      );
+                    }
+                  },
+                  currentPath: widget.path,
+                );
+
+          // If we're in selection mode, show a completely different AppBar
+          if (_isSelectionMode) {
+            return Scaffold(
+              appBar: AppBar(
+                title: Text('${_selectedFilePaths.length} selected'),
+                leading: IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: _clearSelection,
+                ),
+                actions: [
+                  if (_selectedFilePaths.isNotEmpty) ...[
+                    // Tag management dropdown menu
+                    PopupMenuButton<String>(
                       icon: const Icon(Icons.label),
-                      onPressed: () {
-                        if (_selectedFilePaths.isNotEmpty) {
-                          _showAddTagToFilesDialog(context);
-                        } else {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Please select files first'),
-                            ),
-                          );
+                      tooltip: 'Quản lý thẻ',
+                      onSelected: (value) {
+                        if (value == 'add_tag') {
+                          showBatchAddTagDialog(
+                              context, _selectedFilePaths.toList());
+                        } else if (value == 'remove_tag') {
+                          _showRemoveTagsDialog(
+                              context, _selectedFilePaths.toList());
+                        } else if (value == 'manage_all_tags') {
+                          _showManageAllTagsDialog(context);
                         }
                       },
-                      tooltip: 'Add Tag to Selected',
-                    ),
-                  ]
-                : [
-                    if (state.viewMode == ViewMode.grid)
-                      IconButton(
-                        icon: const Icon(Icons.zoom_out),
-                        tooltip: 'More columns (smaller items)',
-                        onPressed: state.gridZoomLevel <
-                                UserPreferences.maxGridZoomLevel
-                            ? () => _changeZoomLevel(1)
-                            : null,
-                      ),
-                    if (state.viewMode == ViewMode.grid)
-                      IconButton(
-                        icon: const Icon(Icons.zoom_in),
-                        tooltip: 'Fewer columns (larger items)',
-                        onPressed: state.gridZoomLevel >
-                                UserPreferences.minGridZoomLevel
-                            ? () => _changeZoomLevel(-1)
-                            : null,
-                      ),
-                    IconButton(
-                      icon: Icon(state.viewMode == ViewMode.list
-                          ? Icons.grid_view
-                          : Icons.list),
-                      tooltip: state.viewMode == ViewMode.list
-                          ? 'Switch to Grid View'
-                          : 'Switch to List View',
-                      onPressed: () {
-                        final newMode = state.viewMode == ViewMode.list
-                            ? ViewMode.grid
-                            : ViewMode.list;
-                        context
-                            .read<FolderListBloc>()
-                            .add(SetViewMode(newMode));
-                        _saveViewModeSetting(newMode);
-                      },
-                    ),
-                    PopupMenuButton<SortOption>(
-                      icon: const Icon(Icons.sort),
-                      tooltip: 'Sort files',
-                      onSelected: (SortOption option) {
-                        context
-                            .read<FolderListBloc>()
-                            .add(SetSortOption(option));
-                        _saveSortSetting(option);
-                      },
-                      itemBuilder: (BuildContext context) => [
-                        const PopupMenuItem(
-                          value: SortOption.nameAsc,
-                          child: ListTile(
-                            leading: Icon(Icons.arrow_upward),
-                            title: Text('Name (A to Z)'),
-                            dense: true,
+                      itemBuilder: (context) => [
+                        const PopupMenuItem<String>(
+                          value: 'add_tag',
+                          child: Row(
+                            children: [
+                              Icon(Icons.add_circle_outline),
+                              SizedBox(width: 8),
+                              Text('Thêm thẻ'),
+                            ],
                           ),
                         ),
-                        const PopupMenuItem(
-                          value: SortOption.nameDesc,
-                          child: ListTile(
-                            leading: Icon(Icons.arrow_downward),
-                            title: Text('Name (Z to A)'),
-                            dense: true,
+                        const PopupMenuItem<String>(
+                          value: 'remove_tag',
+                          child: Row(
+                            children: [
+                              Icon(Icons.remove_circle_outline),
+                              SizedBox(width: 8),
+                              Text('Xóa thẻ'),
+                            ],
                           ),
                         ),
-                        const PopupMenuItem(
-                          value: SortOption.dateAsc,
-                          child: ListTile(
-                            leading: Icon(Icons.arrow_upward),
-                            title: Text('Date (Oldest first)'),
-                            dense: true,
-                          ),
-                        ),
-                        const PopupMenuItem(
-                          value: SortOption.dateDesc,
-                          child: ListTile(
-                            leading: Icon(Icons.arrow_downward),
-                            title: Text('Date (Newest first)'),
-                            dense: true,
-                          ),
-                        ),
-                        const PopupMenuItem(
-                          value: SortOption.sizeAsc,
-                          child: ListTile(
-                            leading: Icon(Icons.arrow_upward),
-                            title: Text('Size (Smallest first)'),
-                            dense: true,
-                          ),
-                        ),
-                        const PopupMenuItem(
-                          value: SortOption.sizeDesc,
-                          child: ListTile(
-                            leading: Icon(Icons.arrow_downward),
-                            title: Text('Size (Largest first)'),
-                            dense: true,
-                          ),
-                        ),
-                        const PopupMenuItem(
-                          value: SortOption.typeAsc,
-                          child: ListTile(
-                            leading: Icon(Icons.sort),
-                            title: Text('Type'),
-                            dense: true,
+                        const PopupMenuItem<String>(
+                          value: 'manage_all_tags',
+                          child: Row(
+                            children: [
+                              Icon(Icons.settings),
+                              SizedBox(width: 8),
+                              Text('Quản lý tất cả thẻ'),
+                            ],
                           ),
                         ),
                       ],
                     ),
                     IconButton(
-                      icon: const Icon(Icons.photo_library),
-                      tooltip: 'Image Gallery',
+                      icon: const Icon(Icons.delete),
+                      tooltip: 'Delete selected',
                       onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => ImageGalleryScreen(
-                              path: widget.path,
-                              recursive: true,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.video_library),
-                      tooltip: 'Video Gallery',
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => VideoGalleryScreen(
-                              path: widget.path,
-                              recursive: true,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                    PopupMenuButton<String>(
-                      icon: const Icon(Icons.filter_list),
-                      onSelected: (String value) {
-                        setState(() {
-                          _currentFilter = value;
-                          context
-                              .read<FolderListBloc>()
-                              .add(FolderListFilter(value));
-                        });
-                      },
-                      itemBuilder: (BuildContext context) => [
-                        const PopupMenuItem(
-                          value: 'image',
-                          child: Text('Images'),
-                        ),
-                        const PopupMenuItem(
-                          value: 'video',
-                          child: Text('Videos'),
-                        ),
-                        const PopupMenuItem(
-                          value: 'audio',
-                          child: Text('Audio'),
-                        ),
-                        const PopupMenuItem(
-                          value: 'document',
-                          child: Text('Documents'),
-                        ),
-                        const PopupMenuItem(
-                          value: '',
-                          child: Text('Clear Filter'),
-                        ),
-                      ],
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.search),
-                      tooltip: 'Search files',
-                      onPressed: () {
-                        _showEnhancedSearchDialog(context);
+                        _showDeleteConfirmationDialog(context);
                       },
                     ),
                   ],
+                ],
+              ),
+              body: _buildBody(context, state),
+              floatingActionButton: FloatingActionButton(
+                onPressed: () {
+                  showBatchAddTagDialog(context, _selectedFilePaths.toList());
+                },
+                child: const Icon(Icons.label),
+              ),
+            );
+          }
+
+          return BaseScreen(
+            title: 'Files',
+            actions: actions,
             body: _buildBody(context, state),
-            floatingActionButton: _isSelectionMode
-                ? FloatingActionButton(
-                    onPressed: () {
-                      if (_selectedFilePaths.isNotEmpty) {
-                        _showAddTagToFilesDialog(context);
-                      } else {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Please select files first'),
-                          ),
-                        );
-                      }
-                    },
-                    child: const Icon(Icons.label),
-                  )
-                : FloatingActionButton(
-                    onPressed: _toggleSelectionMode,
-                    child: const Icon(Icons.checklist),
-                  ),
+            floatingActionButton: FloatingActionButton(
+              onPressed: _toggleSelectionMode,
+              child: const Icon(Icons.checklist),
+            ),
           );
         },
       ),
     );
   }
 
-  void _showAddTagToFilesDialog(BuildContext context) {
-    _tagController.clear();
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text('Add Tag to ${_selectedFilePaths.length} Files'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: _tagController,
-                decoration: const InputDecoration(
-                  labelText: 'Tag',
-                  hintText: 'Enter a new tag',
-                ),
-                autofocus: true,
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'This will add the tag to all selected files.',
-                style: TextStyle(fontSize: 12, color: Colors.grey),
-              ),
-            ],
+  Widget _sizePreviewBox(int size, int currentSize) {
+    return Column(
+      children: [
+        Container(
+          width: 40,
+          height: 40,
+          padding: const EdgeInsets.all(2),
+          decoration: BoxDecoration(
+            border: Border.all(
+              color: currentSize == size ? Colors.blue : Colors.grey,
+              width: 2,
+            ),
+            borderRadius: BorderRadius.circular(4),
           ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-              child: const Text('Cancel'),
+          child: GridView.count(
+            crossAxisCount: size,
+            mainAxisSpacing: 1,
+            crossAxisSpacing: 1,
+            physics: const NeverScrollableScrollPhysics(),
+            children: List.generate(
+              size * size,
+              (index) => Container(
+                color: Colors.grey[300],
+              ),
             ),
-            ElevatedButton(
-              onPressed: () {
-                if (_tagController.text.isNotEmpty) {
-                  Navigator.of(context).pop();
-                  _applyTagToSelectedFiles(_tagController.text);
-                }
-              },
-              child: const Text('Add to All'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Future<void> _applyTagToSelectedFiles(String tag) async {
-    if (_selectedFilePaths.isEmpty) return;
-
-    // Show progress indicator
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Adding tag to selected files...'),
-        duration: Duration(seconds: 1),
-      ),
-    );
-
-    // Use BatchTagManager to apply tag to all selected files
-    final results =
-        await BatchTagManager.addTagToFiles(_selectedFilePaths.toList(), tag);
-
-    // Count failures
-    final failures = results.values.where((success) => !success).length;
-
-    // Refresh file list
-    _folderListBloc.add(FolderListLoad(widget.path));
-
-    // Show result
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          failures > 0
-              ? 'Tag added to ${_selectedFilePaths.length - failures} files with $failures failures'
-              : 'Tag added to all ${_selectedFilePaths.length} files successfully',
+          ),
         ),
-      ),
+        const SizedBox(height: 4),
+        Text(
+          '$size',
+          style: const TextStyle(fontSize: 12),
+        ),
+      ],
     );
   }
 
-  void _showEnhancedSearchDialog(BuildContext context) {
-    // Tab controller for search options
-    final tabController = PageController();
-    final searchModes = ['Search by Name', 'Search by Tag', 'Media Search'];
-    int selectedTabIndex = 0;
-
-    // Controllers
-    final fileNameController = TextEditingController();
-    final tagController = TextEditingController();
-
-    // Recursive search option (for file name search)
-    bool recursiveSearch = false;
-
-    // Local variable for global search toggle instead of using class-level variable
-    bool localIsGlobalSearch = isGlobalSearch;
-
-    // Media search options
-    MediaSearchType selectedMediaType = MediaSearchType.images;
-
-    // Auto-complete suggestions for tags
-    List<String> tagSuggestions = [];
-    bool isTagTabActive = false;
-
-    // Store the current state here to avoid Provider dependency
-    final currentState = context.read<FolderListBloc>().state;
-
+  void _showDeleteConfirmationDialog(BuildContext context) {
     showDialog(
       context: context,
-      builder: (BuildContext dialogContext) {
-        return StatefulBuilder(
-          builder: (BuildContext context, StateSetter setState) {
-            return AlertDialog(
-              title: Row(
-                children: [
-                  Expanded(
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        for (int i = 0; i < searchModes.length; i++)
-                          Padding(
-                            padding:
-                                const EdgeInsets.symmetric(horizontal: 4.0),
-                            child: ChoiceChip(
-                              label: Text(searchModes[i],
-                                  style: TextStyle(fontSize: 12)),
-                              selected: selectedTabIndex == i,
-                              onSelected: (selected) {
-                                if (selected) {
-                                  setState(() {
-                                    selectedTabIndex = i;
-                                    // Set flag when tag tab is active
-                                    isTagTabActive = (i == 1);
-
-                                    // Update tag suggestions if we're switching to tag tab
-                                    if (isTagTabActive) {
-                                      if (tagController.text.isNotEmpty) {
-                                        tagSuggestions =
-                                            currentState.getTagSuggestions(
-                                                tagController.text);
-                                      } else {
-                                        tagSuggestions =
-                                            currentState.allTags.toList();
-                                      }
-                                    }
-                                  });
-                                  tabController.animateToPage(
-                                    i,
-                                    duration: const Duration(milliseconds: 300),
-                                    curve: Curves.easeInOut,
-                                  );
-                                }
-                              },
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              content: Container(
-                width: double.maxFinite,
-                height: 250, // Fixed height for the dialog content
-                child: PageView(
-                  controller: tabController,
-                  physics:
-                      const NeverScrollableScrollPhysics(), // Disable swiping
-                  onPageChanged: (index) {
-                    setState(() {
-                      selectedTabIndex = index;
-                      // Set flag when tag tab is active
-                      isTagTabActive = (index == 1);
-
-                      // Update tag suggestions if we're switching to tag tab
-                      if (isTagTabActive) {
-                        if (tagController.text.isNotEmpty) {
-                          tagSuggestions = currentState
-                              .getTagSuggestions(tagController.text);
-                        } else {
-                          tagSuggestions = currentState.allTags.toList();
-                        }
-                      }
-                    });
-                  },
-                  children: [
-                    // File name search page
-                    Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        TextField(
-                          controller: fileNameController,
-                          decoration: const InputDecoration(
-                            labelText: 'File Name',
-                            hintText: 'Enter file name to search',
-                            prefixIcon: Icon(Icons.search),
-                          ),
-                          autofocus: selectedTabIndex == 0,
-                          textInputAction: TextInputAction.search,
-                          onSubmitted: (_) {
-                            if (fileNameController.text.isNotEmpty) {
-                              Navigator.of(context).pop();
-                              _folderListBloc.add(SearchByFileName(
-                                fileNameController.text,
-                                recursive: recursiveSearch,
-                              ));
-                            }
-                          },
-                        ),
-                        const SizedBox(height: 16),
-                        CheckboxListTile(
-                          title: const Text('Include subfolders'),
-                          value: recursiveSearch,
-                          onChanged: (bool? value) {
-                            setState(() {
-                              recursiveSearch = value ?? false;
-                            });
-                          },
-                          contentPadding: EdgeInsets.zero,
-                          controlAffinity: ListTileControlAffinity.leading,
-                          dense: true,
-                        ),
-                        const SizedBox(height: 8),
-                        const Text(
-                          'This will search for files where the name contains the text you enter.',
-                          style: TextStyle(fontSize: 12, color: Colors.grey),
-                        ),
-                      ],
-                    ),
-
-                    // Tag search page - using pre-loaded tag suggestions
-                    Visibility(
-                      visible: isTagTabActive,
-                      maintainState: true,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Stack(
-                            children: [
-                              TextField(
-                                controller: tagController,
-                                decoration: const InputDecoration(
-                                  labelText: 'Tag',
-                                  hintText: 'Enter a tag to search for',
-                                  prefixIcon: Icon(Icons.label),
-                                ),
-                                autofocus: selectedTabIndex == 1,
-                                textInputAction: TextInputAction.search,
-                                onSubmitted: (_) {
-                                  if (tagController.text.isNotEmpty) {
-                                    Navigator.of(context).pop();
-                                    if (localIsGlobalSearch) {
-                                      _folderListBloc.add(SearchByTagGlobally(
-                                          tagController.text));
-                                    } else {
-                                      _folderListBloc
-                                          .add(SearchByTag(tagController.text));
-                                    }
-                                  }
-                                },
-                                onChanged: (value) {
-                                  // Update tag suggestions when text changes
-                                  if (isTagTabActive) {
-                                    setState(() {
-                                      if (value.isNotEmpty) {
-                                        tagSuggestions = currentState
-                                            .getTagSuggestions(value);
-                                      } else {
-                                        tagSuggestions =
-                                            currentState.allTags.toList();
-                                      }
-                                    });
-                                  }
-                                },
-                              ),
-                              // Clear button
-                              if (tagController.text.isNotEmpty)
-                                Positioned(
-                                  right: 0,
-                                  top: 0,
-                                  child: IconButton(
-                                    icon: const Icon(Icons.clear),
-                                    onPressed: () {
-                                      setState(() {
-                                        tagController.clear();
-                                        tagSuggestions =
-                                            currentState.allTags.toList();
-                                      });
-                                    },
-                                  ),
-                                ),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-                          // Add global search toggle - using local state variable
-                          CheckboxListTile(
-                            title: const Text('Search tags globally',
-                                style: TextStyle(fontSize: 14)),
-                            subtitle: const Text(
-                              'Find files with this tag across all directories',
-                              style: TextStyle(fontSize: 12),
-                            ),
-                            value: localIsGlobalSearch,
-                            onChanged: (value) {
-                              setState(() {
-                                localIsGlobalSearch = value ?? false;
-                                // Update the class variable when the dialog is closed
-                                isGlobalSearch = localIsGlobalSearch;
-                              });
-                            },
-                            dense: true,
-                            contentPadding: EdgeInsets.zero,
-                            controlAffinity: ListTileControlAffinity.leading,
-                          ),
-                          const SizedBox(height: 8),
-                          Expanded(
-                            child: tagSuggestions.isEmpty
-                                ? const Center(
-                                    child: Text('No matching tags'),
-                                  )
-                                : SingleChildScrollView(
-                                    child: Wrap(
-                                      spacing: 8.0,
-                                      runSpacing: 8.0,
-                                      children: tagSuggestions.map((tag) {
-                                        return ActionChip(
-                                          label: Text(tag),
-                                          onPressed: () {
-                                            Navigator.of(context).pop();
-                                            // Update the class variable before closing
-                                            isGlobalSearch =
-                                                localIsGlobalSearch;
-                                            if (localIsGlobalSearch) {
-                                              _folderListBloc.add(
-                                                  SearchByTagGlobally(tag));
-                                            } else {
-                                              _folderListBloc
-                                                  .add(SearchByTag(tag));
-                                            }
-                                          },
-                                        );
-                                      }).toList(),
-                                    ),
-                                  ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    // Media Search page
-                    Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Find media files in this folder',
-                          style: TextStyle(fontSize: 16),
-                        ),
-                        const SizedBox(height: 16),
-                        ListTile(
-                          title: const Text('Images'),
-                          leading: Radio<MediaSearchType>(
-                            value: MediaSearchType.images,
-                            groupValue: selectedMediaType,
-                            onChanged: (MediaSearchType? value) {
-                              setState(() {
-                                selectedMediaType = value!;
-                              });
-                            },
-                          ),
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                        ),
-                        ListTile(
-                          title: const Text('Videos'),
-                          leading: Radio<MediaSearchType>(
-                            value: MediaSearchType.videos,
-                            groupValue: selectedMediaType,
-                            onChanged: (MediaSearchType? value) {
-                              setState(() {
-                                selectedMediaType = value!;
-                              });
-                            },
-                          ),
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                        ),
-                        ListTile(
-                          title: const Text('Audio'),
-                          leading: Radio<MediaSearchType>(
-                            value: MediaSearchType.audio,
-                            groupValue: selectedMediaType,
-                            onChanged: (MediaSearchType? value) {
-                              setState(() {
-                                selectedMediaType = value!;
-                              });
-                            },
-                          ),
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                        ),
-                        CheckboxListTile(
-                          title: const Text('Include subfolders'),
-                          value: recursiveSearch,
-                          onChanged: (bool? value) {
-                            setState(() {
-                              recursiveSearch = value ?? false;
-                            });
-                          },
-                          contentPadding: EdgeInsets.zero,
-                          controlAffinity: ListTileControlAffinity.leading,
-                          dense: true,
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              actions: <Widget>[
-                TextButton(
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                  },
-                  child: const Text('Cancel'),
-                ),
-                ElevatedButton(
-                  onPressed: () {
-                    // Update the class variable before closing
-                    isGlobalSearch = localIsGlobalSearch;
-                    Navigator.of(context).pop();
-
-                    switch (selectedTabIndex) {
-                      case 0: // File name search
-                        if (fileNameController.text.isNotEmpty) {
-                          _folderListBloc.add(SearchByFileName(
-                            fileNameController.text,
-                            recursive: recursiveSearch,
-                          ));
-                        }
-                        break;
-                      case 1: // Tag search
-                        if (tagController.text.isNotEmpty) {
-                          if (localIsGlobalSearch) {
-                            _folderListBloc
-                                .add(SearchByTagGlobally(tagController.text));
-                          } else {
-                            _folderListBloc
-                                .add(SearchByTag(tagController.text));
-                          }
-                        }
-                        break;
-                      case 2: // Media search
-                        _folderListBloc.add(SearchMediaFiles(
-                          selectedMediaType,
-                          recursive: recursiveSearch,
-                        ));
-                        break;
-                    }
-                  },
-                  child: const Text('Search'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    ).then((_) {
-      // Clean up controllers when dialog is dismissed
-      fileNameController.dispose();
-      tagController.dispose();
-      tabController.dispose();
-    });
+      builder: (context) => AlertDialog(
+        title: Text('Delete ${_selectedFilePaths.length} items?'),
+        content: const Text(
+            'This action cannot be undone. Are you sure you want to delete these items?'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+            },
+            child: const Text('CANCEL'),
+          ),
+          TextButton(
+            onPressed: () {
+              BlocProvider.of<FolderListBloc>(context)
+                  .add(FolderListDeleteFiles(_selectedFilePaths.toList()));
+              Navigator.of(context).pop();
+              _clearSelection();
+            },
+            child: const Text(
+              'DELETE',
+              style: TextStyle(color: Colors.red),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildBody(BuildContext context, FolderListState state) {
@@ -949,13 +492,46 @@ class _FolderListScreenState extends State<FolderListScreen> {
     if (_currentFilter != null &&
         _currentFilter!.isNotEmpty &&
         state.filteredFiles.isNotEmpty) {
-      return _buildFileList(context, state.filteredFiles, state);
+      return Column(
+        children: [
+          BreadcrumbNavigation(
+            currentPath: widget.path,
+            onPathTap: _navigateToPath,
+          ),
+          _buildMediaGalleryButtons(context),
+          Expanded(
+            child: FileView(
+              files: state.filteredFiles.whereType<File>().toList(),
+              folders: [], // No folders in filtered view
+              state: state,
+              isSelectionMode: _isSelectionMode,
+              isGridView: state.viewMode == ViewMode.grid,
+              selectedFiles: _selectedFilePaths.toList(),
+              toggleFileSelection: _toggleFileSelection,
+              toggleSelectionMode: _toggleSelectionMode,
+              showDeleteTagDialog: _showDeleteTagDialog,
+              showAddTagToFileDialog: _showAddTagToFileDialog,
+            ),
+          ),
+        ],
+      );
     }
 
     // Empty directory check
     if (state.folders.isEmpty && state.files.isEmpty) {
-      return const Center(
-        child: Text('Empty folder', style: TextStyle(fontSize: 18)),
+      return Column(
+        children: [
+          BreadcrumbNavigation(
+            currentPath: widget.path,
+            onPathTap: _navigateToPath,
+          ),
+          _buildMediaGalleryButtons(context),
+          const Expanded(
+            child: Center(
+              child: Text('Empty folder', style: TextStyle(fontSize: 18)),
+            ),
+          ),
+        ],
       );
     }
 
@@ -964,104 +540,27 @@ class _FolderListScreenState extends State<FolderListScreen> {
       onRefresh: () async {
         _folderListBloc.add(FolderListLoad(widget.path));
       },
-      child: CustomScrollView(
-        slivers: [
-          // Directory path breadcrumb
-          SliverToBoxAdapter(
-            child: _buildBreadcrumb(context, widget.path),
+      child: Column(
+        children: [
+          BreadcrumbNavigation(
+            currentPath: widget.path,
+            onPathTap: _navigateToPath,
           ),
-
-          // Folders section
-          SliverToBoxAdapter(
-            child: state.folders.isNotEmpty
-                ? const Padding(
-                    padding: EdgeInsets.all(16.0),
-                    child: Text('Folders',
-                        style: TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.bold)),
-                  )
-                : const SizedBox.shrink(),
+          _buildMediaGalleryButtons(context),
+          Expanded(
+            child: FileView(
+              files: state.files.whereType<File>().toList(),
+              folders: state.folders.whereType<Directory>().toList(),
+              state: state,
+              isSelectionMode: _isSelectionMode,
+              isGridView: state.viewMode == ViewMode.grid,
+              selectedFiles: _selectedFilePaths.toList(),
+              toggleFileSelection: _toggleFileSelection,
+              toggleSelectionMode: _toggleSelectionMode,
+              showDeleteTagDialog: _showDeleteTagDialog,
+              showAddTagToFileDialog: _showAddTagToFileDialog,
+            ),
           ),
-
-          // Folder items
-          if (state.folders.isNotEmpty)
-            state.viewMode == ViewMode.list
-                ? SliverList(
-                    delegate: SliverChildBuilderDelegate(
-                      (context, index) {
-                        final folder = state.folders[index];
-                        if (folder is Directory) {
-                          return _buildFolderItem(context, folder);
-                        }
-                        return const SizedBox.shrink();
-                      },
-                      childCount: state.folders.length,
-                    ),
-                  )
-                : SliverGrid(
-                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: state.gridZoomLevel,
-                      childAspectRatio: 0.8,
-                      crossAxisSpacing: 8,
-                      mainAxisSpacing: 8,
-                    ),
-                    delegate: SliverChildBuilderDelegate(
-                      (context, index) {
-                        final folder = state.folders[index];
-                        if (folder is Directory) {
-                          return _buildFolderGridItem(context, folder);
-                        }
-                        return const SizedBox.shrink();
-                      },
-                      childCount: state.folders.length,
-                    ),
-                  ),
-
-          // Files section header
-          SliverToBoxAdapter(
-            child: state.files.isNotEmpty
-                ? const Padding(
-                    padding: EdgeInsets.all(16.0),
-                    child: Text('Files',
-                        style: TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.bold)),
-                  )
-                : const SizedBox.shrink(),
-          ),
-
-          // File items
-          if (state.files.isNotEmpty)
-            state.viewMode == ViewMode.list
-                ? SliverList(
-                    delegate: SliverChildBuilderDelegate(
-                      (context, index) {
-                        final file = state.files[index];
-                        if (file is File) {
-                          return _buildFileItem(context, file, state);
-                        }
-                        return const SizedBox.shrink();
-                      },
-                      childCount: state.files.length,
-                    ),
-                  )
-                : SliverGrid(
-                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: state.gridZoomLevel,
-                      childAspectRatio: 0.75,
-                      crossAxisSpacing: 8,
-                      mainAxisSpacing: 8,
-                    ),
-                    delegate: SliverChildBuilderDelegate(
-                      (context, index) {
-                        final file = state.files[index];
-                        if (file is File) {
-                          return _buildFileGridItem(context, file, state);
-                        }
-                        return const SizedBox.shrink();
-                      },
-                      childCount: state.files.length,
-                    ),
-                  ),
         ],
       ),
     );
@@ -1092,8 +591,7 @@ class _FolderListScreenState extends State<FolderListScreen> {
               Expanded(
                 child: Text(
                   searchTitle,
-                  style: const TextStyle(
-                      fontSize: 16, fontWeight: FontWeight.bold),
+                  style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
               ),
               TextButton.icon(
@@ -1106,225 +604,103 @@ class _FolderListScreenState extends State<FolderListScreen> {
             ],
           ),
         ),
-        state.searchResults.isEmpty
-            ? Expanded(
-                child: Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.search_off,
-                          size: 48, color: Colors.grey),
-                      const SizedBox(height: 16),
-                      Text(
-                        'No matching files found',
-                        style: TextStyle(fontSize: 16, color: Colors.grey[600]),
-                      ),
-                    ],
-                  ),
-                ),
-              )
-            : Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      '${state.searchResults.length} results found',
-                      style: TextStyle(color: Colors.grey[600]),
-                    ),
-                    TextButton.icon(
-                      icon: const Icon(Icons.file_download),
-                      label: const Text('Export Results'),
-                      onPressed: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Export feature not implemented'),
-                          ),
-                        );
-                      },
-                    ),
-                  ],
-                ),
-              ),
         Expanded(
-          child: _buildFileList(context, state.searchResults, state),
+          child: FileView(
+            files: state.searchResults.whereType<File>().toList(),
+            folders: const [], // No folders in search results view
+            state: state,
+            isSelectionMode: _isSelectionMode,
+            isGridView: state.viewMode == ViewMode.grid,
+            selectedFiles: _selectedFilePaths.toList(),
+            toggleFileSelection: _toggleFileSelection,
+            toggleSelectionMode: _toggleSelectionMode,
+            showDeleteTagDialog: _showDeleteTagDialog,
+            showAddTagToFileDialog: _showAddTagToFileDialog,
+          ),
         ),
       ],
     );
   }
 
-  Widget _buildFileList(BuildContext context, List<FileSystemEntity> files,
-      FolderListState state) {
-    // Choose between list and grid views based on current viewMode
-    return state.viewMode == ViewMode.list
-        ? ListView.builder(
-            itemCount: files.length,
-            itemBuilder: (context, index) {
-              final file = files[index];
-              if (file is File) {
-                return _buildFileItem(context, file, state);
-              }
-              return const SizedBox.shrink();
-            },
-          )
-        : GridView.builder(
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: state.gridZoomLevel,
-              childAspectRatio: 0.75,
-              crossAxisSpacing: 8,
-              mainAxisSpacing: 8,
-            ),
-            padding: const EdgeInsets.all(8),
-            itemCount: files.length,
-            itemBuilder: (context, index) {
-              final file = files[index];
-              if (file is File) {
-                return _buildFileGridItem(context, file, state);
-              }
-              return const SizedBox.shrink();
-            },
-          );
+  void _showAddTagToFileDialog(BuildContext context, String filePath) {
+    showAddTagToFileDialog(context, filePath);
   }
 
-  Widget _buildBreadcrumb(BuildContext context, String path) {
-    List<String> pathParts = path.split('/');
+  void _showDeleteTagDialog(
+      BuildContext context, String filePath, List<String> tags) {
+    showDeleteTagDialog(context, filePath, tags);
+  }
 
-    // Remove empty parts
-    pathParts = pathParts.where((part) => part.isNotEmpty).toList();
-
-    if (pathParts.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.all(16.0),
-        child: Text('Root', style: TextStyle(fontSize: 14, color: Colors.grey)),
-      );
-    }
-
+  // Helper method to build media gallery option buttons
+  Widget _buildMediaGalleryButtons(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(12.0),
-      color: Colors.grey[100],
+      padding: const EdgeInsets.symmetric(vertical: 4.0, horizontal: 8.0),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: Row(
           children: [
-            for (int i = 0; i < pathParts.length; i++)
-              Row(
-                children: [
-                  if (i > 0)
-                    const Icon(Icons.chevron_right,
-                        size: 18, color: Colors.grey),
-                  InkWell(
-                    onTap: () {
-                      // Navigate to this level
-                      String partialPath = '/';
-                      for (int j = 0; j <= i; j++) {
-                        partialPath += '${pathParts[j]}/';
-                      }
-
-                      if (partialPath != widget.path) {
-                        Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) =>
-                                FolderListScreen(path: partialPath),
-                          ),
-                        );
-                      }
-                    },
-                    child: Text(
-                      pathParts[i],
-                      style: TextStyle(
-                        color: i == pathParts.length - 1
-                            ? Colors.black
-                            : Colors.blue,
-                        fontWeight: i == pathParts.length - 1
-                            ? FontWeight.bold
-                            : FontWeight.normal,
-                      ),
-                    ),
+            _buildGalleryButton(
+              context: context,
+              icon: Icons.photo_library,
+              label: 'Images',
+              color: Colors.blue,
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => ImageGalleryScreen(
+                    path: widget.path,
+                    recursive: false,
                   ),
-                ],
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFolderItem(BuildContext context, Directory folder) {
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
-      child: ListTile(
-        leading: const Icon(Icons.folder, color: Colors.amber),
-        title: Text(folder.basename()),
-        subtitle: FutureBuilder<FileStat>(
-          future: folder.stat(),
-          builder: (context, snapshot) {
-            if (snapshot.hasData) {
-              return Text(
-                  'Modified: ${snapshot.data!.modified.toString().split('.')[0]}');
-            }
-            return const Text('Loading...');
-          },
-        ),
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => FolderListScreen(path: folder.path),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildFolderGridItem(BuildContext context, Directory folder) {
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      elevation: 2,
-      child: InkWell(
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => FolderListScreen(path: folder.path),
-            ),
-          );
-        },
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(
-              Icons.folder,
-              size: 48,
-              color: Colors.amber,
-            ),
-            const SizedBox(height: 8),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8.0),
-              child: Text(
-                folder.basename(),
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 12,
                 ),
               ),
             ),
-            const SizedBox(height: 4),
-            FutureBuilder<FileStat>(
-              future: folder.stat(),
-              builder: (context, snapshot) {
-                if (snapshot.hasData) {
-                  final date = snapshot.data!.modified;
-                  return Text(
-                    '${date.month}/${date.day}/${date.year}',
-                    style: const TextStyle(fontSize: 10, color: Colors.grey),
-                  );
-                }
-                return const Text('Loading...', style: TextStyle(fontSize: 10));
-              },
+            const SizedBox(width: 8),
+            _buildGalleryButton(
+              context: context,
+              icon: Icons.video_library,
+              label: 'Videos',
+              color: Colors.red,
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => VideoGalleryScreen(
+                    path: widget.path,
+                    recursive: false,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            _buildGalleryButton(
+              context: context,
+              icon: Icons.photo_album,
+              label: 'All Images',
+              color: Colors.purple,
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => ImageGalleryScreen(
+                    path: widget.path,
+                    recursive: true,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            _buildGalleryButton(
+              context: context,
+              icon: Icons.movie,
+              label: 'All Videos',
+              color: Colors.orange,
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => VideoGalleryScreen(
+                    path: widget.path,
+                    recursive: true,
+                  ),
+                ),
+              ),
             ),
           ],
         ),
@@ -1332,268 +708,30 @@ class _FolderListScreenState extends State<FolderListScreen> {
     );
   }
 
-  Widget _buildFileItem(
-      BuildContext context, File file, FolderListState state) {
-    final extension = file.extension().toLowerCase();
-    IconData icon;
-    Color? iconColor;
-
-    // Determine file type and icon
-    if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].contains(extension)) {
-      icon = Icons.image;
-      iconColor = Colors.blue;
-    } else if (['mp4', 'mov', 'avi', 'mkv', 'flv', 'wmv'].contains(extension)) {
-      icon = Icons.videocam;
-      iconColor = Colors.red;
-    } else if (['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac']
-        .contains(extension)) {
-      icon = Icons.audiotrack;
-      iconColor = Colors.purple;
-    } else if (['pdf', 'doc', 'docx', 'txt', 'xls', 'xlsx', 'ppt', 'pptx']
-        .contains(extension)) {
-      icon = Icons.description;
-      iconColor = Colors.indigo;
-    } else {
-      icon = Icons.insert_drive_file;
-      iconColor = Colors.grey;
-    }
-
-    // Get tags for this file
-    final List<String> fileTags = state.getTagsForFile(file.path);
-    final bool isSelected = _selectedFilePaths.contains(file.path);
-
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
-      color: isSelected ? Colors.blue.shade50 : null,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          ListTile(
-            leading: _isSelectionMode
-                ? Checkbox(
-                    value: isSelected,
-                    onChanged: (bool? value) {
-                      _toggleFileSelection(file.path);
-                    },
-                  )
-                : Icon(icon, color: iconColor),
-            title: Text(file.basename()),
-            subtitle: FutureBuilder<FileStat>(
-              future: file.stat(),
-              builder: (context, snapshot) {
-                if (snapshot.hasData) {
-                  String sizeText = _formatFileSize(snapshot.data!.size);
-                  return Text(
-                      '${snapshot.data!.modified.toString().split('.')[0]} • $sizeText');
-                }
-                return const Text('Loading...');
-              },
-            ),
-            onTap: () {
-              if (_isSelectionMode) {
-                _toggleFileSelection(file.path);
-              } else {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => FileDetailsScreen(file: file),
-                  ),
-                );
-              }
-            },
-            trailing: _isSelectionMode
-                ? null
-                : PopupMenuButton<String>(
-                    icon: const Icon(Icons.more_vert),
-                    onSelected: (String value) {
-                      if (value == 'tag') {
-                        _showAddTagToFileDialog(context, file.path);
-                      } else if (value == 'delete_tag') {
-                        _showDeleteTagDialog(context, file.path,
-                            state.getTagsForFile(file.path));
-                      }
-                    },
-                    itemBuilder: (BuildContext context) => [
-                      const PopupMenuItem(
-                        value: 'tag',
-                        child: Text('Add Tag'),
-                      ),
-                      if (fileTags.isNotEmpty)
-                        const PopupMenuItem(
-                          value: 'delete_tag',
-                          child: Text('Remove Tag'),
-                        ),
-                    ],
-                  ),
-          ),
-          // Show tags if any
-          if (fileTags.isNotEmpty)
-            Padding(
-              padding:
-                  const EdgeInsets.only(left: 16.0, bottom: 8.0, right: 16.0),
-              child: Wrap(
-                spacing: 8.0,
-                children: fileTags.map((tag) {
-                  return Chip(
-                    label: Text(tag),
-                    backgroundColor: Colors.green[100],
-                    deleteIcon: const Icon(Icons.close, size: 18),
-                    onDeleted: () {
-                      _folderListBloc.add(RemoveTagFromFile(file.path, tag));
-                    },
-                  );
-                }).toList(),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFileGridItem(
-      BuildContext context, File file, FolderListState state) {
-    final extension = file.extension().toLowerCase();
-    IconData icon;
-    Color? iconColor;
-    bool isPreviewable = false;
-
-    // Determine file type and icon
-    if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].contains(extension)) {
-      icon = Icons.image;
-      iconColor = Colors.blue;
-      isPreviewable = true;
-    } else if (['mp4', 'mov', 'avi', 'mkv', 'flv', 'wmv'].contains(extension)) {
-      icon = Icons.videocam;
-      iconColor = Colors.red;
-    } else if (['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac']
-        .contains(extension)) {
-      icon = Icons.audiotrack;
-      iconColor = Colors.purple;
-    } else if (['pdf', 'doc', 'docx', 'txt', 'xls', 'xlsx', 'ppt', 'pptx']
-        .contains(extension)) {
-      icon = Icons.description;
-      iconColor = Colors.indigo;
-    } else {
-      icon = Icons.insert_drive_file;
-      iconColor = Colors.grey;
-    }
-
-    // Get tags for this file
-    final List<String> fileTags = state.getTagsForFile(file.path);
-    final bool isSelected = _selectedFilePaths.contains(file.path);
-
-    // Build a card with thumbnail or icon
-    return Card(
-      color: isSelected ? Colors.blue.shade50 : null,
-      clipBehavior: Clip.antiAlias,
-      elevation: 2,
-      child: InkWell(
-        onTap: () {
-          if (_isSelectionMode) {
-            _toggleFileSelection(file.path);
-          } else {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => FileDetailsScreen(file: file),
-              ),
-            );
-          }
-        },
-        onLongPress: () {
-          if (!_isSelectionMode) {
-            _toggleSelectionMode();
-            _toggleFileSelection(file.path);
-          }
-        },
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _buildGalleryButton({
+    required BuildContext context,
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: color.withOpacity(0.3)),
+        ),
+        child: Row(
           children: [
-            // File preview or icon
-            Expanded(
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  // Show image preview if it's an image file, otherwise show icon
-                  isPreviewable
-                      ? _buildThumbnail(file)
-                      : Center(
-                          child: Icon(
-                            icon,
-                            size: 48,
-                            color: iconColor,
-                          ),
-                        ),
-                  // Selection indicator overlay
-                  if (_isSelectionMode)
-                    Positioned(
-                      right: 6,
-                      top: 6,
-                      child: Container(
-                        width: 24,
-                        height: 24,
-                        decoration: BoxDecoration(
-                          color: isSelected ? Colors.blue : Colors.white,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.grey.shade400),
-                        ),
-                        child: Center(
-                          child: isSelected
-                              ? Icon(Icons.check, size: 16, color: Colors.white)
-                              : null,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-
-            // File name and tags
-            Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    file.basename(),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  FutureBuilder<FileStat>(
-                    future: file.stat(),
-                    builder: (context, snapshot) {
-                      if (snapshot.hasData) {
-                        return Text(
-                          _formatFileSize(snapshot.data!.size),
-                          style: const TextStyle(fontSize: 10),
-                        );
-                      }
-                      return const Text('Loading...',
-                          style: TextStyle(fontSize: 10));
-                    },
-                  ),
-                  // Tag indicators
-                  if (fileTags.isNotEmpty)
-                    Row(
-                      children: [
-                        Icon(Icons.label, size: 12, color: Colors.green[800]),
-                        const SizedBox(width: 4),
-                        Text(
-                          '${fileTags.length} tags',
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: Colors.green[800],
-                          ),
-                        ),
-                      ],
-                    ),
-                ],
-              ),
+            Icon(icon, size: 18, color: color),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(color: color, fontWeight: FontWeight.w500),
             ),
           ],
         ),
@@ -1601,117 +739,238 @@ class _FolderListScreenState extends State<FolderListScreen> {
     );
   }
 
-  Widget _buildThumbnail(File file) {
-    return Hero(
-      tag: file.path,
-      child: Image.file(
-        file,
-        fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) {
-          return Center(
-            child: Icon(
-              Icons.broken_image,
-              size: 48,
-              color: Colors.grey[400],
-            ),
-          );
-        },
-      ),
-    );
+  // New method to handle the grid zoom level change from the dialog
+  void _handleGridZoomChange(int zoomLevel) {
+    _folderListBloc.add(SetGridZoom(zoomLevel));
+    _saveGridZoomSetting(zoomLevel);
   }
 
-  String _formatFileSize(int size) {
-    if (size < 1024) {
-      return '$size B';
-    } else if (size < 1024 * 1024) {
-      return '${(size / 1024).toStringAsFixed(1)} KB';
-    } else if (size < 1024 * 1024 * 1024) {
-      return '${(size / (1024 * 1024)).toStringAsFixed(1)} MB';
-    } else {
-      return '${(size / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
-    }
-  }
-
-  void _showAddTagToFileDialog(BuildContext context, String filePath) {
-    _tagController.clear();
+  // Tag management methods for selection mode
+  void _showRemoveTagsDialog(BuildContext context, List<String> filePaths) {
     showDialog(
       context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Add Tag to File'),
-          content: TextField(
-            controller: _tagController,
-            decoration: const InputDecoration(
-              labelText: 'Tag',
-              hintText: 'Enter a new tag',
-            ),
-            autofocus: true,
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                if (_tagController.text.isNotEmpty) {
-                  Navigator.of(context).pop();
-                  _folderListBloc.add(
-                    AddTagToFile(filePath, _tagController.text),
-                  );
-                }
-              },
-              child: const Text('Add'),
-            ),
-          ],
+      builder: (context) {
+        final Set<String> availableTags = <String>{};
+
+        // Process each file to get all tags
+        Future<void> loadTags() async {
+          for (final filePath in filePaths) {
+            final tags = await TagManager.getTags(filePath);
+            availableTags.addAll(tags);
+          }
+
+          // Force rebuild of the dialog when tags are loaded
+          if (context.mounted) {
+            setState(() {});
+          }
+        }
+
+        // Start loading tags
+        loadTags();
+
+        // For tracking which tags to remove
+        final selectedTags = <String>{};
+
+        return StatefulBuilder(
+          builder: (context, setState) {
+            if (availableTags.isEmpty) {
+              return AlertDialog(
+                title: const Text('Không có thẻ'),
+                content: const Text('Các tệp đã chọn không có thẻ nào.'),
+                actions: [
+                  TextButton(
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                    },
+                    child: const Text('ĐÓNG'),
+                  ),
+                ],
+              );
+            }
+
+            return AlertDialog(
+              title: const Text('Xóa thẻ'),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text('Chọn thẻ cần xóa khỏi các tệp đã chọn:'),
+                    const SizedBox(height: 16),
+                    Flexible(
+                      child: ListView(
+                        shrinkWrap: true,
+                        children: availableTags.map((tag) {
+                          return CheckboxListTile(
+                            title: Text(tag),
+                            value: selectedTags.contains(tag),
+                            onChanged: (bool? selected) {
+                              setState(() {
+                                if (selected == true) {
+                                  selectedTags.add(tag);
+                                } else {
+                                  selectedTags.remove(tag);
+                                }
+                              });
+                            },
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                  },
+                  child: const Text('HỦY'),
+                ),
+                TextButton(
+                  onPressed: selectedTags.isEmpty
+                      ? null
+                      : () async {
+                          // Remove selected tags from files
+                          for (final tag in selectedTags) {
+                            await BatchTagManager.removeTagFromFiles(
+                                filePaths, tag);
+                          }
+                          Navigator.of(context).pop();
+
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                  'Đã xóa ${selectedTags.length} thẻ khỏi ${filePaths.length} tệp'),
+                            ),
+                          );
+
+                          // Refresh file list to update tags
+                          _refreshFileList();
+                        },
+                  child: const Text('XÓA THẺ'),
+                ),
+              ],
+            );
+          },
         );
       },
     );
   }
 
-  void _showDeleteTagDialog(
-      BuildContext context, String filePath, List<String> tags) {
-    if (tags.isEmpty) return;
-
+  void _showManageAllTagsDialog(BuildContext context) {
     showDialog(
       context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Remove Tag'),
-          content: Container(
-            width: double.maxFinite,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Select a tag to remove:'),
-                const SizedBox(height: 16),
-                Wrap(
-                  spacing: 8.0,
-                  runSpacing: 4.0,
-                  children: tags.map((tag) {
-                    return ActionChip(
-                      label: Text(tag),
-                      onPressed: () {
-                        Navigator.of(context).pop();
-                        _folderListBloc.add(
-                          RemoveTagFromFile(filePath, tag),
-                        );
-                      },
-                    );
-                  }).toList(),
-                ),
-              ],
+      builder: (context) {
+        final List<String> allTags = [];
+        bool isLoading = true;
+
+        // Load all unique tags
+        Future<void> loadAllTags() async {
+          final tags = await TagManager.getAllUniqueTags(widget.path);
+          allTags.addAll(tags);
+          isLoading = false;
+
+          // Force rebuild of the dialog when tags are loaded
+          if (context.mounted) {
+            setState(() {});
+          }
+        }
+
+        // Start loading tags
+        loadAllTags();
+
+        return StatefulBuilder(builder: (context, setState) {
+          return AlertDialog(
+            title: const Text('Quản lý tất cả thẻ'),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('Tất cả thẻ hiện có trong hệ thống:'),
+                  const SizedBox(height: 16),
+                  Flexible(
+                    child: isLoading
+                        ? const Center(child: CircularProgressIndicator())
+                        : (allTags.isEmpty
+                            ? const Center(
+                                child: Text('Không có thẻ nào'),
+                              )
+                            : ListView.builder(
+                                shrinkWrap: true,
+                                itemCount: allTags.length,
+                                itemBuilder: (context, index) {
+                                  final tag = allTags[index];
+                                  return ListTile(
+                                    title: Text(tag),
+                                    trailing: IconButton(
+                                      icon: const Icon(Icons.delete_outline),
+                                      onPressed: () {
+                                        _showDeleteTagConfirmationDialog(
+                                            context, tag);
+                                      },
+                                    ),
+                                  );
+                                },
+                              )),
+                  ),
+                ],
+              ),
             ),
-          ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                },
+                child: const Text('ĐÓNG'),
+              ),
+            ],
+          );
+        });
+      },
+    );
+  }
+
+  void _showDeleteTagConfirmationDialog(BuildContext context, String tag) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text('Xóa thẻ "$tag"?'),
+          content: const Text(
+              'Thẻ này sẽ bị xóa khỏi tất cả các tệp. Bạn có chắc chắn muốn tiếp tục?'),
           actions: [
             TextButton(
               onPressed: () {
                 Navigator.of(context).pop();
               },
-              child: const Text('Cancel'),
+              child: const Text('HỦY'),
+            ),
+            TextButton(
+              onPressed: () async {
+                // Find all files with this tag
+                final files = await TagManager.findFilesByTag(widget.path, tag);
+
+                // Remove tag from all files - Convert FileSystemEntity list to String list
+                if (files.isNotEmpty) {
+                  final filePaths = files.map((file) => file.path).toList();
+                  await BatchTagManager.removeTagFromFiles(filePaths, tag);
+                }
+
+                Navigator.of(context).pop();
+                Navigator.of(context).pop(); // Close the manage tags dialog too
+
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Đã xóa thẻ "$tag" khỏi tất cả tệp'),
+                  ),
+                );
+
+                // Refresh file list to update tags
+                _refreshFileList();
+              },
+              child: const Text('XÓA', style: TextStyle(color: Colors.red)),
             ),
           ],
         );

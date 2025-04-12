@@ -3,7 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:cb_file_manager/helpers/filesystem_utils.dart';
 import 'package:cb_file_manager/helpers/user_preferences.dart';
 import 'package:cb_file_manager/ui/utils/base_screen.dart';
+import 'package:cb_file_manager/ui/screens/folder_list/folder_list_state.dart';
+import 'package:cb_file_manager/ui/components/shared_action_bar.dart';
 import 'package:path/path.dart' as pathlib;
+import 'dart:math';
 
 class ImageGalleryScreen extends StatefulWidget {
   final String path;
@@ -24,6 +27,13 @@ class _ImageGalleryScreenState extends State<ImageGalleryScreen> {
   late UserPreferences _preferences;
   late double _thumbnailSize;
 
+  List<File> _imageFiles = [];
+  bool _isSelectionMode = false;
+  final Set<String> _selectedFilePaths = {};
+  SortOption _currentSortOption = SortOption.nameAsc;
+  ViewMode _viewMode = ViewMode.grid;
+  String? _searchQuery;
+
   @override
   void initState() {
     super.initState();
@@ -36,246 +46,713 @@ class _ImageGalleryScreenState extends State<ImageGalleryScreen> {
     await _preferences.init();
     setState(() {
       _thumbnailSize = _preferences.getImageGalleryThumbnailSize();
+      _currentSortOption = _preferences.getSortOption();
+      _viewMode = _preferences.getViewMode();
     });
   }
 
   void _loadImages() {
     _imageFilesFuture = getAllImages(widget.path, recursive: widget.recursive);
+    _imageFilesFuture.then((images) {
+      setState(() {
+        _imageFiles = images;
+        _sortImageFiles();
+      });
+    });
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return BaseScreen(
-      title: 'Image Gallery: ${pathlib.basename(widget.path)}',
-      actions: [
-        IconButton(
-          icon: const Icon(Icons.photo_size_select_large),
-          onPressed: () {
-            _showThumbnailSizeDialog();
+  void _sortImageFiles() {
+    switch (_currentSortOption) {
+      case SortOption.nameAsc:
+        _imageFiles.sort((a, b) => pathlib
+            .basename(a.path)
+            .toLowerCase()
+            .compareTo(pathlib.basename(b.path).toLowerCase()));
+        break;
+
+      case SortOption.nameDesc:
+        _imageFiles.sort((a, b) => pathlib
+            .basename(b.path)
+            .toLowerCase()
+            .compareTo(pathlib.basename(a.path).toLowerCase()));
+        break;
+
+      case SortOption.dateAsc:
+        _imageFiles.sort((a, b) {
+          try {
+            return a.lastModifiedSync().compareTo(b.lastModifiedSync());
+          } catch (e) {
+            return 0;
+          }
+        });
+        break;
+
+      case SortOption.dateDesc:
+        _imageFiles.sort((a, b) {
+          try {
+            return b.lastModifiedSync().compareTo(a.lastModifiedSync());
+          } catch (e) {
+            return 0;
+          }
+        });
+        break;
+
+      case SortOption.sizeAsc:
+        _imageFiles.sort((a, b) {
+          try {
+            return a.lengthSync().compareTo(b.lengthSync());
+          } catch (e) {
+            return 0;
+          }
+        });
+        break;
+
+      case SortOption.sizeDesc:
+        _imageFiles.sort((a, b) {
+          try {
+            return b.lengthSync().compareTo(a.lengthSync());
+          } catch (e) {
+            return 0;
+          }
+        });
+        break;
+
+      case SortOption.typeAsc:
+        _imageFiles.sort((a, b) => pathlib
+            .extension(a.path)
+            .toLowerCase()
+            .compareTo(pathlib.extension(b.path).toLowerCase()));
+        break;
+    }
+  }
+
+  void _setSortOption(SortOption option) async {
+    if (_currentSortOption != option) {
+      setState(() {
+        _currentSortOption = option;
+        _sortImageFiles();
+      });
+
+      try {
+        await _preferences.setSortOption(option);
+      } catch (e) {
+        print('Error saving sort option: $e');
+      }
+    }
+  }
+
+  Future<void> _saveViewModeSetting(ViewMode mode) async {
+    try {
+      final UserPreferences prefs = UserPreferences();
+      await prefs.init();
+      await prefs.setViewMode(mode);
+    } catch (e) {
+      print('Error saving view mode: $e');
+    }
+  }
+
+  void _showSearchDialog(BuildContext context) {
+    String searchQuery = _searchQuery ?? '';
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Tìm kiếm hình ảnh'),
+        content: TextField(
+          autofocus: true,
+          decoration: const InputDecoration(
+            hintText: 'Nhập tên hình ảnh...',
+            prefixIcon: Icon(Icons.search),
+          ),
+          controller: TextEditingController(text: searchQuery),
+          onChanged: (value) {
+            searchQuery = value;
           },
         ),
-        IconButton(
-          icon: const Icon(Icons.refresh),
-          onPressed: () {
-            setState(() {
-              _loadImages();
-            });
-          },
-        ),
-      ],
-      body: FutureBuilder<List<File>>(
-        future: _imageFilesFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(
-              child: CircularProgressIndicator(),
-            );
-          }
-
-          if (snapshot.hasError) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.error_outline, size: 48, color: Colors.red),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Error: ${snapshot.error}',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.red[700]),
-                  ),
-                  const SizedBox(height: 16),
-                  ElevatedButton(
-                    onPressed: () {
-                      setState(() {
-                        _loadImages();
-                      });
-                    },
-                    child: const Text('Try Again'),
-                  ),
-                ],
-              ),
-            );
-          }
-
-          final images = snapshot.data ?? [];
-
-          if (images.isEmpty) {
-            return const Center(
-              child: Text(
-                'No images found in this location',
-                style: TextStyle(fontSize: 16),
-              ),
-            );
-          }
-
-          return GridView.builder(
-            padding: const EdgeInsets.all(8.0),
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: _thumbnailSize.round(),
-              crossAxisSpacing: 8,
-              mainAxisSpacing: 8,
-            ),
-            itemCount: images.length,
-            itemBuilder: (context, index) {
-              final file = images[index];
-              return GestureDetector(
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => _ImageViewerScreen(file: file),
-                    ),
-                  );
-                },
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Container(
-                    color: Colors.grey[200],
-                    child: Hero(
-                      tag: file.path,
-                      child: Image.file(
-                        file,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) {
-                          return const Center(
-                            child: Icon(
-                              Icons.broken_image,
-                              size: 40,
-                              color: Colors.grey,
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-                ),
-              );
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
             },
-          );
-        },
+            child: const Text('HỦY'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+
+              if (searchQuery.trim().isEmpty) {
+                setState(() {
+                  _searchQuery = null;
+                  _loadImages();
+                });
+                return;
+              }
+
+              setState(() {
+                _searchQuery = searchQuery.trim();
+                final searchLower = _searchQuery!.toLowerCase();
+
+                _imageFiles = _imageFiles
+                    .where((file) => pathlib
+                        .basename(file.path)
+                        .toLowerCase()
+                        .contains(searchLower))
+                    .toList();
+
+                _sortImageFiles();
+              });
+            },
+            child: const Text('TÌM KIẾM'),
+          ),
+        ],
       ),
     );
   }
 
-  void _showThumbnailSizeDialog() {
-    double tempSize = _thumbnailSize;
-
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Adjust Thumbnail Size'),
-          content: StatefulBuilder(
-            builder: (BuildContext context, StateSetter setState) {
-              return Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text('Columns: ${tempSize.round()}'),
-                  Slider(
-                    value: tempSize,
-                    min: UserPreferences.minThumbnailSize,
-                    max: UserPreferences.maxThumbnailSize,
-                    divisions: (UserPreferences.maxThumbnailSize -
-                            UserPreferences.minThumbnailSize)
-                        .toInt(),
-                    label: tempSize.round().toString(),
-                    onChanged: (double value) {
-                      setState(() {
-                        tempSize = value;
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      _sizePreviewBox(2, tempSize),
-                      _sizePreviewBox(3, tempSize),
-                      _sizePreviewBox(4, tempSize),
-                      _sizePreviewBox(5, tempSize),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      _sizePreviewBox(6, tempSize),
-                      _sizePreviewBox(7, tempSize),
-                      _sizePreviewBox(8, tempSize),
-                      _sizePreviewBox(10, tempSize),
-                    ],
-                  ),
-                  const SizedBox(height: 5),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      Text('Larger', style: TextStyle(fontSize: 12)),
-                      const Spacer(),
-                      Text('Smaller', style: TextStyle(fontSize: 12)),
-                    ],
-                  ),
-                ],
-              );
+  @override
+  Widget build(BuildContext context) {
+    if (_isSelectionMode) {
+      return Scaffold(
+        appBar: AppBar(
+          title: Text('${_selectedFilePaths.length} hình ảnh đã chọn'),
+          leading: IconButton(
+            icon: const Icon(Icons.close),
+            onPressed: () {
+              setState(() {
+                _isSelectionMode = false;
+                _selectedFilePaths.clear();
+              });
             },
           ),
-          actions: <Widget>[
-            TextButton(
-              child: const Text('Cancel'),
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.delete),
+              tooltip: 'Xóa hình ảnh đã chọn',
+              onPressed: _selectedFilePaths.isEmpty
+                  ? null
+                  : () => _showDeleteConfirmationDialog(context),
             ),
-            TextButton(
-              child: const Text('Apply'),
+            IconButton(
+              icon: const Icon(Icons.select_all),
+              tooltip: 'Chọn tất cả',
               onPressed: () {
                 setState(() {
-                  _thumbnailSize = tempSize;
+                  if (_selectedFilePaths.length == _imageFiles.length) {
+                    _selectedFilePaths.clear();
+                  } else {
+                    _selectedFilePaths.addAll(_imageFiles.map((f) => f.path));
+                  }
                 });
-                _preferences.setImageGalleryThumbnailSize(tempSize);
-                Navigator.of(context).pop();
               },
             ),
           ],
+        ),
+        body: _buildImageContent(),
+      );
+    }
+
+    List<Widget> actions = SharedActionBar.buildCommonActions(
+      context: context,
+      onSearchPressed: () => _showSearchDialog(context),
+      onSortOptionSelected: _setSortOption,
+      currentSortOption: _currentSortOption,
+      viewMode: _viewMode,
+      onViewModeToggled: () {
+        setState(() {
+          _viewMode =
+              _viewMode == ViewMode.grid ? ViewMode.list : ViewMode.grid;
+        });
+        _saveViewModeSetting(_viewMode);
+      },
+      onRefresh: () {
+        setState(() {
+          _searchQuery = null;
+          _loadImages();
+        });
+      },
+      onGridSizePressed: () => SharedActionBar.showGridSizeDialog(
+        context,
+        currentGridSize: _thumbnailSize.round(),
+        onApply: (size) async {
+          setState(() {
+            _thumbnailSize = size.toDouble();
+          });
+
+          try {
+            await _preferences.setImageGalleryThumbnailSize(size.toDouble());
+          } catch (e) {
+            print('Error saving thumbnail size: $e');
+          }
+        },
+      ),
+      onSelectionModeToggled: () {
+        setState(() {
+          _isSelectionMode = true;
+        });
+      },
+    );
+
+    return BaseScreen(
+      title: 'Image Gallery: ${pathlib.basename(widget.path)}',
+      actions: actions,
+      body: _buildImageContent(),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          setState(() {
+            _isSelectionMode = true;
+          });
+        },
+        child: const Icon(Icons.checklist),
+      ),
+    );
+  }
+
+  Widget _buildImageContent() {
+    if (_imageFiles.isEmpty) {
+      return const Center(
+        child: Text(
+          'Không tìm thấy hình ảnh trong thư mục này',
+          style: TextStyle(fontSize: 16),
+        ),
+      );
+    }
+
+    return Stack(
+      children: [
+        if (_searchQuery != null && _searchQuery!.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+              decoration: BoxDecoration(
+                color: Colors.blue.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.search, size: 20),
+                  const SizedBox(width: 8),
+                  Text('Tìm kiếm: "$_searchQuery"'),
+                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.clear, size: 20),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    onPressed: () {
+                      setState(() {
+                        _searchQuery = null;
+                        _loadImages();
+                      });
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+        Padding(
+          padding: EdgeInsets.only(top: _searchQuery != null ? 50.0 : 0.0),
+          child:
+              _viewMode == ViewMode.grid ? _buildGridView() : _buildListView(),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildGridView() {
+    return GridView.builder(
+      padding: const EdgeInsets.all(8.0),
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: _thumbnailSize.round(),
+        crossAxisSpacing: 8,
+        mainAxisSpacing: 8,
+      ),
+      itemCount: _imageFiles.length,
+      itemBuilder: (context, index) {
+        final file = _imageFiles[index];
+        final isSelected = _selectedFilePaths.contains(file.path);
+
+        return GestureDetector(
+          onTap: () {
+            if (_isSelectionMode) {
+              setState(() {
+                if (isSelected) {
+                  _selectedFilePaths.remove(file.path);
+                } else {
+                  _selectedFilePaths.add(file.path);
+                }
+              });
+            } else {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => _ImageViewerScreen(file: file),
+                ),
+              );
+            }
+          },
+          onLongPress: () {
+            if (!_isSelectionMode) {
+              setState(() {
+                _isSelectionMode = true;
+                _selectedFilePaths.add(file.path);
+              });
+            }
+          },
+          child: Stack(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  color: Colors.grey[200],
+                  child: Hero(
+                    tag: file.path,
+                    child: Image.file(
+                      file,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return const Center(
+                          child: Icon(
+                            Icons.broken_image,
+                            size: 40,
+                            color: Colors.grey,
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ),
+              if (_isSelectionMode)
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.5),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      isSelected ? Icons.check_circle : Icons.circle_outlined,
+                      color: isSelected ? Colors.blue : Colors.white,
+                      size: 24,
+                    ),
+                  ),
+                ),
+            ],
+          ),
         );
       },
     );
   }
 
-  Widget _sizePreviewBox(int size, double currentSize) {
-    return Column(
-      children: [
-        Container(
-          width: 40,
-          height: 40,
-          padding: EdgeInsets.all(2),
-          decoration: BoxDecoration(
-            border: Border.all(
-              color: currentSize.round() == size ? Colors.blue : Colors.grey,
-              width: 2,
-            ),
-            borderRadius: BorderRadius.circular(4),
-          ),
-          child: GridView.count(
-            crossAxisCount: size,
-            mainAxisSpacing: 1,
-            crossAxisSpacing: 1,
-            physics: NeverScrollableScrollPhysics(),
-            children: List.generate(
-              size * size,
-              (index) => Container(
-                color: Colors.grey[300],
+  Widget _buildListView() {
+    return ListView.builder(
+      padding: const EdgeInsets.all(8.0),
+      itemCount: _imageFiles.length,
+      itemBuilder: (context, index) {
+        final file = _imageFiles[index];
+        final isSelected = _selectedFilePaths.contains(file.path);
+        final fileExtension = pathlib.extension(file.path).toLowerCase();
+
+        return Card(
+          margin: const EdgeInsets.only(bottom: 8),
+          child: ListTile(
+            leading: SizedBox(
+              width: 60,
+              height: 60,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: Image.file(
+                  file,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) {
+                    return Container(
+                      color: Colors.grey[300],
+                      child: const Icon(
+                        Icons.broken_image,
+                        color: Colors.grey,
+                      ),
+                    );
+                  },
+                ),
               ),
             ),
+            title: Text(
+              pathlib.basename(file.path),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            subtitle: FutureBuilder<FileStat>(
+              future: file.stat(),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) {
+                  return const Text('Đang tải thông tin...');
+                }
+
+                final fileStat = snapshot.data!;
+                final fileSize = _formatFileSize(fileStat.size);
+                final fileDate = _formatDate(fileStat.modified);
+                return Text('$fileExtension • $fileSize • $fileDate');
+              },
+            ),
+            selected: isSelected,
+            trailing: _isSelectionMode
+                ? Checkbox(
+                    value: isSelected,
+                    onChanged: (value) {
+                      setState(() {
+                        if (value == true) {
+                          _selectedFilePaths.add(file.path);
+                        } else {
+                          _selectedFilePaths.remove(file.path);
+                        }
+                      });
+                    },
+                  )
+                : IconButton(
+                    icon: const Icon(Icons.more_vert),
+                    onPressed: () => _showImageOptions(context, file),
+                  ),
+            onTap: _isSelectionMode
+                ? () {
+                    setState(() {
+                      if (isSelected) {
+                        _selectedFilePaths.remove(file.path);
+                      } else {
+                        _selectedFilePaths.add(file.path);
+                      }
+                    });
+                  }
+                : () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => _ImageViewerScreen(file: file),
+                      ),
+                    );
+                  },
+            onLongPress: () {
+              if (!_isSelectionMode) {
+                setState(() {
+                  _isSelectionMode = true;
+                  _selectedFilePaths.add(file.path);
+                });
+              }
+            },
           ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          '$size',
-          style: TextStyle(fontSize: 12),
-        ),
-      ],
+        );
+      },
     );
+  }
+
+  void _showImageOptions(BuildContext context, File file) {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            leading: const Icon(Icons.image),
+            title: const Text('Xem hình ảnh'),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => _ImageViewerScreen(file: file),
+                ),
+              );
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.info_outline),
+            title: const Text('Thông tin hình ảnh'),
+            onTap: () {
+              Navigator.pop(context);
+              _showImageInfoDialog(context, file);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.share),
+            title: const Text('Chia sẻ'),
+            onTap: () {
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                      'Chức năng chia sẻ sẽ được triển khai trong tương lai'),
+                ),
+              );
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.delete, color: Colors.red),
+            title:
+                const Text('Xóa hình ảnh', style: TextStyle(color: Colors.red)),
+            onTap: () {
+              Navigator.pop(context);
+              _showDeleteConfirmationDialog(context, [file.path]);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showImageInfoDialog(BuildContext context, File file) async {
+    try {
+      final fileStat = await file.stat();
+      final fileSize = _formatFileSize(fileStat.size);
+      final modified = fileStat.modified;
+
+      showDialog(
+        context: context,
+        builder: (context) {
+          return AlertDialog(
+            title: const Text('Thông tin hình ảnh'),
+            content: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _infoRow('Tên tập tin', pathlib.basename(file.path)),
+                  const Divider(),
+                  _infoRow('Đường dẫn', file.path),
+                  const Divider(),
+                  _infoRow('Kích thước', fileSize),
+                  const Divider(),
+                  _infoRow(
+                      'Loại tệp', pathlib.extension(file.path).toUpperCase()),
+                  const Divider(),
+                  _infoRow('Cập nhật lần cuối',
+                      '${modified.day}/${modified.month}/${modified.year} ${modified.hour}:${modified.minute}'),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                },
+                child: const Text('Đóng'),
+              ),
+            ],
+          );
+        },
+      );
+    } catch (e) {
+      print('Error showing image info: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Không thể hiển thị thông tin hình ảnh: $e')),
+      );
+    }
+  }
+
+  Widget _infoRow(String title, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '$title: ',
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(fontSize: 14),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showDeleteConfirmationDialog(BuildContext context,
+      [List<String>? specificPaths]) {
+    final paths = specificPaths ?? _selectedFilePaths.toList();
+    final count = paths.length;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Xóa $count hình ảnh?'),
+        content: const Text(
+            'Bạn có chắc chắn muốn xóa các hình ảnh đã chọn? Hành động này không thể hoàn tác.'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+            },
+            child: const Text('HỦY'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.of(context).pop();
+
+              int successCount = 0;
+              List<String> failedPaths = [];
+
+              for (final path in paths) {
+                try {
+                  final file = File(path);
+                  await file.delete();
+                  successCount++;
+                } catch (e) {
+                  print('Error deleting file $path: $e');
+                  failedPaths.add(path);
+                }
+              }
+
+              setState(() {
+                _imageFiles.removeWhere((file) => paths.contains(file.path));
+                _selectedFilePaths.clear();
+                _isSelectionMode = false;
+              });
+
+              if (failedPaths.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Đã xóa $successCount hình ảnh')),
+                );
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                      content: Text(
+                          'Đã xóa $successCount hình ảnh, ${failedPaths.length} lỗi')),
+                );
+              }
+            },
+            child: const Text(
+              'XÓA',
+              style: TextStyle(color: Colors.red),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatDate(DateTime date) {
+    final now = DateTime.now();
+    final difference = now.difference(date);
+
+    if (difference.inDays == 0) {
+      return 'Hôm nay ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
+    } else if (difference.inDays == 1) {
+      return 'Hôm qua ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
+    } else if (difference.inDays < 7) {
+      return '${difference.inDays} ngày trước';
+    } else {
+      return '${date.day}/${date.month}/${date.year}';
+    }
+  }
+
+  String _formatFileSize(int bytes) {
+    if (bytes <= 0) return "0 B";
+    const suffixes = ["B", "KB", "MB", "GB", "TB"];
+    var i = (log(bytes) / log(1024)).floor();
+    return '${(bytes / pow(1024, i)).toStringAsFixed(1)} ${suffixes[i]}';
   }
 }
 
@@ -295,9 +772,14 @@ class _ImageViewerScreen extends StatelessWidget {
           onPressed: () {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                  content: Text('Share functionality not implemented')),
+                  content: Text(
+                      'Chức năng chia sẻ sẽ được triển khai trong tương lai')),
             );
           },
+        ),
+        IconButton(
+          icon: const Icon(Icons.info_outline),
+          onPressed: () => _showImageInfo(context),
         ),
       ],
       body: Center(
@@ -320,7 +802,7 @@ class _ImageViewerScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 16),
                     Text(
-                      'Failed to load image',
+                      'Không thể tải hình ảnh',
                       style: TextStyle(color: Colors.white70),
                     ),
                   ],
@@ -331,5 +813,82 @@ class _ImageViewerScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  void _showImageInfo(BuildContext context) async {
+    try {
+      final fileStat = await file.stat();
+      final fileSize = _formatFileSize(fileStat.size);
+      final modified = fileStat.modified;
+
+      showDialog(
+        context: context,
+        builder: (context) {
+          return AlertDialog(
+            title: const Text('Thông tin hình ảnh'),
+            content: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _infoRow('Tên tập tin', pathlib.basename(file.path)),
+                  const Divider(),
+                  _infoRow('Đường dẫn', file.path),
+                  const Divider(),
+                  _infoRow('Kích thước', fileSize),
+                  const Divider(),
+                  _infoRow(
+                      'Loại tệp', pathlib.extension(file.path).toUpperCase()),
+                  const Divider(),
+                  _infoRow('Cập nhật lần cuối',
+                      '${modified.day}/${modified.month}/${modified.year} ${modified.hour}:${modified.minute}'),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                },
+                child: const Text('Đóng'),
+              ),
+            ],
+          );
+        },
+      );
+    } catch (e) {
+      print('Error showing image info: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Không thể hiển thị thông tin hình ảnh: $e')),
+      );
+    }
+  }
+
+  Widget _infoRow(String title, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '$title: ',
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(fontSize: 14),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatFileSize(int bytes) {
+    if (bytes <= 0) return "0 B";
+    const suffixes = ["B", "KB", "MB", "GB", "TB"];
+    var i = (log(bytes) / log(1024)).floor();
+    return '${(bytes / pow(1024, i)).toStringAsFixed(1)} ${suffixes[i]}';
   }
 }

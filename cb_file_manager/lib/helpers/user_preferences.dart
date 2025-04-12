@@ -7,27 +7,25 @@ class UserPreferences {
   static final UserPreferences _instance = UserPreferences._internal();
   SharedPreferences? _preferences;
 
-  // Keys for preferences
+  // Shared preferences keys
+  static const String _viewModeKey = 'view_mode';
+  static const String _sortOptionKey = 'sort_option';
+  static const String _gridZoomLevelKey = 'grid_zoom_level';
+  static const String _lastFolderKey = 'last_accessed_folder';
   static const String _imageGalleryThumbnailSizeKey =
       'image_gallery_thumbnail_size';
   static const String _videoGalleryThumbnailSizeKey =
       'video_gallery_thumbnail_size';
-  static const String _lastAccessedFolderKey = 'last_accessed_folder';
 
-  // Keys for file manager preferences
-  static const String _viewModeKey = 'file_manager_view_mode';
-  static const String _sortOptionKey = 'file_manager_sort_option';
-  static const String _gridZoomLevelKey = 'file_manager_grid_zoom_level';
-
-  // Default values
-  static const double defaultThumbnailSize = 3.0; // Default grid count of 3
-  static const double minThumbnailSize = 2.0; // Minimum grid count of 2
-  static const double maxThumbnailSize = 10.0; // Maximum grid count of 10
-
-  // Grid zoom level configuration
+  // Constants for grid zoom level
   static const int minGridZoomLevel = 2; // Largest thumbnails (2 per row)
-  static const int maxGridZoomLevel = 6; // Smallest thumbnails (6 per row)
-  static const int defaultGridZoomLevel = 3; // Default value (3 per row)
+  static const int maxGridZoomLevel = 15; // Smallest thumbnails (15 per row)
+  static const int defaultGridZoomLevel = 4; // Default (4 per row)
+
+  // Constants for thumbnail sizes
+  static const double minThumbnailSize = 2.0;
+  static const double maxThumbnailSize = 10.0;
+  static const double defaultThumbnailSize = 3.0;
 
   factory UserPreferences() {
     return _instance;
@@ -72,7 +70,7 @@ class UserPreferences {
 
   /// Get the last accessed folder path with validation
   String? getLastAccessedFolder() {
-    final folderPath = _preferences?.getString(_lastAccessedFolderKey);
+    final folderPath = _preferences?.getString(_lastFolderKey);
 
     // Add validation to ensure the folder exists before returning it
     if (folderPath != null) {
@@ -83,13 +81,13 @@ class UserPreferences {
           return folderPath;
         } else {
           // If directory doesn't exist, clear the preference
-          _preferences?.remove(_lastAccessedFolderKey);
+          _preferences?.remove(_lastFolderKey);
           return null;
         }
       } catch (e) {
         print('Error validating last accessed folder: $e');
         // If there's an error, clear the preference
-        _preferences?.remove(_lastAccessedFolderKey);
+        _preferences?.remove(_lastFolderKey);
         return null;
       }
     }
@@ -102,8 +100,7 @@ class UserPreferences {
       // Verify the folder exists before saving it
       final directory = Directory(folderPath);
       if (await directory.exists()) {
-        return await _preferences?.setString(
-                _lastAccessedFolderKey, folderPath) ??
+        return await _preferences?.setString(_lastFolderKey, folderPath) ??
             false;
       }
       return false;
@@ -115,7 +112,7 @@ class UserPreferences {
 
   /// Clear the last accessed folder preference
   Future<bool> clearLastAccessedFolder() async {
-    return await _preferences?.remove(_lastAccessedFolderKey) ?? false;
+    return await _preferences?.remove(_lastFolderKey) ?? false;
   }
 
   /// Get current view mode preference (list or grid)

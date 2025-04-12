@@ -3,13 +3,39 @@ import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
 import 'package:cb_file_manager/helpers/filesystem_utils.dart';
+import 'package:cb_file_manager/helpers/batch_tag_manager.dart';
+import 'package:cb_file_manager/helpers/tag_manager.dart';
 import 'package:path/path.dart' as pathlib;
 import 'package:cb_file_manager/helpers/thumbnail_helper.dart';
 import 'package:cb_file_manager/helpers/user_preferences.dart';
 import 'package:cb_file_manager/ui/utils/base_screen.dart';
+import 'package:cb_file_manager/ui/screens/folder_list/folder_list_state.dart';
+import 'package:cb_file_manager/ui/components/shared_action_bar.dart'; // Import SharedActionBar
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/services.dart';
+
+// Extension to provide Vietnamese display names for SortOption enum
+extension SortOptionExtension on SortOption {
+  String get displayName {
+    switch (this) {
+      case SortOption.nameAsc:
+        return 'Tên (A → Z)';
+      case SortOption.nameDesc:
+        return 'Tên (Z → A)';
+      case SortOption.dateAsc:
+        return 'Ngày (Cũ nhất trước)';
+      case SortOption.dateDesc:
+        return 'Ngày (Mới nhất trước)';
+      case SortOption.sizeAsc:
+        return 'Kích thước (Nhỏ nhất trước)';
+      case SortOption.sizeDesc:
+        return 'Kích thước (Lớn nhất trước)';
+      case SortOption.typeAsc:
+        return 'Loại tệp (A → Z)';
+    }
+  }
+}
 
 class VideoGalleryScreen extends StatefulWidget {
   final String path;
@@ -33,6 +59,16 @@ class _VideoGalleryScreenState extends State<VideoGalleryScreen>
   ScrollController _scrollController = ScrollController();
   bool _isLoadingThumbnails = false;
   bool _isMounted = false;
+
+  // Sorting variables
+  SortOption _currentSortOption = SortOption.nameAsc;
+  List<File> _videoFiles = [];
+
+  // View mode and selection variables
+  ViewMode _viewMode = ViewMode.grid;
+  bool _isSelectionMode = false;
+  final Set<String> _selectedFilePaths = {};
+  String? _searchQuery;
 
   @override
   bool get wantKeepAlive => true;
@@ -58,6 +94,8 @@ class _VideoGalleryScreenState extends State<VideoGalleryScreen>
     if (_isMounted) {
       setState(() {
         _thumbnailSize = _preferences.getVideoGalleryThumbnailSize();
+        _currentSortOption = _preferences.getSortOption();
+        _viewMode = _preferences.getViewMode();
       });
     }
   }
@@ -66,22 +104,111 @@ class _VideoGalleryScreenState extends State<VideoGalleryScreen>
     _videoFilesFuture = getAllVideos(widget.path, recursive: widget.recursive);
 
     _videoFilesFuture.then((videos) {
-      if (videos.isNotEmpty && _isMounted) {
+      if (_isMounted) {
         setState(() {
-          _isLoadingThumbnails = true;
-        });
+          _videoFiles = videos;
+          _sortVideoFiles();
 
-        final videoPaths = videos.map((file) => file.path).toList();
-
-        ThumbnailTaskManager.preloadFirstBatch(videoPaths, count: 20).then((_) {
-          if (_isMounted) {
-            setState(() {
-              _isLoadingThumbnails = false;
-            });
+          if (videos.isNotEmpty) {
+            _isLoadingThumbnails = true;
           }
         });
+
+        if (videos.isNotEmpty) {
+          final videoPaths = videos.map((file) => file.path).toList();
+
+          ThumbnailTaskManager.preloadFirstBatch(videoPaths, count: 20)
+              .then((_) {
+            if (_isMounted) {
+              setState(() {
+                _isLoadingThumbnails = false;
+              });
+            }
+          });
+        }
       }
     });
+  }
+
+  void _sortVideoFiles() {
+    switch (_currentSortOption) {
+      case SortOption.nameAsc:
+        _videoFiles.sort((a, b) => pathlib
+            .basename(a.path)
+            .toLowerCase()
+            .compareTo(pathlib.basename(b.path).toLowerCase()));
+        break;
+
+      case SortOption.nameDesc:
+        _videoFiles.sort((a, b) => pathlib
+            .basename(b.path)
+            .toLowerCase()
+            .compareTo(pathlib.basename(a.path).toLowerCase()));
+        break;
+
+      case SortOption.dateAsc:
+        _videoFiles.sort((a, b) {
+          try {
+            return a.lastModifiedSync().compareTo(b.lastModifiedSync());
+          } catch (e) {
+            return 0;
+          }
+        });
+        break;
+
+      case SortOption.dateDesc:
+        _videoFiles.sort((a, b) {
+          try {
+            return b.lastModifiedSync().compareTo(a.lastModifiedSync());
+          } catch (e) {
+            return 0;
+          }
+        });
+        break;
+
+      case SortOption.sizeAsc:
+        _videoFiles.sort((a, b) {
+          try {
+            return a.lengthSync().compareTo(b.lengthSync());
+          } catch (e) {
+            return 0;
+          }
+        });
+        break;
+
+      case SortOption.sizeDesc:
+        _videoFiles.sort((a, b) {
+          try {
+            return b.lengthSync().compareTo(a.lengthSync());
+          } catch (e) {
+            return 0;
+          }
+        });
+        break;
+
+      case SortOption.typeAsc:
+        _videoFiles.sort((a, b) => pathlib
+            .extension(a.path)
+            .toLowerCase()
+            .compareTo(pathlib.extension(b.path).toLowerCase()));
+        break;
+    }
+  }
+
+  void _setSortOption(SortOption option) async {
+    if (_currentSortOption != option) {
+      setState(() {
+        _currentSortOption = option;
+        _sortVideoFiles();
+      });
+
+      // Save sort preference
+      try {
+        await _preferences.setSortOption(option);
+      } catch (e) {
+        print('Error saving sort option: $e');
+      }
+    }
   }
 
   double _calculateThumbnailSize(BuildContext context, int columns) {
@@ -94,93 +221,226 @@ class _VideoGalleryScreenState extends State<VideoGalleryScreen>
   Widget build(BuildContext context) {
     super.build(context);
 
+    // Nếu đang ở chế độ chọn nhiều mục, hiển thị AppBar khác
+    if (_isSelectionMode) {
+      return Scaffold(
+        appBar: AppBar(
+          title: Text('${_selectedFilePaths.length} video đã chọn'),
+          leading: IconButton(
+            icon: const Icon(Icons.close),
+            onPressed: () {
+              setState(() {
+                _isSelectionMode = false;
+                _selectedFilePaths.clear();
+              });
+            },
+          ),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.delete),
+              tooltip: 'Xóa video đã chọn',
+              onPressed: _selectedFilePaths.isEmpty
+                  ? null
+                  : () => _showDeleteConfirmationDialog(context),
+            ),
+            IconButton(
+              icon: const Icon(Icons.select_all),
+              tooltip: 'Chọn tất cả',
+              onPressed: () {
+                setState(() {
+                  if (_selectedFilePaths.length == _videoFiles.length) {
+                    _selectedFilePaths.clear();
+                  } else {
+                    _selectedFilePaths.addAll(_videoFiles.map((f) => f.path));
+                  }
+                });
+              },
+            ),
+          ],
+        ),
+        body: _buildVideoContent(),
+      );
+    }
+
+    // Sử dụng SharedActionBar để xây dựng danh sách actions
+    List<Widget> actions = SharedActionBar.buildCommonActions(
+      context: context,
+      onSearchPressed: () => _showSearchDialog(context),
+      onSortOptionSelected: _setSortOption,
+      currentSortOption: _currentSortOption,
+      viewMode: _viewMode,
+      onViewModeToggled: () {
+        setState(() {
+          _viewMode =
+              _viewMode == ViewMode.grid ? ViewMode.list : ViewMode.grid;
+        });
+        _saveViewModeSetting(_viewMode);
+      },
+      onRefresh: () {
+        setState(() {
+          _loadVideos();
+        });
+      },
+      onGridSizePressed: () => SharedActionBar.showGridSizeDialog(
+        context,
+        currentGridSize: _thumbnailSize.round(),
+        onApply: (size) async {
+          setState(() {
+            _thumbnailSize = size.toDouble();
+          });
+
+          // Lưu cài đặt
+          try {
+            await _preferences.setVideoGalleryThumbnailSize(size.toDouble());
+          } catch (e) {
+            print('Error saving thumbnail size: $e');
+          }
+        },
+      ),
+      onSelectionModeToggled: () {
+        setState(() {
+          _isSelectionMode = true;
+        });
+      },
+    );
+
     return BaseScreen(
       title: 'Video Gallery: ${pathlib.basename(widget.path)}',
-      actions: [
-        IconButton(
-          icon: const Icon(Icons.photo_size_select_large),
-          onPressed: () {
-            _showThumbnailSizeDialog();
-          },
-        ),
-        IconButton(
-          icon: const Icon(Icons.refresh),
-          onPressed: () {
-            setState(() {
-              _loadVideos();
-            });
-          },
-        ),
-      ],
-      body: FutureBuilder<List<File>>(
-        future: _videoFilesFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(
-              child: CircularProgressIndicator(),
-            );
-          }
+      actions: actions,
+      body: _buildVideoContent(),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          setState(() {
+            _isSelectionMode = true;
+          });
+        },
+        child: const Icon(Icons.checklist),
+      ),
+    );
+  }
 
-          if (snapshot.hasError) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+  // Xây dựng nội dung video tùy theo chế độ xem
+  Widget _buildVideoContent() {
+    if (_videoFiles.isEmpty) {
+      return const Center(
+        child: Text(
+          'Không tìm thấy video trong thư mục này',
+          style: TextStyle(fontSize: 16),
+        ),
+      );
+    }
+
+    return Stack(
+      children: [
+        // Tìm kiếm và hiển thị kết quả
+        if (_searchQuery != null && _searchQuery!.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+              decoration: BoxDecoration(
+                color: Colors.blue.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
                 children: [
-                  const Icon(Icons.error_outline, size: 48, color: Colors.red),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Error: ${snapshot.error}',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.red[700]),
-                  ),
-                  const SizedBox(height: 16),
-                  ElevatedButton(
+                  const Icon(Icons.search, size: 20),
+                  const SizedBox(width: 8),
+                  Text('Tìm kiếm: "$_searchQuery"'),
+                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.clear, size: 20),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
                     onPressed: () {
                       setState(() {
-                        _loadVideos();
+                        _searchQuery = null;
                       });
                     },
-                    child: const Text('Thử lại'),
                   ),
                 ],
               ),
-            );
-          }
+            ),
+          ),
 
-          final videos = snapshot.data ?? [];
+        // Hiển thị video theo chế độ xem (danh sách hoặc lưới)
+        Padding(
+          padding: EdgeInsets.only(top: _searchQuery != null ? 50.0 : 0.0),
+          child:
+              _viewMode == ViewMode.grid ? _buildGridView() : _buildListView(),
+        ),
 
-          if (videos.isEmpty) {
-            return const Center(
-              child: Text(
-                'Không tìm thấy video trong thư mục này',
-                style: TextStyle(fontSize: 16),
+        // Thông báo đang tải thumbnail
+        if (_isLoadingThumbnails)
+          Positioned(
+            bottom: 16,
+            right: 16,
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.6),
+                borderRadius: BorderRadius.circular(8),
               ),
-            );
-          }
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'Đang tải thumbnail',
+                    style: TextStyle(color: Colors.white, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
 
-          final columns = _thumbnailSize.round();
-          final thumbnailSize = _calculateThumbnailSize(context, columns);
+  // Hiển thị video dạng lưới
+  Widget _buildGridView() {
+    final columns = _thumbnailSize.round();
+    final thumbnailSize = _calculateThumbnailSize(context, columns);
 
-          return Stack(
-            children: [
-              GridView.builder(
-                controller: _scrollController,
-                padding: const EdgeInsets.all(8.0),
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: columns,
-                  crossAxisSpacing: 8,
-                  mainAxisSpacing: 8,
-                  childAspectRatio: 16 / 12,
-                ),
-                itemCount: videos.length,
-                itemBuilder: (context, index) {
-                  final file = videos[index];
+    return GridView.builder(
+      controller: _scrollController,
+      padding: const EdgeInsets.all(8.0),
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: columns,
+        crossAxisSpacing: 8,
+        mainAxisSpacing: 8,
+        childAspectRatio: 16 / 12,
+      ),
+      itemCount: _videoFiles.length,
+      itemBuilder: (context, index) {
+        final file = _videoFiles[index];
+        final isSelected = _selectedFilePaths.contains(file.path);
 
-                  return OptimizedVideoThumbnailItem(
-                    file: file,
-                    width: thumbnailSize,
-                    height: thumbnailSize * 12 / 16,
-                    onTap: () {
+        return Stack(
+          children: [
+            OptimizedVideoThumbnailItem(
+              file: file,
+              width: thumbnailSize,
+              height: thumbnailSize * 12 / 16,
+              onTap: _isSelectionMode
+                  ? () {
+                      setState(() {
+                        if (isSelected) {
+                          _selectedFilePaths.remove(file.path);
+                        } else {
+                          _selectedFilePaths.add(file.path);
+                        }
+                      });
+                    }
+                  : () {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
@@ -189,181 +449,654 @@ class _VideoGalleryScreenState extends State<VideoGalleryScreen>
                         ),
                       );
                     },
-                  );
-                },
-              ),
-              if (_isLoadingThumbnails)
-                Positioned(
-                  bottom: 16,
-                  right: 16,
-                  child: Container(
-                    padding: EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.6),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor:
-                                AlwaysStoppedAnimation<Color>(Colors.white),
-                          ),
-                        ),
-                        SizedBox(width: 8),
-                        Text(
-                          'Đang tải thumbnail',
-                          style: TextStyle(color: Colors.white, fontSize: 12),
-                        ),
-                      ],
-                    ),
+            ),
+
+            // Hiển thị biểu tượng chọn nếu đang ở chế độ chọn
+            if (_isSelectionMode)
+              Positioned(
+                top: 8,
+                right: 8,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.5),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    isSelected ? Icons.check_circle : Icons.circle_outlined,
+                    color: isSelected ? Colors.blue : Colors.white,
+                    size: 24,
                   ),
                 ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-
-  void _showThumbnailSizeDialog() {
-    double tempSize = _thumbnailSize;
-
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Điều chỉnh kích thước thumbnail'),
-          content: StatefulBuilder(
-            builder: (BuildContext context, StateSetter setState) {
-              return Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text('Số cột: ${tempSize.round()}'),
-                  Slider(
-                    value: tempSize,
-                    min: UserPreferences.minThumbnailSize,
-                    max: UserPreferences.maxThumbnailSize,
-                    divisions: (UserPreferences.maxThumbnailSize -
-                            UserPreferences.minThumbnailSize)
-                        .toInt(),
-                    label: tempSize.round().toString(),
-                    onChanged: (double value) {
-                      setState(() {
-                        tempSize = value;
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      _sizePreviewBox(2, tempSize),
-                      _sizePreviewBox(3, tempSize),
-                      _sizePreviewBox(4, tempSize),
-                      _sizePreviewBox(5, tempSize),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      _sizePreviewBox(6, tempSize),
-                      _sizePreviewBox(7, tempSize),
-                      _sizePreviewBox(8, tempSize),
-                      _sizePreviewBox(10, tempSize),
-                    ],
-                  ),
-                  const SizedBox(height: 5),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      Text('Lớn hơn', style: TextStyle(fontSize: 12)),
-                      const Spacer(),
-                      Text('Nhỏ hơn', style: TextStyle(fontSize: 12)),
-                    ],
-                  ),
-                ],
-              );
-            },
-          ),
-          actions: <Widget>[
-            TextButton(
-              child: const Text('Huỷ'),
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-            ),
-            TextButton(
-              child: const Text('Áp dụng'),
-              onPressed: () {
-                setState(() {
-                  _thumbnailSize = tempSize;
-                });
-                _preferences.setVideoGalleryThumbnailSize(tempSize);
-                Navigator.of(context).pop();
-              },
-            ),
+              ),
           ],
         );
       },
     );
   }
 
-  Widget _sizePreviewBox(int size, double currentSize) {
-    return Column(
-      children: [
-        Container(
-          width: 40,
-          height: 40,
-          padding: EdgeInsets.all(2),
-          decoration: BoxDecoration(
-            border: Border.all(
-              color: currentSize.round() == size ? Colors.blue : Colors.grey,
-              width: 2,
-            ),
-            borderRadius: BorderRadius.circular(4),
-          ),
-          child: GridView.count(
-            crossAxisCount: size,
-            mainAxisSpacing: 1,
-            crossAxisSpacing: 1,
-            physics: NeverScrollableScrollPhysics(),
-            children: List.generate(
-              size * size,
-              (index) => Container(
-                color: Colors.grey[300],
+  // Hiển thị video dạng danh sách
+  Widget _buildListView() {
+    return ListView.builder(
+      controller: _scrollController,
+      padding: const EdgeInsets.all(8.0),
+      itemCount: _videoFiles.length,
+      itemBuilder: (context, index) {
+        final file = _videoFiles[index];
+        final isSelected = _selectedFilePaths.contains(file.path);
+        final fileExtension = pathlib.extension(file.path).toLowerCase();
+
+        return Card(
+          margin: const EdgeInsets.only(bottom: 8),
+          child: ListTile(
+            leading: Container(
+              width: 60,
+              height: 60,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  ThumbnailHelper.buildVideoThumbnail(
+                    videoPath: file.path,
+                    width: 60,
+                    height: 60,
+                    isVisible: true,
+                    onThumbnailGenerated: (_) {},
+                    fallbackBuilder: () => Container(
+                      decoration: BoxDecoration(
+                        color: Colors.grey[300],
+                      ),
+                      child: const Icon(Icons.movie, color: Colors.grey),
+                    ),
+                  ),
+                  Center(
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.5),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.play_arrow,
+                        color: Colors.white,
+                        size: 24,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
+            title: Text(
+              pathlib.basename(file.path),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            subtitle: FutureBuilder<FileStat>(
+              future: file.stat(),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) {
+                  return const Text('Đang tải thông tin...');
+                }
+
+                final fileStat = snapshot.data!;
+                final fileSize = _formatFileSize(fileStat.size);
+                final fileDate = _formatDate(fileStat.modified);
+                return Text('$fileExtension • $fileSize • $fileDate');
+              },
+            ),
+            selected: isSelected,
+            trailing: _isSelectionMode
+                ? Checkbox(
+                    value: isSelected,
+                    onChanged: (value) {
+                      setState(() {
+                        if (value == true) {
+                          _selectedFilePaths.add(file.path);
+                        } else {
+                          _selectedFilePaths.remove(file.path);
+                        }
+                      });
+                    },
+                  )
+                : IconButton(
+                    icon: const Icon(Icons.more_vert),
+                    onPressed: () => _showVideoOptions(context, file),
+                  ),
+            onTap: _isSelectionMode
+                ? () {
+                    setState(() {
+                      if (isSelected) {
+                        _selectedFilePaths.remove(file.path);
+                      } else {
+                        _selectedFilePaths.add(file.path);
+                      }
+                    });
+                  }
+                : () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => VideoPlayerFullScreen(file: file),
+                      ),
+                    );
+                  },
+            onLongPress: () {
+              if (!_isSelectionMode) {
+                setState(() {
+                  _isSelectionMode = true;
+                  _selectedFilePaths.add(file.path);
+                });
+              }
+            },
           ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          '$size',
-          style: TextStyle(fontSize: 12),
-        ),
-      ],
+        );
+      },
     );
   }
 
-  void _showAboutDialog(BuildContext context) {
+  String _formatDate(DateTime date) {
+    final now = DateTime.now();
+    final difference = now.difference(date);
+
+    if (difference.inDays == 0) {
+      return 'Hôm nay ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
+    } else if (difference.inDays == 1) {
+      return 'Hôm qua ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
+    } else if (difference.inDays < 7) {
+      return '${difference.inDays} ngày trước';
+    } else {
+      return '${date.day}/${date.month}/${date.year}';
+    }
+  }
+
+  String _formatFileSize(int bytes) {
+    if (bytes <= 0) return "0 B";
+    const suffixes = ["B", "KB", "MB", "GB", "TB"];
+    var i = (log(bytes) / log(1024)).floor();
+    return '${(bytes / pow(1024, i)).toStringAsFixed(1)} ${suffixes[i]}';
+  }
+
+  // Hiển thị menu tùy chọn cho video
+  void _showVideoOptions(BuildContext context, File file) {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            leading: const Icon(Icons.play_arrow),
+            title: const Text('Phát video'),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => VideoPlayerFullScreen(file: file),
+                ),
+              );
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.info_outline),
+            title: const Text('Thông tin video'),
+            onTap: () {
+              Navigator.pop(context);
+              _showVideoInfoDialog(context, file);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.share),
+            title: const Text('Chia sẻ'),
+            onTap: () {
+              Navigator.pop(context);
+              // Implement share functionality
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                    content: Text(
+                        'Chức năng chia sẻ sẽ được triển khai trong tương lai')),
+              );
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.delete, color: Colors.red),
+            title: const Text('Xóa video', style: TextStyle(color: Colors.red)),
+            onTap: () {
+              Navigator.pop(context);
+              _showDeleteConfirmationDialog(context, [file.path]);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Hiển thị dialog thông tin video
+  void _showVideoInfoDialog(BuildContext context, File file) async {
+    try {
+      final fileStat = await file.stat();
+      final fileSize = _formatFileSize(fileStat.size);
+      final modified = fileStat.modified;
+
+      showDialog(
+        context: context,
+        builder: (context) {
+          return AlertDialog(
+            title: const Text('Thông tin video'),
+            content: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _infoRow('Tên tập tin', pathlib.basename(file.path)),
+                  const Divider(),
+                  _infoRow('Đường dẫn', file.path),
+                  const Divider(),
+                  _infoRow('Kích thước', fileSize),
+                  const Divider(),
+                  _infoRow(
+                      'Loại tệp', pathlib.extension(file.path).toUpperCase()),
+                  const Divider(),
+                  _infoRow('Cập nhật lần cuối',
+                      '${modified.day}/${modified.month}/${modified.year} ${modified.hour}:${modified.minute}'),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                },
+                child: const Text('Đóng'),
+              ),
+            ],
+          );
+        },
+      );
+    } catch (e) {
+      print('Error showing video info: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Không thể hiển thị thông tin video: $e')),
+      );
+    }
+  }
+
+  Widget _infoRow(String title, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '$title: ',
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(fontSize: 14),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Dialog xác nhận xóa video
+  void _showDeleteConfirmationDialog(BuildContext context,
+      [List<String>? specificPaths]) {
+    final paths = specificPaths ?? _selectedFilePaths.toList();
+    final count = paths.length;
+
     showDialog(
       context: context,
-      builder: (BuildContext context) {
+      builder: (context) => AlertDialog(
+        title: Text('Xóa $count video?'),
+        content: const Text(
+            'Bạn có chắc chắn muốn xóa các video đã chọn? Hành động này không thể hoàn tác.'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+            },
+            child: const Text('HỦY'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.of(context).pop();
+
+              // Xử lý xóa file
+              int successCount = 0;
+              List<String> failedPaths = [];
+
+              for (final path in paths) {
+                try {
+                  final file = File(path);
+                  await file.delete();
+                  successCount++;
+                } catch (e) {
+                  print('Error deleting file $path: $e');
+                  failedPaths.add(path);
+                }
+              }
+
+              // Cập nhật danh sách video
+              setState(() {
+                _videoFiles.removeWhere((file) => paths.contains(file.path));
+                _selectedFilePaths.clear();
+                _isSelectionMode = false;
+              });
+
+              // Hiển thị thông báo kết quả
+              if (failedPaths.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Đã xóa $successCount video')),
+                );
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                      content: Text(
+                          'Đã xóa $successCount video, ${failedPaths.length} lỗi')),
+                );
+              }
+            },
+            child: const Text(
+              'XÓA',
+              style: TextStyle(color: Colors.red),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Dialog tìm kiếm video
+  void _showSearchDialog(BuildContext context) {
+    String searchQuery = _searchQuery ?? '';
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Tìm kiếm video'),
+        content: TextField(
+          autofocus: true,
+          decoration: const InputDecoration(
+            hintText: 'Nhập tên video...',
+            prefixIcon: Icon(Icons.search),
+          ),
+          controller: TextEditingController(text: searchQuery),
+          onChanged: (value) {
+            searchQuery = value;
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+            },
+            child: const Text('HỦY'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+
+              if (searchQuery.trim().isEmpty) {
+                setState(() {
+                  _searchQuery = null;
+                });
+                return;
+              }
+
+              setState(() {
+                _searchQuery = searchQuery.trim();
+
+                // Lọc video theo tên
+                final searchLower = _searchQuery!.toLowerCase();
+                _videoFiles = _videoFiles
+                    .where((file) => pathlib
+                        .basename(file.path)
+                        .toLowerCase()
+                        .contains(searchLower))
+                    .toList();
+
+                _sortVideoFiles();
+              });
+            },
+            child: const Text('TÌM KIẾM'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Lưu cài đặt chế độ xem
+  Future<void> _saveViewModeSetting(ViewMode mode) async {
+    try {
+      final UserPreferences prefs = UserPreferences();
+      await prefs.init();
+      await prefs.setViewMode(mode);
+    } catch (e) {
+      print('Error saving view mode: $e');
+    }
+  }
+
+  // Tag management methods
+  void _showRemoveTagsDialog(BuildContext context, List<String> filePaths) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        final Set<String> availableTags = <String>{};
+
+        // Process each file to get all tags
+        Future<void> loadTags() async {
+          for (final filePath in filePaths) {
+            final tags = await TagManager.getTags(filePath);
+            availableTags.addAll(tags);
+          }
+
+          // Force rebuild of the dialog when tags are loaded
+          if (context.mounted) {
+            setState(() {});
+          }
+        }
+
+        // Start loading tags
+        loadTags();
+
+        // For tracking which tags to remove
+        final selectedTags = <String>{};
+
+        return StatefulBuilder(
+          builder: (context, setState) {
+            if (availableTags.isEmpty) {
+              return AlertDialog(
+                title: const Text('Không có thẻ'),
+                content: const Text('Các tệp đã chọn không có thẻ nào.'),
+                actions: [
+                  TextButton(
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                    },
+                    child: const Text('ĐÓNG'),
+                  ),
+                ],
+              );
+            }
+
+            return AlertDialog(
+              title: const Text('Xóa thẻ'),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text('Chọn thẻ cần xóa khỏi các tệp đã chọn:'),
+                    const SizedBox(height: 16),
+                    Flexible(
+                      child: ListView(
+                        shrinkWrap: true,
+                        children: availableTags.map((tag) {
+                          return CheckboxListTile(
+                            title: Text(tag),
+                            value: selectedTags.contains(tag),
+                            onChanged: (bool? selected) {
+                              setState(() {
+                                if (selected == true) {
+                                  selectedTags.add(tag);
+                                } else {
+                                  selectedTags.remove(tag);
+                                }
+                              });
+                            },
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                  },
+                  child: const Text('HỦY'),
+                ),
+                TextButton(
+                  onPressed: selectedTags.isEmpty
+                      ? null
+                      : () async {
+                          // Remove selected tags from files
+                          for (final tag in selectedTags) {
+                            await BatchTagManager.removeTagFromFiles(
+                                filePaths, tag);
+                          }
+                          Navigator.of(context).pop();
+
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                  'Đã xóa ${selectedTags.length} thẻ khỏi ${filePaths.length} tệp'),
+                            ),
+                          );
+                        },
+                  child: const Text('XÓA THẺ'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showManageAllTagsDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        final List<String> allTags = [];
+        bool isLoading = true;
+
+        // Load all unique tags
+        Future<void> loadAllTags() async {
+          final tags = await TagManager.getAllUniqueTags(widget.path);
+          allTags.addAll(tags);
+          isLoading = false;
+
+          // Force rebuild of the dialog when tags are loaded
+          if (context.mounted) {
+            setState(() {});
+          }
+        }
+
+        // Start loading tags
+        loadAllTags();
+
+        return StatefulBuilder(builder: (context, setState) {
+          return AlertDialog(
+            title: const Text('Quản lý tất cả thẻ'),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('Tất cả thẻ hiện có trong hệ thống:'),
+                  const SizedBox(height: 16),
+                  Flexible(
+                    child: isLoading
+                        ? const Center(child: CircularProgressIndicator())
+                        : (allTags.isEmpty
+                            ? const Center(
+                                child: Text('Không có thẻ nào'),
+                              )
+                            : ListView.builder(
+                                shrinkWrap: true,
+                                itemCount: allTags.length,
+                                itemBuilder: (context, index) {
+                                  final tag = allTags[index];
+                                  return ListTile(
+                                    title: Text(tag),
+                                    trailing: IconButton(
+                                      icon: const Icon(Icons.delete_outline),
+                                      onPressed: () {
+                                        _showDeleteTagConfirmationDialog(
+                                            context, tag);
+                                      },
+                                    ),
+                                  );
+                                },
+                              )),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                },
+                child: const Text('ĐÓNG'),
+              ),
+            ],
+          );
+        });
+      },
+    );
+  }
+
+  void _showDeleteTagConfirmationDialog(BuildContext context, String tag) {
+    showDialog(
+      context: context,
+      builder: (context) {
         return AlertDialog(
-          title: const Text('About CoolBird File Manager'),
+          title: Text('Xóa thẻ "$tag"?'),
           content: const Text(
-              'CoolBird File Manager is a powerful tool for managing your files and videos.'),
-          actions: <Widget>[
+              'Thẻ này sẽ bị xóa khỏi tất cả các tệp. Bạn có chắc chắn muốn tiếp tục?'),
+          actions: [
             TextButton(
-              child: const Text('Close'),
               onPressed: () {
                 Navigator.of(context).pop();
               },
+              child: const Text('HỦY'),
+            ),
+            TextButton(
+              onPressed: () async {
+                // Find all files with this tag
+                final files = await TagManager.findFilesByTag(widget.path, tag);
+
+                // Remove tag from all files - Convert FileSystemEntity list to String list
+                if (files.isNotEmpty) {
+                  final filePaths = files.map((file) => file.path).toList();
+                  await BatchTagManager.removeTagFromFiles(filePaths, tag);
+                }
+
+                Navigator.of(context).pop();
+                Navigator.of(context).pop(); // Close the manage tags dialog too
+
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Đã xóa thẻ "$tag" khỏi tất cả tệp'),
+                  ),
+                );
+              },
+              child: const Text('XÓA', style: TextStyle(color: Colors.red)),
             ),
           ],
         );

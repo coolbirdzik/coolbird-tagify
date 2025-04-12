@@ -133,5 +133,33 @@ class SetGridZoom extends FolderListEvent {
   List<Object> get props => [zoomLevel];
 }
 
+class FolderListDeleteFiles extends FolderListEvent {
+  final List<String> filePaths;
+
+  const FolderListDeleteFiles(this.filePaths);
+
+  @override
+  List<Object> get props => [filePaths];
+}
+
+class FolderListBatchAddTag extends FolderListEvent {
+  final List<String> filePaths;
+  final String tag;
+
+  const FolderListBatchAddTag(this.filePaths, this.tag);
+
+  @override
+  List<Object> get props => [filePaths, tag];
+}
+
+class FolderListDeleteTagGlobally extends FolderListEvent {
+  final String tag;
+
+  const FolderListDeleteTagGlobally(this.tag);
+
+  @override
+  List<Object> get props => [tag];
+}
+
 // Enum to represent media types for search
 enum MediaSearchType { images, videos, audio, all }
