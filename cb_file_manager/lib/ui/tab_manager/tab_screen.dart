@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // Import for keyboard shortcuts
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';
@@ -9,6 +10,19 @@ import '../drawer.dart';
 import 'package:cb_file_manager/helpers/user_preferences.dart';
 import 'tabbed_folder_list_screen.dart';
 import '../screens/settings/settings_screen.dart';
+import 'package:flutter/gestures.dart'; // Import for mouse scrolling
+import 'scrollable_tab_bar.dart'; // Import our custom ScrollableTabBar
+
+// Create a custom scroll behavior that supports mouse wheel scrolling
+class TabBarMouseScrollBehavior extends MaterialScrollBehavior {
+  @override
+  Set<PointerDeviceKind> get dragDevices => {
+        PointerDeviceKind.touch,
+        PointerDeviceKind.mouse,
+        PointerDeviceKind.trackpad,
+        ...super.dragDevices,
+      };
+}
 
 /// A screen that manages and displays tabbed content
 class TabScreen extends StatefulWidget {
@@ -16,6 +30,16 @@ class TabScreen extends StatefulWidget {
 
   @override
   State<TabScreen> createState() => _TabScreenState();
+}
+
+// Create a new tab action for keyboard shortcuts
+class CreateNewTabIntent extends Intent {
+  const CreateNewTabIntent();
+}
+
+// Create a close tab action for keyboard shortcuts
+class CloseTabIntent extends Intent {
+  const CloseTabIntent();
 }
 
 class _TabScreenState extends State<TabScreen> with TickerProviderStateMixin {
@@ -73,7 +97,8 @@ class _TabScreenState extends State<TabScreen> with TickerProviderStateMixin {
   void _updateTabController(int tabCount) {
     final oldController = _tabController;
     _tabController = TabController(
-      length: tabCount > 0 ? tabCount : 1, // Đảm bảo length luôn ít nhất là 1
+      // Add +1 to include the "+" tab
+      length: (tabCount > 0 ? tabCount : 1) + 1,
       vsync: this,
       initialIndex: oldController.index < tabCount ? oldController.index : 0,
     );
@@ -161,12 +186,22 @@ class _TabScreenState extends State<TabScreen> with TickerProviderStateMixin {
     }
   }
 
+  // Method to close the current active tab
+  void _handleCloseCurrentTab() {
+    final state = context.read<TabManagerBloc>().state;
+    final activeTab = state.activeTab;
+    if (activeTab != null) {
+      context.read<TabManagerBloc>().add(CloseTab(activeTab.id));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return BlocBuilder<TabManagerBloc, TabManagerState>(
       builder: (context, state) {
         // Cập nhật tab controller khi có sự thay đổi
-        if (_tabController.length != state.tabs.length) {
+        if (_tabController.length != state.tabs.length + 1) {
+          // +1 to account for the "+" tab
           WidgetsBinding.instance.addPostFrameCallback((_) {
             _updateTabController(state.tabs.length);
           });
@@ -177,7 +212,9 @@ class _TabScreenState extends State<TabScreen> with TickerProviderStateMixin {
           final activeIndex =
               state.tabs.indexWhere((tab) => tab.id == state.activeTabId);
           if (activeIndex >= 0 &&
-              activeIndex < _tabController.length &&
+              activeIndex <
+                  state.tabs
+                      .length && // Compare with state.tabs.length, not _tabController.length
               _tabController.index != activeIndex) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
               _tabController.animateTo(activeIndex);
@@ -185,164 +222,177 @@ class _TabScreenState extends State<TabScreen> with TickerProviderStateMixin {
           }
         }
 
-        return WillPopScope(
-          onWillPop: () async {
-            // Handle back button press - if any tab is open, navigate back in that tab
-            final activeTab = state.activeTab;
-            if (activeTab != null) {
-              final navigatorState = activeTab.navigatorKey.currentState;
-              if (navigatorState != null && navigatorState.canPop()) {
-                navigatorState.pop();
-                return false; // Don't close the app
-              }
-            }
-            return true; // Allow app to close
-          },
-          child: Scaffold(
-            key: _scaffoldKey,
-            appBar: AppBar(
-              // Move TabBar to the title area instead of using bottom
-              title: state.tabs.isEmpty
-                  ? const Text('File Manager')
-                  : TabBar(
-                      controller: _tabController,
-                      isScrollable: true,
-                      indicatorSize: TabBarIndicatorSize.tab,
-                      // Add smooth physics for better scrolling experience
-                      physics: const BouncingScrollPhysics(),
-                      // Create a distinct but subtle indicator for active tab
-                      indicator: BoxDecoration(
-                        borderRadius: BorderRadius.circular(4),
-                        color: Theme.of(context)
-                            .colorScheme
-                            .primary
-                            .withOpacity(0.2),
-                        border: Border.all(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .primary
-                              .withOpacity(0.5),
-                          width: 1,
-                        ),
-                      ),
-                      // Make tabs more compact to fit in the app bar
-                      labelPadding: const EdgeInsets.symmetric(horizontal: 4),
-                      // Add tab styling
-                      labelStyle: const TextStyle(fontWeight: FontWeight.bold),
-                      unselectedLabelStyle:
-                          const TextStyle(fontWeight: FontWeight.normal),
-                      // Ensure tab text color matches app bar content
-                      labelColor:
-                          Theme.of(context).primaryTextTheme.titleMedium?.color,
-                      unselectedLabelColor: Theme.of(context)
-                          .primaryTextTheme
-                          .titleMedium
-                          ?.color
-                          ?.withOpacity(0.7),
-                      onTap: (index) {
-                        if (index < state.tabs.length) {
-                          context
-                              .read<TabManagerBloc>()
-                              .add(SwitchToTab(state.tabs[index].id));
-                        }
-                      },
-                      tabs: state.tabs.map((tab) {
-                        return Tab(
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                tab.isPinned ? Icons.push_pin : tab.icon,
-                                size: 16,
-                              ),
-                              const SizedBox(width: 6),
-                              Text(tab.name),
-                              const SizedBox(width: 6),
-                              // Replace simple InkWell with a more touch-friendly close button
-                              Material(
-                                color: Colors.transparent,
-                                child: InkWell(
-                                  borderRadius: BorderRadius.circular(12),
-                                  onTap: () {
-                                    // Stop event propagation
-                                    context
-                                        .read<TabManagerBloc>()
-                                        .add(CloseTab(tab.id));
-                                  },
+        // Define keyboard shortcuts and actions
+        final Map<ShortcutActivator, Intent> shortcuts = {
+          LogicalKeySet(LogicalKeyboardKey.control, LogicalKeyboardKey.keyT):
+              const CreateNewTabIntent(),
+          LogicalKeySet(LogicalKeyboardKey.control, LogicalKeyboardKey.keyW):
+              const CloseTabIntent(),
+        };
+
+        final Map<Type, Action<Intent>> actions = {
+          CreateNewTabIntent: CallbackAction<CreateNewTabIntent>(
+            onInvoke: (CreateNewTabIntent intent) => _handleAddNewTab(),
+          ),
+          CloseTabIntent: CallbackAction<CloseTabIntent>(
+            onInvoke: (CloseTabIntent intent) => _handleCloseCurrentTab(),
+          ),
+        };
+
+        return Shortcuts(
+          shortcuts: shortcuts,
+          child: Actions(
+            actions: actions,
+            child: FocusScope(
+              autofocus: true,
+              child: WillPopScope(
+                onWillPop: () async {
+                  // Handle back button press - if any tab is open, navigate back in that tab
+                  final activeTab = state.activeTab;
+                  if (activeTab != null) {
+                    final navigatorState = activeTab.navigatorKey.currentState;
+                    if (navigatorState != null && navigatorState.canPop()) {
+                      navigatorState.pop();
+                      return false; // Don't close the app
+                    }
+                  }
+                  return true; // Allow app to close
+                },
+                child: Scaffold(
+                  key: _scaffoldKey,
+                  appBar: AppBar(
+                    // Move TabBar to the title area instead of using bottom
+                    title: state.tabs.isEmpty
+                        ? const Text('File Manager')
+                        : ScrollConfiguration(
+                            // Apply custom scroll behavior that supports mouse wheel scrolling
+                            behavior: TabBarMouseScrollBehavior(),
+                            child: ScrollableTabBar(
+                              controller: _tabController,
+                              onTap: (index) {
+                                // If the last tab (+ button) is clicked, create a new tab
+                                if (index == state.tabs.length) {
+                                  _handleAddNewTab();
+                                } else if (index < state.tabs.length) {
+                                  // Otherwise, switch to the selected tab
+                                  context
+                                      .read<TabManagerBloc>()
+                                      .add(SwitchToTab(state.tabs[index].id));
+                                }
+                              },
+                              tabs: [
+                                // Regular tabs
+                                ...state.tabs.map((tab) {
+                                  return Tab(
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          tab.isPinned
+                                              ? Icons.push_pin
+                                              : tab.icon,
+                                          size: 16,
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Text(tab.name),
+                                        const SizedBox(width: 6),
+                                        // Replace simple InkWell with a more touch-friendly close button
+                                        Material(
+                                          color: Colors.transparent,
+                                          child: InkWell(
+                                            borderRadius:
+                                                BorderRadius.circular(12),
+                                            onTap: () {
+                                              // Stop event propagation
+                                              context
+                                                  .read<TabManagerBloc>()
+                                                  .add(CloseTab(tab.id));
+                                            },
+                                            child: Container(
+                                              padding: const EdgeInsets.all(4),
+                                              child: const Icon(Icons.close,
+                                                  size: 14),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                }).toList(),
+                                // Add "+" tab at the end
+                                Tab(
                                   child: Container(
-                                    padding: const EdgeInsets.all(4),
-                                    child: const Icon(Icons.close, size: 14),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 4),
+                                    child: const Tooltip(
+                                      message: 'Add new tab',
+                                      child: Icon(Icons.add, size: 18),
+                                    ),
                                   ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
-                        );
-                      }).toList(),
-                    ),
-              actions: [
-                // Add tab button (only shown when tabs exist)
-                if (state.tabs.isNotEmpty)
-                  IconButton(
-                    icon: const Icon(Icons.add),
-                    tooltip: 'Add new tab',
-                    onPressed: _handleAddNewTab,
+                    actions: [
+                      // Drawer control actions
+                      IconButton(
+                        icon: Icon(_isDrawerVisible
+                            ? (_isDrawerPinned
+                                ? Icons.push_pin
+                                : Icons.push_pin_outlined)
+                            : Icons.menu),
+                        tooltip: _isDrawerVisible
+                            ? (_isDrawerPinned ? 'Unpin menu' : 'Pin menu')
+                            : 'Show menu',
+                        onPressed: () {
+                          if (_isDrawerVisible) {
+                            _toggleDrawerPin();
+                          } else {
+                            _toggleDrawerVisibility();
+                          }
+                        },
+                      ),
+                      if (_isDrawerVisible && !_isDrawerPinned)
+                        IconButton(
+                          icon: const Icon(Icons.visibility_off),
+                          tooltip: 'Hide menu',
+                          onPressed: _toggleDrawerVisibility,
+                        ),
+                      // Tab management actions
+                      IconButton(
+                        icon: const Icon(Icons.more_vert),
+                        onPressed: () => _showTabOptions(context),
+                      ),
+                    ],
                   ),
-                // Drawer control actions
-                IconButton(
-                  icon: Icon(_isDrawerVisible
-                      ? (_isDrawerPinned
-                          ? Icons.push_pin
-                          : Icons.push_pin_outlined)
-                      : Icons.menu),
-                  tooltip: _isDrawerVisible
-                      ? (_isDrawerPinned ? 'Unpin menu' : 'Pin menu')
-                      : 'Show menu',
-                  onPressed: () {
-                    if (_isDrawerVisible) {
-                      _toggleDrawerPin();
-                    } else {
-                      _toggleDrawerVisibility();
-                    }
-                  },
-                ),
-                if (_isDrawerVisible && !_isDrawerPinned)
-                  IconButton(
-                    icon: const Icon(Icons.visibility_off),
-                    tooltip: 'Hide menu',
-                    onPressed: _toggleDrawerVisibility,
+                  drawer: _isDrawerVisible && !_isDrawerPinned
+                      ? CBDrawer(context)
+                      : null,
+                  body: Row(
+                    children: [
+                      // Pinned drawer (if enabled)
+                      if (_isDrawerVisible && _isDrawerPinned)
+                        SizedBox(
+                          width: 280,
+                          child: CBDrawer(context),
+                        ),
+                      // Main content area
+                      Expanded(
+                        child: state.tabs.isEmpty
+                            ? _buildEmptyTabsView(context)
+                            : _buildTabContent(state),
+                      ),
+                    ],
                   ),
-                // Tab management actions
-                IconButton(
-                  icon: const Icon(Icons.more_vert),
-                  onPressed: () => _showTabOptions(context),
+                  floatingActionButton: state.tabs.isEmpty
+                      ? FloatingActionButton(
+                          onPressed: _handleAddNewTab,
+                          child: const Icon(Icons.add),
+                        )
+                      : null,
                 ),
-              ],
+              ),
             ),
-            drawer:
-                _isDrawerVisible && !_isDrawerPinned ? CBDrawer(context) : null,
-            body: Row(
-              children: [
-                // Pinned drawer (if enabled)
-                if (_isDrawerVisible && _isDrawerPinned)
-                  SizedBox(
-                    width: 280,
-                    child: CBDrawer(context),
-                  ),
-                // Main content area
-                Expanded(
-                  child: state.tabs.isEmpty
-                      ? _buildEmptyTabsView(context)
-                      : _buildTabContent(state),
-                ),
-              ],
-            ),
-            floatingActionButton: state.tabs.isEmpty
-                ? FloatingActionButton(
-                    onPressed: _handleAddNewTab,
-                    child: const Icon(Icons.add),
-                  )
-                : null,
           ),
         );
       },
