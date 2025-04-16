@@ -138,14 +138,32 @@ Future<List<FileSystemEntity>> search(String path, String query,
     {bool matchCase = false, recursive = true, bool hidden = false}) async {
   int start = DateTime.now().millisecondsSinceEpoch;
 
-  List<FileSystemEntity> files = await getFoldersAndFiles(path,
-      recursive: recursive, keepHidden: hidden)
-    ..retainWhere(
-        (test) => test.basename().toLowerCase().contains(query.toLowerCase()));
+  List<FileSystemEntity> entities =
+      await getFoldersAndFiles(path, recursive: recursive, keepHidden: hidden);
+
+  // Cải thiện cách tìm kiếm để hoạt động tốt hơn với thư mục
+  List<FileSystemEntity> results = entities.where((entity) {
+    // Lấy tên của thực thể mà không bao gồm đường dẫn
+    String name = pathlib.basename(entity.path).toLowerCase();
+    String searchQuery = query.toLowerCase();
+
+    // Kiểm tra nếu tên chứa truy vấn tìm kiếm
+    bool matches = name.contains(searchQuery);
+
+    // Log kết quả tìm kiếm để dễ debug
+    if (matches) {
+      print(
+          "Found matching entity: ${entity.path}, type: ${entity is Directory ? 'Directory' : 'File'}");
+    }
+
+    return matches;
+  }).toList();
 
   int end = DateTime.now().millisecondsSinceEpoch;
-  print("Search time: ${end - start} ms");
-  return files;
+  print(
+      "Search completed in ${end - start} ms, found ${results.length} items (${results.where((e) => e is Directory).length} directories)");
+
+  return results;
 }
 
 /// search for files and folder in current directory & sub-directories,

@@ -37,6 +37,7 @@ class UserPreferences {
   static const String _drawerPinnedKey = 'drawer_pinned';
   static const String _drawerVisibleKey = 'drawer_visible';
   static const String _themePreferenceKey = 'theme_preference';
+  static const String _keySearchTipShown = 'search_tip_shown';
 
   // Constants for grid zoom level
   static const int minGridZoomLevel = 2; // Largest thumbnails (2 per row)
@@ -245,6 +246,15 @@ class UserPreferences {
       _themeChangeController.add(getThemeMode());
     }
     return result;
+  }
+
+  /// Search tip shown preference
+  Future<bool> getSearchTipShown() async {
+    return _preferences?.getBool(_keySearchTipShown) ?? false;
+  }
+
+  Future<void> setSearchTipShown(bool shown) async {
+    await _preferences?.setBool(_keySearchTipShown, shown);
   }
 
   /// Dispose resources

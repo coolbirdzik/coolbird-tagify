@@ -68,12 +68,19 @@ class TabData {
       final existingIndex = navigationHistory.indexOf(newPath);
       if (existingIndex != -1 &&
           existingIndex != navigationHistory.length - 1) {
-        // If we're going back to a previous path, remove all paths after that one
+        // If we're going back to a previous path, add current path to forwardHistory
+        forwardHistory.add(path);
+
+        // Remove all paths after the one we're navigating to from backward history
         navigationHistory.removeRange(
             existingIndex + 1, navigationHistory.length);
       } else {
         // Otherwise add the new path to history
         navigationHistory.add(newPath);
+
+        // Clear forward history since we're navigating to a new path
+        forwardHistory.clear();
+
         // Trim history if it gets too long (optional)
         if (navigationHistory.length > 30) {
           navigationHistory.removeAt(0);
@@ -99,10 +106,45 @@ class TabData {
   /// Returns the previous path if successful, null otherwise
   String? navigateBack() {
     if (canNavigateBack()) {
+      // Add current path to forward history before going back
+      forwardHistory.add(path);
+
       // Remove current path
       navigationHistory.removeLast();
+
       // Return the new current path (which was the previous one)
       return navigationHistory.last;
+    }
+    return null;
+  }
+
+  /// Check if navigation forward is possible
+  bool canNavigateForward() {
+    return forwardHistory.isNotEmpty;
+  }
+
+  /// Get the next path in the forward navigation history
+  String? getNextPath() {
+    if (forwardHistory.isNotEmpty) {
+      return forwardHistory.last;
+    }
+    return null;
+  }
+
+  /// Navigate forward in the navigation history
+  /// Returns the next path if successful, null otherwise
+  String? navigateForward() {
+    if (canNavigateForward()) {
+      // Get the next path
+      final nextPath = forwardHistory.last;
+
+      // Remove it from forward history
+      forwardHistory.removeLast();
+
+      // Add it to navigation history
+      navigationHistory.add(nextPath);
+
+      return nextPath;
     }
     return null;
   }

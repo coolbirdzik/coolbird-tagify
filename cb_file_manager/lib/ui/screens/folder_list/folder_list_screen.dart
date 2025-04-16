@@ -234,6 +234,32 @@ class _FolderListScreenState extends State<FolderListScreen> {
     );
   }
 
+  // Thêm hàm xử lý khi click vào file trong kết quả tìm kiếm
+  void _onFileTap(File file, bool isVideo) {
+    if (isVideo) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => VideoPlayerFullScreen(file: file),
+        ),
+      );
+    } else {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => FileDetailsScreen(file: file),
+        ),
+      );
+    }
+  }
+
+  void _onFolderTap(String path) {
+    // Xóa kết quả tìm kiếm và filter
+    _folderListBloc.add(ClearSearchAndFilters());
+    // Load nội dung thư mục được chọn
+    _folderListBloc.add(FolderListLoad(path));
+  }
+
   @override
   Widget build(BuildContext context) {
     return BlocProvider<FolderListBloc>.value(
@@ -511,6 +537,8 @@ class _FolderListScreenState extends State<FolderListScreen> {
               toggleSelectionMode: _toggleSelectionMode,
               showDeleteTagDialog: _showDeleteTagDialog,
               showAddTagToFileDialog: _showAddTagToFileDialog,
+              onFolderTap: _onFolderTap, // Thêm callback
+              onFileTap: _onFileTap, // Thêm callback
             ),
           ),
         ],
@@ -559,6 +587,8 @@ class _FolderListScreenState extends State<FolderListScreen> {
               toggleSelectionMode: _toggleSelectionMode,
               showDeleteTagDialog: _showDeleteTagDialog,
               showAddTagToFileDialog: _showAddTagToFileDialog,
+              onFolderTap: _onFolderTap, // Thêm callback
+              onFileTap: _onFileTap, // Thêm callback
             ),
           ),
         ],
@@ -572,12 +602,16 @@ class _FolderListScreenState extends State<FolderListScreen> {
 
     // Determine the search type and appropriate display
     if (state.isSearchByName) {
-      searchTitle = 'Search results for name: "${state.currentSearchQuery}"';
+      searchTitle = 'Kết quả tìm kiếm theo tên: "${state.currentSearchQuery}"';
       searchIcon = Icons.search;
     } else {
-      searchTitle = 'Search results for tag: "${state.currentSearchTag}"';
+      searchTitle = 'Kết quả tìm kiếm theo tag: "${state.currentSearchTag}"';
       searchIcon = Icons.label;
     }
+
+    // Phân loại kết quả thành file và thư mục
+    final files = state.searchResults.whereType<File>().toList();
+    final folders = state.searchResults.whereType<Directory>().toList();
 
     return Column(
       children: [
@@ -596,8 +630,9 @@ class _FolderListScreenState extends State<FolderListScreen> {
               ),
               TextButton.icon(
                 icon: const Icon(Icons.clear),
-                label: const Text('Clear'),
+                label: const Text('Xóa'),
                 onPressed: () {
+                  _folderListBloc.add(ClearSearchAndFilters());
                   _folderListBloc.add(FolderListLoad(widget.path));
                 },
               ),
@@ -606,8 +641,8 @@ class _FolderListScreenState extends State<FolderListScreen> {
         ),
         Expanded(
           child: FileView(
-            files: state.searchResults.whereType<File>().toList(),
-            folders: const [], // No folders in search results view
+            files: files,
+            folders: folders,
             state: state,
             isSelectionMode: _isSelectionMode,
             isGridView: state.viewMode == ViewMode.grid,
@@ -616,6 +651,8 @@ class _FolderListScreenState extends State<FolderListScreen> {
             toggleSelectionMode: _toggleSelectionMode,
             showDeleteTagDialog: _showDeleteTagDialog,
             showAddTagToFileDialog: _showAddTagToFileDialog,
+            onFolderTap: _onFolderTap,
+            onFileTap: _onFileTap, // Truyền callback xử lý file
           ),
         ),
       ],

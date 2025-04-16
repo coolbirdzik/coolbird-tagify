@@ -23,10 +23,21 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
     on<SetViewMode>(_onSetViewMode);
     on<SetSortOption>(_onSetSortOption);
     on<SetGridZoom>(_onSetGridZoom);
-    on<ClearSearchAndFilters>(
-        _onClearSearchAndFilters); // Add handler for ClearSearchAndFilters event
-    on<FolderListDeleteFiles>(
-        _onFolderListDeleteFiles); // Register the delete files handler if not already done
+    on<ClearSearchAndFilters>(_onClearSearchAndFilters);
+    on<FolderListDeleteFiles>(_onFolderListDeleteFiles);
+    on<SetTagSearchResults>(
+        _onSetTagSearchResults); // Add this line to register the event handler
+  }
+
+  @override
+  Stream<FolderListState> mapEventToState(FolderListEvent event) async* {
+    if (event is SetTagSearchResults) {
+      yield state.copyWith(
+        searchResults: event.results,
+        currentSearchTag: event.tagName,
+        isLoading: false,
+      );
+    }
   }
 
   void _onFolderListInit(
@@ -302,17 +313,15 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
       final String path = state.currentPath.path;
       final List<FileSystemEntity> matchingFiles = [];
 
-      // Function to search directory for matching files
+      // Function to search directory for matching files và thư mục
       Future<void> searchDirectory(String dirPath, bool recursive) async {
         final Directory dir = Directory(dirPath);
         if (!await dir.exists()) return;
 
         await for (var entity in dir.list(recursive: recursive)) {
-          if (entity is File) {
-            final String fileName = pathlib.basename(entity.path).toLowerCase();
-            if (fileName.contains(query)) {
-              matchingFiles.add(entity);
-            }
+          final String name = pathlib.basename(entity.path).toLowerCase();
+          if (name.contains(query)) {
+            matchingFiles.add(entity);
           }
         }
       }
@@ -649,5 +658,18 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
         error: 'Error deleting files: ${e.toString()}',
       ));
     }
+  }
+
+  void _onSetTagSearchResults(
+      SetTagSearchResults event, Emitter<FolderListState> emit) {
+    // Update the state with tag search results
+    emit(state.copyWith(
+      searchResults: event.results,
+      currentSearchTag: event.tagName,
+      isLoading: false,
+      isSearchByName: false,
+      isGlobalSearch: false,
+      currentSearchQuery: null,
+    ));
   }
 }

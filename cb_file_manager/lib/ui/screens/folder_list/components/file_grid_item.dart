@@ -14,6 +14,7 @@ class FileGridItem extends StatelessWidget {
   final bool isSelected;
   final Function(String) toggleFileSelection;
   final Function() toggleSelectionMode;
+  final Function(File, bool)? onFileTap; // Callback cho file click
 
   const FileGridItem({
     Key? key,
@@ -23,6 +24,7 @@ class FileGridItem extends StatelessWidget {
     required this.isSelected,
     required this.toggleFileSelection,
     required this.toggleSelectionMode,
+    this.onFileTap, // Thêm parameter mới
   }) : super(key: key);
 
   @override
@@ -66,7 +68,11 @@ class FileGridItem extends StatelessWidget {
         onTap: () {
           if (isSelectionMode) {
             toggleFileSelection(file.path);
+          } else if (onFileTap != null) {
+            // Sử dụng callback thay vì điều hướng trực tiếp
+            onFileTap!(file, isVideo);
           } else if (isVideo) {
+            // Fallback cho các component không truyền callback
             Navigator.push(
               context,
               MaterialPageRoute(
@@ -74,6 +80,7 @@ class FileGridItem extends StatelessWidget {
               ),
             );
           } else {
+            // Fallback cho các component không truyền callback
             Navigator.push(
               context,
               MaterialPageRoute(
@@ -261,7 +268,7 @@ class FileGridItem extends StatelessWidget {
   }
 
   String _basename(File file) {
-    return file.path.split('/').last;
+    return file.path.split(Platform.pathSeparator).last;
   }
 
   String _getFileExtension(File file) {

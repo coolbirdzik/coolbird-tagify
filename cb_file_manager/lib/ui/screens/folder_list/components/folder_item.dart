@@ -6,10 +6,12 @@ import 'package:flutter/material.dart';
 
 class FolderItem extends StatelessWidget {
   final Directory folder;
+  final Function(String)? onTap;
 
   const FolderItem({
     Key? key,
     required this.folder,
+    this.onTap,
   }) : super(key: key);
 
   @override
@@ -31,12 +33,9 @@ class FolderItem extends StatelessWidget {
           },
         ),
         onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => FolderListScreen(path: folder.path),
-            ),
-          );
+          if (onTap != null) {
+            onTap!(folder.path);
+          }
         },
       ),
     );

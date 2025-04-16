@@ -6,10 +6,12 @@ import 'package:flutter/material.dart';
 
 class FolderGridItem extends StatelessWidget {
   final Directory folder;
+  final Function(String)? onTap;
 
   const FolderGridItem({
     Key? key,
     required this.folder,
+    this.onTap,
   }) : super(key: key);
 
   @override
@@ -19,12 +21,9 @@ class FolderGridItem extends StatelessWidget {
       elevation: 2,
       child: InkWell(
         onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => FolderListScreen(path: folder.path),
-            ),
-          );
+          if (onTap != null) {
+            onTap!(folder.path);
+          }
         },
         child: Column(
           mainAxisSize: MainAxisSize

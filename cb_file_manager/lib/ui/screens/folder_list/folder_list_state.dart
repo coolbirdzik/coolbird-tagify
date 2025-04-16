@@ -20,194 +20,141 @@ enum SortOption {
 enum MediaType { image, video, audio, document }
 
 class FolderListState extends Equatable {
+  final bool isLoading;
+  final String? error;
   final Directory currentPath;
   final List<FileSystemEntity> folders;
   final List<FileSystemEntity> files;
-  final List<FileSystemEntity> filteredFiles;
   final List<FileSystemEntity> searchResults;
-  final String? currentFilter;
-  final String? currentSearchTag;
-  final String? currentSearchQuery;
-  final MediaType? currentMediaSearch;
-  final bool isSearchByName;
-  final bool isSearchByMedia;
-  final bool isGlobalSearch; // New property for global tag search
-  final bool searchRecursive;
-  final bool isLoading;
-  final String? error;
-
-  // View and sort settings
+  final List<FileSystemEntity> filteredFiles;
+  final Map<String, List<String>> fileTags;
+  final Set<String> allUniqueTags; // All unique tags found in the directory
+  final String? currentFilter; // Current filter for file types
+  final String? currentSearchTag; // The tag being searched for
+  final String? currentSearchQuery; // Text query for file search
   final ViewMode viewMode;
   final SortOption sortOption;
-
-  // Map to store file paths and their associated tags
-  final Map<String, List<String>> fileTags;
-
-  // Set of all unique tags in the current directory
-  final Set<String> allUniqueTags;
-
-  // File stats cache to avoid repeatedly calling stat()
-  final Map<String, FileStat> fileStatsCache;
-
-  // Grid zoom level (number of items per row, smaller means larger thumbnails)
   final int gridZoomLevel;
+  final Map<String, FileStat>
+      fileStatsCache; // Cache for file stats to improve performance
+  final MediaType? currentMediaSearch; // For media searches
+  final bool isSearchByName; // Flag for search by name operations
+  final bool isSearchByMedia; // Flag for search by media type
+  final bool isGlobalSearch; // Flag for global tag searches
+  final bool searchRecursive; // Flag for recursive search operations
 
-  FolderListState(String currentPath)
-      : this.currentPath = Directory(currentPath),
-        this.folders = const [],
-        this.files = const [],
-        this.filteredFiles = const [],
-        this.searchResults = const [],
-        this.currentFilter = null,
-        this.currentSearchTag = null,
-        this.currentSearchQuery = null,
-        this.currentMediaSearch = null,
-        this.isSearchByName = false,
-        this.isSearchByMedia = false,
-        this.isGlobalSearch = false, // Initialize as false
-        this.searchRecursive = false,
-        this.isLoading = false,
-        this.error = null,
-        this.fileTags = const {},
-        this.allUniqueTags = const {},
-        this.viewMode = ViewMode.list,
-        this.sortOption = SortOption.nameAsc,
-        this.fileStatsCache = const {},
-        this.gridZoomLevel = 3; // Default to 3 items per row
-
-  FolderListState._({
-    required this.currentPath,
-    required this.folders,
-    required this.files,
-    required this.filteredFiles,
-    required this.searchResults,
+  FolderListState(
+    String initialPath, {
+    this.isLoading = false,
+    this.error,
+    List<FileSystemEntity>? folders,
+    List<FileSystemEntity>? files,
+    List<FileSystemEntity>? searchResults,
+    List<FileSystemEntity>? filteredFiles,
+    Map<String, List<String>>? fileTags,
+    Set<String>? allUniqueTags,
     this.currentFilter,
     this.currentSearchTag,
     this.currentSearchQuery,
+    this.viewMode = ViewMode.list,
+    this.sortOption = SortOption.nameAsc,
+    this.gridZoomLevel = 3, // Default level for grid view
+    Map<String, FileStat>? fileStatsCache,
     this.currentMediaSearch,
-    required this.isSearchByName,
-    required this.isSearchByMedia,
-    required this.isGlobalSearch, // Add to constructor
-    required this.searchRecursive,
-    required this.isLoading,
-    this.error,
-    required this.fileTags,
-    required this.allUniqueTags,
-    required this.viewMode,
-    required this.sortOption,
-    required this.fileStatsCache,
-    required this.gridZoomLevel,
-  });
+    this.isSearchByName = false,
+    this.isSearchByMedia = false,
+    this.isGlobalSearch = false,
+    this.searchRecursive = false,
+  })  : currentPath = Directory(initialPath),
+        folders = folders ?? [],
+        files = files ?? [],
+        searchResults = searchResults ?? [],
+        filteredFiles = filteredFiles ?? [],
+        fileTags = fileTags ?? {},
+        allUniqueTags = allUniqueTags ?? {},
+        fileStatsCache = fileStatsCache ?? {};
 
+  // Helper getters
+  List<String> get allTags => allUniqueTags.toList();
+  bool get isSearchActive =>
+      currentSearchTag != null || currentSearchQuery != null;
+
+  // Helper method to get tags for a specific file
+  List<String> getTagsForFile(String filePath) {
+    return fileTags[filePath] ?? [];
+  }
+
+  // Create a new state with updated fields
   FolderListState copyWith({
+    bool? isLoading,
+    String? error,
     Directory? currentPath,
     List<FileSystemEntity>? folders,
     List<FileSystemEntity>? files,
-    List<FileSystemEntity>? filteredFiles,
     List<FileSystemEntity>? searchResults,
+    List<FileSystemEntity>? filteredFiles,
+    Map<String, List<String>>? fileTags,
+    Set<String>? allUniqueTags,
     String? currentFilter,
     String? currentSearchTag,
     String? currentSearchQuery,
+    ViewMode? viewMode,
+    SortOption? sortOption,
+    int? gridZoomLevel,
+    Map<String, FileStat>? fileStatsCache,
     MediaType? currentMediaSearch,
     bool? isSearchByName,
     bool? isSearchByMedia,
-    bool? isGlobalSearch, // Add to copyWith
+    bool? isGlobalSearch,
     bool? searchRecursive,
-    bool? isLoading,
-    String? error,
-    Map<String, List<String>>? fileTags,
-    Set<String>? allUniqueTags,
-    ViewMode? viewMode,
-    SortOption? sortOption,
-    Map<String, FileStat>? fileStatsCache,
-    int? gridZoomLevel,
   }) {
-    return FolderListState._(
-      currentPath: currentPath ?? this.currentPath,
+    return FolderListState(
+      currentPath?.path ?? this.currentPath.path,
+      isLoading: isLoading ?? this.isLoading,
+      error:
+          error, // Not using "?? this.error" to allow clearing errors by passing null
       folders: folders ?? this.folders,
       files: files ?? this.files,
-      filteredFiles: filteredFiles ?? this.filteredFiles,
       searchResults: searchResults ?? this.searchResults,
-      currentFilter: currentFilter ?? this.currentFilter,
-      currentSearchTag: currentSearchTag ?? this.currentSearchTag,
-      currentSearchQuery: currentSearchQuery ?? this.currentSearchQuery,
-      currentMediaSearch: currentMediaSearch ?? this.currentMediaSearch,
-      isSearchByName: isSearchByName ?? this.isSearchByName,
-      isSearchByMedia: isSearchByMedia ?? this.isSearchByMedia,
-      isGlobalSearch: isGlobalSearch ?? this.isGlobalSearch, // Add to return
-      searchRecursive: searchRecursive ?? this.searchRecursive,
-      isLoading: isLoading ?? this.isLoading,
-      error: error,
+      filteredFiles: filteredFiles ?? this.filteredFiles,
       fileTags: fileTags ?? this.fileTags,
       allUniqueTags: allUniqueTags ?? this.allUniqueTags,
+      currentFilter: currentFilter, // Allow clearing by passing null
+      currentSearchTag: currentSearchTag, // Allow clearing by passing null
+      currentSearchQuery: currentSearchQuery, // Allow clearing by passing null
       viewMode: viewMode ?? this.viewMode,
       sortOption: sortOption ?? this.sortOption,
-      fileStatsCache: fileStatsCache ?? this.fileStatsCache,
       gridZoomLevel: gridZoomLevel ?? this.gridZoomLevel,
+      fileStatsCache: fileStatsCache ?? this.fileStatsCache,
+      currentMediaSearch: currentMediaSearch, // Allow clearing by passing null
+      isSearchByName: isSearchByName ?? this.isSearchByName,
+      isSearchByMedia: isSearchByMedia ?? this.isSearchByMedia,
+      isGlobalSearch: isGlobalSearch ?? this.isGlobalSearch,
+      searchRecursive: searchRecursive ?? this.searchRecursive,
     );
   }
 
   @override
   List<Object?> get props => [
-        currentPath,
+        isLoading,
+        error,
+        currentPath.path,
         folders,
         files,
-        filteredFiles,
         searchResults,
+        filteredFiles,
+        fileTags,
+        allUniqueTags,
         currentFilter,
         currentSearchTag,
         currentSearchQuery,
+        viewMode,
+        sortOption,
+        gridZoomLevel,
         currentMediaSearch,
         isSearchByName,
         isSearchByMedia,
-        isGlobalSearch, // Add to props
+        isGlobalSearch,
         searchRecursive,
-        isLoading,
-        error,
-        fileTags,
-        allUniqueTags,
-        viewMode,
-        sortOption,
-        fileStatsCache,
-        gridZoomLevel,
       ];
-
-  // Helper method to load tags for a given file
-  List<String> getTagsForFile(String filePath) {
-    return fileTags[filePath] ?? [];
-  }
-
-  // Helper method to find files by tag
-  List<FileSystemEntity> getFilesByTag(String tag) {
-    List<FileSystemEntity> result = [];
-    fileTags.forEach((path, tags) {
-      if (tags.contains(tag)) {
-        final file = File(path);
-        if (file.existsSync()) {
-          result.add(file);
-        }
-      }
-    });
-    return result;
-  }
-
-  // Helper method to get all unique tags across all files
-  Set<String> get allTags {
-    return allUniqueTags;
-  }
-
-  // Get cached file stats or fetch if not cached
-  FileStat? getFileStats(String filePath) {
-    return fileStatsCache[filePath];
-  }
-
-  // Function to get sorted list of tags for autocomplete
-  List<String> getTagSuggestions(String prefix) {
-    if (prefix.isEmpty) return allUniqueTags.toList();
-
-    return allUniqueTags
-        .where((tag) => tag.toLowerCase().startsWith(prefix.toLowerCase()))
-        .toList()
-      ..sort();
-  }
 }

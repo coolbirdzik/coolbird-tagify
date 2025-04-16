@@ -1,21 +1,13 @@
 import 'dart:io';
-import 'dart:ffi';
 
-import 'package:cb_file_manager/helpers/io_extensions.dart';
-import 'package:cb_file_manager/helpers/batch_tag_manager.dart';
-import 'package:cb_file_manager/helpers/tag_manager.dart';
-import 'package:cb_file_manager/ui/screens/folder_list/file_details_screen.dart';
+import 'package:cb_file_manager/ui/screens/folder_list/file_details_screen.dart'; // Add this import
 import 'package:cb_file_manager/ui/screens/media_gallery/image_gallery_screen.dart';
 import 'package:cb_file_manager/ui/screens/media_gallery/video_gallery_screen.dart';
-import 'package:cb_file_manager/ui/utils/base_screen.dart';
 import 'package:cb_file_manager/ui/components/shared_action_bar.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart'; // Import for mouse buttons
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:path/path.dart' as pathlib;
 import 'package:cb_file_manager/helpers/user_preferences.dart';
-import 'package:cb_file_manager/helpers/filesystem_utils.dart';
-import 'package:win32/win32.dart' as win32;
-import 'package:ffi/ffi.dart';
 import 'tab_manager.dart';
 
 // Import folder list components with explicit alias
@@ -50,6 +42,9 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
   String? _currentSearchTag;
   bool _isSelectionMode = false;
   final Set<String> _selectedFilePaths = {};
+
+  // Trạng thái hiển thị thanh tìm kiếm
+  bool _showSearchBar = false;
 
   // Current path displayed in this tab
   String _currentPath = '';
@@ -223,8 +218,68 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
         currentPath: _currentPath,
         files: state.files.whereType<File>().toList(),
         folders: state.folders.whereType<Directory>().toList(),
+        onFolderSelected: (path) {
+          // Khi người dùng chọn thư mục, chuyển đến thư mục đó trong tab hiện tại
+          _navigateToPath(path);
+        },
+        onFileSelected: (file) {
+          // Khi người dùng chọn file, mở file đó
+          final extension = file.path.split('.').last.toLowerCase();
+          final isVideo =
+              ['mp4', 'mov', 'avi', 'mkv', 'flv', 'wmv'].contains(extension);
+          _onFileTap(file, isVideo);
+        },
       ),
     );
+  }
+
+  // Hiển thị tooltip hướng dẫn sử dụng tìm kiếm tag khi người dùng nhấn vào icon tìm kiếm lần đầu
+  void _showSearchTip(BuildContext context) {
+    final UserPreferences prefs = UserPreferences();
+    prefs.init().then((_) {
+      prefs.getSearchTipShown().then((shown) {
+        if (!shown) {
+          showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Mẹo tìm kiếm'),
+              content: const Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ListTile(
+                    leading: Icon(Icons.search),
+                    title: Text('Tìm kiếm theo tên'),
+                    subtitle: Text('Gõ từ khóa để tìm tệp theo tên'),
+                  ),
+                  Divider(),
+                  ListTile(
+                    leading: Icon(Icons.local_offer),
+                    title: Text('Tìm kiếm theo tag'),
+                    subtitle: Text('Gõ # và tên tag (ví dụ: #important)'),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    setState(() {
+                      _showSearchBar = true;
+                    });
+                  },
+                  child: const Text('OK'),
+                ),
+              ],
+            ),
+          );
+          prefs.setSearchTipShown(true);
+        } else {
+          setState(() {
+            _showSearchBar = true;
+          });
+        }
+      });
+    });
   }
 
   // This method updates both the tab's path in the TabManager
@@ -365,7 +420,7 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
   @override
   Widget build(BuildContext context) {
     // If path is empty, show drive picker view
-    if ((_currentPath.isEmpty || _currentPath == null) && Platform.isWindows) {
+    if (_currentPath.isEmpty && Platform.isWindows) {
       return tab_components.DriveView(
         tabId: widget.tabId,
         folderListBloc: _folderListBloc,
@@ -375,113 +430,138 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
             _pathController.text = path;
           });
         },
+        // Add handlers for mouse navigation buttons
+        onBackButtonPressed: () => _handleMouseBackButton(),
+        onForwardButtonPressed: () => _handleMouseForwardButton(),
       );
     }
 
     return WillPopScope(
       onWillPop: _handleBackNavigation,
-      child: BlocProvider<FolderListBloc>.value(
-        value: _folderListBloc,
-        child: BlocBuilder<FolderListBloc, FolderListState>(
-          builder: (context, state) {
-            _currentSearchTag = state.currentSearchTag;
-            _currentFilter = state.currentFilter;
+      // Wrap with Listener to detect mouse button events
+      child: Listener(
+        onPointerDown: (PointerDownEvent event) {
+          // Mouse button 4 is usually the back button (button value is 8)
+          if (event.buttons == 8) {
+            _handleMouseBackButton();
+          }
+          // Mouse button 5 is usually the forward button (button value is 16)
+          else if (event.buttons == 16) {
+            _handleMouseForwardButton();
+          }
+        },
+        child: BlocProvider<FolderListBloc>.value(
+          value: _folderListBloc,
+          child: BlocBuilder<FolderListBloc, FolderListState>(
+            builder: (context, state) {
+              _currentSearchTag = state.currentSearchTag;
+              _currentFilter = state.currentFilter;
 
-            // Create actions for the app bar
-            List<Widget> actions = [];
-            actions.addAll(_isSelectionMode
-                ? []
-                : SharedActionBar.buildCommonActions(
-                    context: context,
-                    onSearchPressed: () => _showSearchScreen(context, state),
-                    onSortOptionSelected: (SortOption option) {
-                      _folderListBloc.add(SetSortOption(option));
-                      _saveSortSetting(option);
-                    },
-                    currentSortOption: state.sortOption,
-                    viewMode: state.viewMode,
-                    onViewModeToggled: _toggleViewMode,
-                    onRefresh: _refreshFileList,
-                    onGridSizePressed: state.viewMode == ViewMode.grid
-                        ? () => SharedActionBar.showGridSizeDialog(
-                              context,
-                              currentGridSize: state.gridZoomLevel,
-                              onApply: _handleGridZoomChange,
-                            )
-                        : null,
-                    onSelectionModeToggled: _toggleSelectionMode,
-                    onManageTagsPressed: () {
-                      tab_components.showManageTagsDialog(
-                          context, state.allTags.toList());
-                    },
-                    onGallerySelected: (value) {
-                      if (value == 'image_gallery') {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => ImageGalleryScreen(
-                              path: _currentPath,
-                              recursive: false,
+              // Create actions for the app bar
+              List<Widget> actions = [];
+              actions.addAll(_isSelectionMode
+                  ? []
+                  : SharedActionBar.buildCommonActions(
+                      context: context,
+                      onSearchPressed: () => _showSearchTip(context),
+                      onSortOptionSelected: (SortOption option) {
+                        _folderListBloc.add(SetSortOption(option));
+                        _saveSortSetting(option);
+                      },
+                      currentSortOption: state.sortOption,
+                      viewMode: state.viewMode,
+                      onViewModeToggled: _toggleViewMode,
+                      onRefresh: _refreshFileList,
+                      onGridSizePressed: state.viewMode == ViewMode.grid
+                          ? () => SharedActionBar.showGridSizeDialog(
+                                context,
+                                currentGridSize: state.gridZoomLevel,
+                                onApply: _handleGridZoomChange,
+                              )
+                          : null,
+                      onSelectionModeToggled: _toggleSelectionMode,
+                      onManageTagsPressed: () {
+                        tab_components.showManageTagsDialog(
+                            context, state.allTags.toList());
+                      },
+                      onGallerySelected: (value) {
+                        if (value == 'image_gallery') {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => ImageGalleryScreen(
+                                path: _currentPath,
+                                recursive: false,
+                              ),
                             ),
-                          ),
-                        );
-                      } else if (value == 'video_gallery') {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => VideoGalleryScreen(
-                              path: _currentPath,
-                              recursive: false,
+                          );
+                        } else if (value == 'video_gallery') {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => VideoGalleryScreen(
+                                path: _currentPath,
+                                recursive: false,
+                              ),
                             ),
-                          ),
-                        );
-                      }
-                    },
-                    currentPath: _currentPath,
-                  ));
+                          );
+                        }
+                      },
+                      currentPath: _currentPath,
+                    ));
 
-            // If we're in selection mode, show a custom app bar
-            if (_isSelectionMode) {
+              // If we're in selection mode, show a custom app bar
+              if (_isSelectionMode) {
+                return Scaffold(
+                  appBar: tab_components.SelectionAppBar(
+                    selectedCount: _selectedFilePaths.length,
+                    onClearSelection: _clearSelection,
+                    selectedFilePaths: _selectedFilePaths.toList(),
+                    showRemoveTagsDialog: _showRemoveTagsDialog,
+                    showManageAllTagsDialog: (context) =>
+                        _showManageAllTagsDialog(context),
+                    showDeleteConfirmationDialog: (context) =>
+                        _showDeleteConfirmationDialog(context),
+                  ),
+                  body: _buildBody(context, state),
+                  floatingActionButton: FloatingActionButton(
+                    onPressed: () {
+                      tab_components.showBatchAddTagDialog(
+                          context, _selectedFilePaths.toList());
+                    },
+                    child: const Icon(Icons.label),
+                  ),
+                );
+              }
+
+              // Note: We're not using BaseScreen here since we're already inside a tab
               return Scaffold(
-                appBar: tab_components.SelectionAppBar(
-                  selectedCount: _selectedFilePaths.length,
-                  onClearSelection: _clearSelection,
-                  selectedFilePaths: _selectedFilePaths.toList(),
-                  showRemoveTagsDialog: _showRemoveTagsDialog,
-                  showManageAllTagsDialog: (context) =>
-                      _showManageAllTagsDialog(context),
-                  showDeleteConfirmationDialog: (context) =>
-                      _showDeleteConfirmationDialog(context),
+                appBar: AppBar(
+                  title: _showSearchBar
+                      ? tab_components.SearchBar(
+                          currentPath: _currentPath,
+                          onCloseSearch: () {
+                            setState(() {
+                              _showSearchBar = false;
+                            });
+                          },
+                        )
+                      : tab_components.PathNavigationBar(
+                          tabId: widget.tabId,
+                          pathController: _pathController,
+                          onPathSubmitted: _handlePathSubmit,
+                          currentPath: _currentPath,
+                        ),
+                  actions: _showSearchBar ? [] : actions,
                 ),
                 body: _buildBody(context, state),
                 floatingActionButton: FloatingActionButton(
-                  onPressed: () {
-                    tab_components.showBatchAddTagDialog(
-                        context, _selectedFilePaths.toList());
-                  },
-                  child: const Icon(Icons.label),
+                  onPressed: _toggleSelectionMode,
+                  child: const Icon(Icons.checklist),
                 ),
               );
-            }
-
-            // Note: We're not using BaseScreen here since we're already inside a tab
-            return Scaffold(
-              appBar: AppBar(
-                title: tab_components.PathNavigationBar(
-                  tabId: widget.tabId,
-                  pathController: _pathController,
-                  onPathSubmitted: _handlePathSubmit,
-                  currentPath: _currentPath,
-                ),
-                actions: actions,
-              ),
-              body: _buildBody(context, state),
-              floatingActionButton: FloatingActionButton(
-                onPressed: _toggleSelectionMode,
-                child: const Icon(Icons.checklist),
-              ),
-            );
-          },
+            },
+          ),
         ),
       ),
     );
@@ -524,20 +604,79 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
       );
     }
 
-    // Show search results if searching
-    if (_currentSearchTag != null && state.searchResults.isNotEmpty) {
-      return tab_components.SearchResultsView(
-        state: state,
-        isSelectionMode: _isSelectionMode,
-        selectedFiles: _selectedFilePaths.toList(),
-        toggleFileSelection: _toggleFileSelection,
-        toggleSelectionMode: _toggleSelectionMode,
-        showDeleteTagDialog: _showDeleteTagDialog,
-        showAddTagToFileDialog: _showAddTagToFileDialog,
-        onClearSearch: () {
-          _folderListBloc.add(FolderListLoad(_currentPath));
-        },
-      );
+    // Hiển thị kết quả tìm kiếm (cả theo tag và theo tên tệp)
+    if (state.currentSearchTag != null || state.currentSearchQuery != null) {
+      if (state.searchResults.isNotEmpty) {
+        return tab_components.SearchResultsView(
+          state: state,
+          isSelectionMode: _isSelectionMode,
+          selectedFiles: _selectedFilePaths.toList(),
+          toggleFileSelection: _toggleFileSelection,
+          toggleSelectionMode: _toggleSelectionMode,
+          showDeleteTagDialog: _showDeleteTagDialog,
+          showAddTagToFileDialog: _showAddTagToFileDialog,
+          onClearSearch: () {
+            _folderListBloc.add(const ClearSearchAndFilters());
+            _folderListBloc.add(FolderListLoad(_currentPath));
+          },
+          onFolderTap:
+              _navigateToPath, // Truyền callback để điều hướng trong cùng tab
+          onFileTap: _onFileTap, // Truyền callback mở file
+          // Add mouse back/forward navigation handlers
+          onBackButtonPressed: () => _handleMouseBackButton(),
+          onForwardButtonPressed: () => _handleMouseForwardButton(),
+        );
+      } else {
+        // Hiển thị thông báo không tìm thấy kết quả
+        return Column(
+          children: [
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
+              color: Theme.of(context).colorScheme.primaryContainer,
+              child: Row(
+                children: [
+                  Icon(
+                    state.currentSearchTag != null
+                        ? Icons.local_offer
+                        : Icons.search,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                  const SizedBox(width: 8.0),
+                  Expanded(
+                    child: Text(state.currentSearchTag != null
+                        ? 'Không tìm thấy kết quả cho tag "${state.currentSearchTag}"'
+                        : 'Không tìm thấy kết quả cho "${state.currentSearchQuery}"'),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () {
+                      _folderListBloc.add(const ClearSearchAndFilters());
+                      _folderListBloc.add(FolderListLoad(_currentPath));
+                    },
+                    tooltip: 'Xóa tìm kiếm',
+                  ),
+                ],
+              ),
+            ),
+            const Expanded(
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.search_off, size: 64, color: Colors.grey),
+                    SizedBox(height: 16),
+                    Text(
+                      'Không tìm thấy tệp nào phù hợp',
+                      style: TextStyle(fontSize: 18),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        );
+      }
     }
 
     // Show filtered files if a filter is active
@@ -602,6 +741,7 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
                 isSelected: _selectedFilePaths.contains(file.path),
                 toggleFileSelection: _toggleFileSelection,
                 toggleSelectionMode: _toggleSelectionMode,
+                onFileTap: _onFileTap, // Thêm callback để mở file
               );
             }
             return Container(); // Fallback for any index issues
@@ -629,6 +769,7 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
                     toggleFileSelection: _toggleFileSelection,
                     showDeleteTagDialog: _showDeleteTagDialog,
                     showAddTagToFileDialog: _showAddTagToFileDialog,
+                    onFileTap: _onFileTap, // Thêm callback để mở file
                   ))
               .toList(),
         ],
@@ -697,5 +838,114 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
     if (bytes < 1024 * 1024 * 1024)
       return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
     return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
+  }
+
+  // Tag search dialog and handling
+  void _showTagSearchDialog(BuildContext context) {
+    tab_components.showTagSearchDialog(
+      context,
+      _currentPath,
+      (List<FileSystemEntity> results, String tagName) {
+        // Update UI to show search results
+        _folderListBloc.add(SetTagSearchResults(results, tagName));
+      },
+    );
+  }
+
+  // Xử lý khi người dùng click vào một file trong kết quả tìm kiếm
+  void _onFileTap(File file, bool isVideo) {
+    // Mở file theo loại tương ứng
+    if (isVideo) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          // VideoPlayerFullScreen là class đúng để mở video, không phải viewSingleVideo
+          builder: (context) => VideoPlayerFullScreen(file: file),
+        ),
+      );
+    } else {
+      // Xử lý các loại file khác
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          // Import đúng FileDetailsScreen từ folder_list
+          builder: (context) => FileDetailsScreen(file: file),
+        ),
+      );
+    }
+  }
+
+  // Method to handle mouse back button press
+  void _handleMouseBackButton() {
+    final tabManagerBloc = context.read<TabManagerBloc>();
+    if (tabManagerBloc.canTabNavigateBack(widget.tabId)) {
+      // Get previous path
+      final previousPath = tabManagerBloc.getTabPreviousPath(widget.tabId);
+
+      if (previousPath != null) {
+        // Handle empty path case for Windows drive view
+        if (previousPath.isEmpty && Platform.isWindows) {
+          setState(() {
+            _currentPath = '';
+            _pathController.text = '';
+          });
+          // Update the tab name to indicate we're showing drives
+          context
+              .read<TabManagerBloc>()
+              .add(UpdateTabName(widget.tabId, 'Drives'));
+        } else {
+          // Regular path navigation
+          setState(() {
+            _currentPath = previousPath;
+            _pathController.text = previousPath;
+          });
+        }
+
+        // Pop from tab history in the TabManager
+        context.read<TabManagerBloc>().add(PopFromTabHistory(widget.tabId));
+
+        // Load the folder content
+        _folderListBloc.add(FolderListLoad(previousPath));
+      }
+    }
+  }
+
+  // Method to handle mouse forward button press
+  void _handleMouseForwardButton() {
+    final tabManagerBloc = context.read<TabManagerBloc>();
+    if (tabManagerBloc.canTabNavigateForward(widget.tabId)) {
+      // Get next path
+      final nextPath = tabManagerBloc.getTabNextPath(widget.tabId);
+
+      if (nextPath != null) {
+        // Handle empty path case for Windows drive view
+        if (nextPath.isEmpty && Platform.isWindows) {
+          setState(() {
+            _currentPath = '';
+            _pathController.text = '';
+          });
+          // Update the tab name to indicate we're showing drives
+          context
+              .read<TabManagerBloc>()
+              .add(UpdateTabName(widget.tabId, 'Drives'));
+        } else {
+          // Regular path navigation
+          setState(() {
+            _currentPath = nextPath;
+            _pathController.text = nextPath;
+          });
+        }
+
+        // Instead of using GoForwardInTabHistory, directly use the forwardNavigationToPath method
+        // This will avoid the unregistered event handler error
+        final String? actualPath =
+            tabManagerBloc.forwardNavigationToPath(widget.tabId);
+
+        // If navigation was successful, load the folder content
+        if (actualPath != null) {
+          _folderListBloc.add(FolderListLoad(actualPath));
+        }
+      }
+    }
   }
 }

@@ -19,6 +19,8 @@ class FileView extends StatelessWidget {
   final Function() toggleSelectionMode;
   final Function(BuildContext, String, List<String>) showDeleteTagDialog;
   final Function(BuildContext, String) showAddTagToFileDialog;
+  final Function(String)? onFolderTap;
+  final Function(File, bool)? onFileTap; // Thêm callback cho file click
 
   const FileView({
     Key? key,
@@ -32,6 +34,8 @@ class FileView extends StatelessWidget {
     required this.toggleSelectionMode,
     required this.showDeleteTagDialog,
     required this.showAddTagToFileDialog,
+    this.onFolderTap,
+    this.onFileTap, // Thêm parameter mới
   }) : super(key: key);
 
   @override
@@ -47,7 +51,9 @@ class FileView extends StatelessWidget {
     return ListView(
       children: [
         // Folders list
-        ...folders.map((folder) => FolderItem(folder: folder)).toList(),
+        ...folders
+            .map((folder) => FolderItem(folder: folder, onTap: onFolderTap))
+            .toList(),
 
         // Files list
         ...files
@@ -59,6 +65,7 @@ class FileView extends StatelessWidget {
                   toggleFileSelection: toggleFileSelection,
                   showDeleteTagDialog: showDeleteTagDialog,
                   showAddTagToFileDialog: showAddTagToFileDialog,
+                  onFileTap: onFileTap, // Truyền callback xuống FileItem
                 ))
             .toList(),
       ],
@@ -79,7 +86,7 @@ class FileView extends StatelessWidget {
       itemBuilder: (context, index) {
         if (index < folders.length) {
           // Render folder item
-          return FolderGridItem(folder: folders[index]);
+          return FolderGridItem(folder: folders[index], onTap: onFolderTap);
         } else {
           // Render file item
           final fileIndex = index - folders.length;
@@ -90,6 +97,7 @@ class FileView extends StatelessWidget {
             isSelected: selectedFiles.contains(files[fileIndex].path),
             toggleFileSelection: toggleFileSelection,
             toggleSelectionMode: toggleSelectionMode,
+            onFileTap: onFileTap, // Truyền callback xuống FileGridItem
           );
         }
       },

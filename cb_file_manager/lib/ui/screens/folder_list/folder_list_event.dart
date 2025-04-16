@@ -1,4 +1,5 @@
 import 'package:equatable/equatable.dart';
+import 'dart:io'; // Add import for FileSystemEntity
 import 'folder_list_state.dart'; // Import for ViewMode and SortOption enums
 
 abstract class FolderListEvent extends Equatable {
@@ -163,6 +164,17 @@ class FolderListDeleteTagGlobally extends FolderListEvent {
 
 class ClearSearchAndFilters extends FolderListEvent {
   const ClearSearchAndFilters();
+}
+
+/// Set tag search results
+class SetTagSearchResults extends FolderListEvent {
+  final List<FileSystemEntity> results;
+  final String tagName;
+
+  const SetTagSearchResults(this.results, this.tagName);
+
+  @override
+  List<Object?> get props => [results, tagName];
 }
 
 // Enum to represent media types for search

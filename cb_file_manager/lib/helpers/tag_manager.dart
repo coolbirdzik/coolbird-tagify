@@ -7,6 +7,9 @@ import 'package:path_provider/path_provider.dart';
 ///
 /// Tags are stored in a central global tags file instead of per directory
 class TagManager {
+  // Singleton instance
+  static TagManager? _instance;
+
   // In-memory cache to improve performance
   static final Map<String, List<String>> _tagsCache = {};
 
@@ -15,6 +18,70 @@ class TagManager {
 
   // Path to the global tags file (initialized lazily)
   static String? _globalTagsPath;
+
+  // Private singleton constructor
+  TagManager._();
+
+  // Singleton instance getter
+  static TagManager get instance {
+    if (_instance == null) {
+      _instance = TagManager._();
+      initialize();
+    }
+    return _instance!;
+  }
+
+  /// Check if a file has a specific tag
+  ///
+  /// This is a synchronous version that uses the cache
+  bool hasTag(FileSystemEntity entity, String tagQuery) {
+    if (tagQuery.isEmpty) return false;
+    if (_tagsCache.containsKey(entity.path)) {
+      final tags = _tagsCache[entity.path]!;
+      return tags
+          .any((tag) => tag.toLowerCase().contains(tagQuery.toLowerCase()));
+    }
+    return false;
+  }
+
+  /// Get frequently used tags (most common tags in the system)
+  /// Returns a map of tags with their usage count
+  Future<Map<String, int>> getPopularTags({int limit = 10}) async {
+    await initialize();
+
+    final Map<String, int> tagFrequency = {};
+    final tagsData = await _loadGlobalTags();
+
+    // Count frequency of each tag
+    for (final List<dynamic> tagList in tagsData.values) {
+      for (final tag in tagList) {
+        if (tag is String) {
+          tagFrequency[tag] = (tagFrequency[tag] ?? 0) + 1;
+        }
+      }
+    }
+
+    // Sort by frequency and take the top ones
+    final sortedTags = tagFrequency.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    final Map<String, int> result = {};
+    for (int i = 0; i < sortedTags.length && i < limit; i++) {
+      result[sortedTags[i].key] = sortedTags[i].value;
+    }
+
+    return result;
+  }
+
+  /// Returns tags that match a query string
+  Future<List<String>> searchTags(String query) async {
+    if (query.isEmpty) return [];
+
+    final allTags = await getAllUniqueTags("");
+    return allTags
+        .where((tag) => tag.toLowerCase().contains(query.toLowerCase()))
+        .toList();
+  }
 
   /// Initialize the global tags system by determining the storage path
   static Future<void> initialize() async {
@@ -260,71 +327,126 @@ class TagManager {
     }
   }
 
-  /// Finds all files with a specific tag
+  /// Finds all files and folders with a specific tag
   ///
-  /// Returns a list of files with the tag
+  /// Returns a list of files and folders with the tag
   static Future<List<FileSystemEntity>> findFilesByTag(
       String directoryPath, String tag) async {
-    final List<FileSystemEntity> files = [];
+    final List<FileSystemEntity> results = [];
+    final String normalizedTag = tag.toLowerCase().trim();
 
     try {
       await initialize();
+      print(
+          'Finding files and folders with tag: "$normalizedTag" in directory: "$directoryPath"');
 
       final tagsData = await _loadGlobalTags();
+      print('Loaded ${tagsData.length} entries with tags');
 
-      // For each file path in the global tags data
-      for (final filePath in tagsData.keys) {
-        final tags = List<String>.from(tagsData[filePath]);
+      // For each path in the global tags data
+      for (final entityPath in tagsData.keys) {
+        final tags = List<String>.from(tagsData[entityPath]);
 
-        // Check if this file has the requested tag
-        if (tags.contains(tag)) {
-          final file = File(filePath);
+        // Check if this entity has the requested tag (using flexible matching)
+        final hasMatchingTag = tags.any((fileTag) =>
+            fileTag.toLowerCase().contains(normalizedTag) ||
+            normalizedTag.contains(fileTag.toLowerCase()));
 
-          // Check if the file exists and is within or under the specified directory
-          if (await file.exists() && file.path.startsWith(directoryPath)) {
-            files.add(file);
+        if (hasMatchingTag) {
+          // Check if it's within or under the specified directory
+          if (entityPath.startsWith(directoryPath)) {
+            try {
+              // First check if this is a directory
+              final directory = Directory(entityPath);
+              final isDirectory = await directory.exists();
+
+              if (isDirectory) {
+                // It's a directory
+                results.add(directory);
+                print('Added directory to results: $entityPath');
+              } else {
+                // Check if it's a file
+                final file = File(entityPath);
+                final isFile = await file.exists();
+
+                if (isFile) {
+                  // It's a file
+                  results.add(file);
+                  print('Added file to results: $entityPath');
+                }
+              }
+            } catch (e) {
+              print('Error checking entity type for $entityPath: $e');
+            }
           }
         }
       }
 
-      return files;
+      print('Found ${results.length} entities with tag: "$normalizedTag"');
+      return results;
     } catch (e) {
-      print('Error finding files by tag: $e');
-      return files;
+      print('Error finding entities by tag: $e');
+      return results;
     }
   }
 
-  /// Find files with a specific tag anywhere in the file system
+  /// Find files and folders with a specific tag anywhere in the file system
   ///
-  /// Returns a list of files with the tag
+  /// Returns a list of files and folders with the tag
   static Future<List<FileSystemEntity>> findFilesByTagGlobally(
       String tag) async {
-    final List<FileSystemEntity> files = [];
+    final List<FileSystemEntity> results = [];
+    final String normalizedTag = tag.toLowerCase().trim();
 
     try {
       await initialize();
+      print('Finding files and folders with tag: "$normalizedTag" globally');
 
       final tagsData = await _loadGlobalTags();
+      print('Loaded ${tagsData.length} entries with tags');
 
-      // For each file path in the global tags data
-      for (final filePath in tagsData.keys) {
-        final tags = List<String>.from(tagsData[filePath]);
+      // For each path in the global tags data
+      for (final entityPath in tagsData.keys) {
+        final tags = List<String>.from(tagsData[entityPath]);
 
-        // Check if this file has the requested tag
-        if (tags.contains(tag)) {
-          final file = File(filePath);
+        // Check if this entity has the requested tag (using flexible matching)
+        final hasMatchingTag = tags.any((fileTag) =>
+            fileTag.toLowerCase().contains(normalizedTag) ||
+            normalizedTag.contains(fileTag.toLowerCase()));
 
-          // Check if the file exists
-          if (await file.exists()) {
-            files.add(file);
+        if (hasMatchingTag) {
+          try {
+            // First check if this is a directory
+            final directory = Directory(entityPath);
+            final isDirectory = await directory.exists();
+
+            if (isDirectory) {
+              // It's a directory
+              results.add(directory);
+              print('Added directory to results: $entityPath');
+            } else {
+              // Check if it's a file
+              final file = File(entityPath);
+              final isFile = await file.exists();
+
+              if (isFile) {
+                // It's a file
+                results.add(file);
+                print('Added file to results: $entityPath');
+              }
+            }
+          } catch (e) {
+            print('Error checking entity type for $entityPath: $e');
           }
         }
       }
 
-      return files;
+      print(
+          'Found ${results.length} entities with tag: "$normalizedTag" globally');
+      return results;
     } catch (e) {
-      print('Error finding files by tag globally: $e');
-      return files;
+      print('Error finding entities by tag globally: $e');
+      return results;
     }
   }
 

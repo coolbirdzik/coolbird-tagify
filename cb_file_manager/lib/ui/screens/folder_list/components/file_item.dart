@@ -17,6 +17,8 @@ class FileItem extends StatelessWidget {
   final Function(String) toggleFileSelection;
   final Function(BuildContext, String, List<String>) showDeleteTagDialog;
   final Function(BuildContext, String) showAddTagToFileDialog;
+  final Function(File, bool)?
+      onFileTap; // Callback cho file click, bool chỉ có phải video không
 
   const FileItem({
     Key? key,
@@ -27,6 +29,7 @@ class FileItem extends StatelessWidget {
     required this.toggleFileSelection,
     required this.showDeleteTagDialog,
     required this.showAddTagToFileDialog,
+    this.onFileTap,
   }) : super(key: key);
 
   @override
@@ -90,8 +93,11 @@ class FileItem extends StatelessWidget {
             onTap: () {
               if (isSelectionMode) {
                 toggleFileSelection(file.path);
+              } else if (onFileTap != null) {
+                // Sử dụng callback thay vì xử lý trực tiếp
+                onFileTap!(file, isVideo);
               } else if (isVideo) {
-                // If it's a video file, navigate to VideoPlayerFullScreen
+                // Fallback cho các màn hình không truyền callback
                 Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -99,7 +105,7 @@ class FileItem extends StatelessWidget {
                   ),
                 );
               } else {
-                // For non-video files, navigate to FileDetailsScreen as before
+                // Fallback cho các màn hình không truyền callback
                 Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -172,7 +178,7 @@ class FileItem extends StatelessWidget {
   }
 
   String _basename(File file) {
-    return file.path.split('/').last;
+    return file.path.split(Platform.pathSeparator).last;
   }
 
   String _formatFileSize(int size) {
