@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // Thêm import này cho SystemUiOverlayStyle
 import 'dart:async';
 import 'dart:io';
 import 'ui/home.dart';
@@ -9,6 +10,7 @@ import 'package:media_kit/media_kit.dart'; // Import Media Kit
 import 'package:window_manager/window_manager.dart'; // Import window_manager
 import 'helpers/media_kit_audio_helper.dart'; // Import our audio helper
 import 'helpers/user_preferences.dart'; // Import user preferences
+import 'config/app_theme.dart'; // Import global theme configuration
 
 // Global key for app state access
 final GlobalKey<MyHomePageState> homeKey = GlobalKey<MyHomePageState>();
@@ -179,49 +181,8 @@ class _CBFileAppState extends State<CBFileApp> with WidgetsBindingObserver {
       title: 'CoolBird - File Manager',
       // Use our TabMainScreen as the default entry point
       home: const TabMainScreen(),
-      theme: ThemeData(
-        primarySwatch: Colors.green,
-        scaffoldBackgroundColor: Colors.white, // Pure white background
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Colors.green,
-          foregroundColor: Colors.white,
-          elevation: 0,
-        ),
-        elevatedButtonTheme: ElevatedButtonThemeData(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.green,
-            foregroundColor: Colors.white,
-          ),
-        ),
-        floatingActionButtonTheme: const FloatingActionButtonThemeData(
-          backgroundColor: Colors.green,
-          foregroundColor: Colors.white,
-        ),
-        cardTheme: const CardTheme(
-          elevation: 2,
-          color: Colors.white, // Pure white card background
-        ),
-        dialogBackgroundColor: Colors.white, // Pure white dialog background
-        popupMenuTheme: const PopupMenuThemeData(
-          color: Colors.white, // Pure white popup menu background
-        ),
-      ),
-      darkTheme: ThemeData(
-        brightness: Brightness.dark,
-        primarySwatch: Colors.green,
-        primaryColor: Colors.green[700],
-        floatingActionButtonTheme: FloatingActionButtonThemeData(
-          backgroundColor: Colors.green[700],
-        ),
-        appBarTheme: AppBarTheme(
-          backgroundColor: Colors.grey[900],
-          foregroundColor: Colors.white,
-        ),
-        cardTheme: CardTheme(
-          color: Colors.grey[850],
-          elevation: 2,
-        ),
-      ),
+      theme: AppTheme.lightTheme,
+      darkTheme: AppTheme.darkTheme,
       themeMode: _themeMode,
       debugShowCheckedModeBanner: false,
     );

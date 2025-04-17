@@ -14,6 +14,7 @@ import 'package:cb_file_manager/helpers/io_extensions.dart'; // Add import for D
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:cb_file_manager/ui/tab_manager/tab_manager.dart';
 import 'package:cb_file_manager/helpers/user_preferences.dart'; // Add UserPreferences import
+import 'package:cb_file_manager/config/app_theme.dart'; // Import theme configuration
 
 class CBDrawer extends StatefulWidget {
   final BuildContext parentContext;
@@ -85,8 +86,8 @@ class _CBDrawerState extends State<CBDrawer> {
             child: DrawerHeader(
               margin: EdgeInsets.zero,
               padding: const EdgeInsets.fromLTRB(16, 16, 8, 16),
-              decoration: const BoxDecoration(
-                color: Colors.green,
+              decoration: BoxDecoration(
+                color: AppTheme.primaryBlue, // Using color from global AppTheme
               ),
               child: Row(
                 children: [
@@ -566,7 +567,7 @@ class _AppDrawerState extends State<AppDrawer> {
         children: <Widget>[
           DrawerHeader(
             decoration: const BoxDecoration(
-              color: Colors.blue,
+              color: AppTheme.primaryBlue, // Using color from global AppTheme
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

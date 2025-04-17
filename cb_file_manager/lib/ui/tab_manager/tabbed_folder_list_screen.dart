@@ -23,11 +23,13 @@ import 'components/index.dart' as tab_components;
 class TabbedFolderListScreen extends StatefulWidget {
   final String path;
   final String tabId;
+  final bool showAppBar; // Thêm tham số để kiểm soát việc hiển thị AppBar
 
   const TabbedFolderListScreen({
     Key? key,
     required this.path,
     required this.tabId,
+    this.showAppBar = true, // Mặc định là hiển thị AppBar
   }) : super(key: key);
 
   @override
@@ -536,24 +538,26 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
 
               // Note: We're not using BaseScreen here since we're already inside a tab
               return Scaffold(
-                appBar: AppBar(
-                  title: _showSearchBar
-                      ? tab_components.SearchBar(
-                          currentPath: _currentPath,
-                          onCloseSearch: () {
-                            setState(() {
-                              _showSearchBar = false;
-                            });
-                          },
-                        )
-                      : tab_components.PathNavigationBar(
-                          tabId: widget.tabId,
-                          pathController: _pathController,
-                          onPathSubmitted: _handlePathSubmit,
-                          currentPath: _currentPath,
-                        ),
-                  actions: _showSearchBar ? [] : actions,
-                ),
+                appBar: widget.showAppBar
+                    ? AppBar(
+                        title: _showSearchBar
+                            ? tab_components.SearchBar(
+                                currentPath: _currentPath,
+                                onCloseSearch: () {
+                                  setState(() {
+                                    _showSearchBar = false;
+                                  });
+                                },
+                              )
+                            : tab_components.PathNavigationBar(
+                                tabId: widget.tabId,
+                                pathController: _pathController,
+                                onPathSubmitted: _handlePathSubmit,
+                                currentPath: _currentPath,
+                              ),
+                        actions: _showSearchBar ? [] : actions,
+                      )
+                    : null,
                 body: _buildBody(context, state),
                 floatingActionButton: FloatingActionButton(
                   onPressed: _toggleSelectionMode,

@@ -11,6 +11,7 @@ import 'tabbed_folder_list_screen.dart';
 import '../screens/settings/settings_screen.dart';
 import 'package:flutter/gestures.dart'; // Import for mouse scrolling
 import 'scrollable_tab_bar.dart'; // Import our custom ScrollableTabBar
+import 'mobile_tab_view.dart'; // Import giao diện mobile kiểu Chrome
 
 // Create a custom scroll behavior that supports mouse wheel scrolling
 class TabBarMouseScrollBehavior extends MaterialScrollBehavior {
@@ -161,6 +162,12 @@ class _TabScreenState extends State<TabScreen> with TickerProviderStateMixin {
     _saveDrawerVisible(_isDrawerVisible);
   }
 
+  // Xác định thiết bị là tablet hay điện thoại dựa trên kích thước màn hình
+  bool _isTablet(BuildContext context) {
+    // Coi rộng > 600dp là tablet, theo Material Design guidelines
+    return MediaQuery.of(context).size.shortestSide >= 600;
+  }
+
   Future<void> _openDefaultTab() async {
     if (_initialTabAdded) return;
 
@@ -195,24 +202,27 @@ class _TabScreenState extends State<TabScreen> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
+    // Xác định xem thiết bị có phải là tablet hay không
+    final isTablet = _isTablet(context);
+
     return BlocBuilder<TabManagerBloc, TabManagerState>(
       builder: (context, state) {
-        // Cập nhật tab controller khi có sự thay đổi
-        if (_tabController.length != state.tabs.length + 1) {
+        // Cập nhật tab controller khi có sự thay đổi (chỉ cần cho UI tablet)
+        if (isTablet && _tabController.length != state.tabs.length + 1) {
           // +1 to account for the "+" tab
           WidgetsBinding.instance.addPostFrameCallback((_) {
             _updateTabController(state.tabs.length);
           });
         }
 
-        // Đồng bộ các tab đang hoạt động
-        if (state.activeTabId != null && _tabController.length > 0) {
+        // Đồng bộ các tab đang hoạt động (chỉ cần cho UI tablet)
+        if (isTablet &&
+            state.activeTabId != null &&
+            _tabController.length > 0) {
           final activeIndex =
               state.tabs.indexWhere((tab) => tab.id == state.activeTabId);
           if (activeIndex >= 0 &&
-              activeIndex <
-                  state.tabs
-                      .length && // Compare with state.tabs.length, not _tabController.length
+              activeIndex < state.tabs.length &&
               _tabController.index != activeIndex) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
               _tabController.animateTo(activeIndex);
@@ -258,87 +268,78 @@ class _TabScreenState extends State<TabScreen> with TickerProviderStateMixin {
                 },
                 child: Scaffold(
                   key: _scaffoldKey,
-                  appBar: AppBar(
-                    // Move TabBar to the title area instead of using bottom
-                    title: state.tabs.isEmpty
-                        ? const Text('File Manager')
-                        : ScrollConfiguration(
-                            // Apply custom scroll behavior that supports mouse wheel scrolling
-                            behavior: TabBarMouseScrollBehavior(),
-                            child: ScrollableTabBar(
-                              controller: _tabController,
-                              onTap: (index) {
-                                // If the last tab (+ button) is clicked, create a new tab
-                                if (index == state.tabs.length) {
-                                  _handleAddNewTab();
-                                } else if (index < state.tabs.length) {
-                                  // Otherwise, switch to the selected tab
-                                  context
-                                      .read<TabManagerBloc>()
-                                      .add(SwitchToTab(state.tabs[index].id));
-                                }
-                              },
-                              tabs: [
-                                // Regular tabs
-                                ...state.tabs.map((tab) {
-                                  return Tab(
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(
-                                          tab.isPinned
-                                              ? Icons.push_pin
-                                              : tab.icon,
-                                          size: 16,
-                                        ),
-                                        const SizedBox(width: 6),
-                                        Text(tab.name),
-                                        const SizedBox(width: 6),
-                                        // Replace simple InkWell with a more touch-friendly close button
-                                        Material(
-                                          color: Colors.transparent,
-                                          child: InkWell(
-                                            borderRadius:
-                                                BorderRadius.circular(12),
-                                            onTap: () {
-                                              // Stop event propagation
-                                              context
-                                                  .read<TabManagerBloc>()
-                                                  .add(CloseTab(tab.id));
-                                            },
-                                            child: Container(
-                                              padding: const EdgeInsets.all(4),
-                                              child: const Icon(Icons.close,
-                                                  size: 14),
-                                            ),
+                  // AppBar chỉ hiển thị ở giao diện tablet
+                  appBar: isTablet
+                      ? AppBar(
+                          // Move TabBar to the title area instead of using bottom
+                          title: state.tabs.isEmpty
+                              ? const Text('File Manager')
+                              : ScrollConfiguration(
+                                  // Apply custom scroll behavior that supports mouse wheel scrolling
+                                  behavior: TabBarMouseScrollBehavior(),
+                                  child: ScrollableTabBar(
+                                    controller: _tabController,
+                                    onTap: (index) {
+                                      // Chỉ xử lý chuyển đổi tab, không cần kiểm tra nút "+" nữa
+                                      if (index < state.tabs.length) {
+                                        context.read<TabManagerBloc>().add(
+                                            SwitchToTab(state.tabs[index].id));
+                                      }
+                                    },
+                                    // Thêm callback trực tiếp cho nút thêm tab mới
+                                    onAddTabPressed: _handleAddNewTab,
+                                    tabs: [
+                                      // Chỉ hiển thị các tab thông thường, không cần tab "+" nữa
+                                      ...state.tabs.map((tab) {
+                                        return Tab(
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(
+                                                tab.isPinned
+                                                    ? Icons.push_pin
+                                                    : tab.icon,
+                                                size: 16,
+                                              ),
+                                              const SizedBox(width: 6),
+                                              Text(tab.name),
+                                              const SizedBox(width: 6),
+                                              // Tối ưu nút đóng tab để dễ nhấn hơn trên thiết bị cảm ứng
+                                              Material(
+                                                color: Colors.transparent,
+                                                child: InkWell(
+                                                  borderRadius:
+                                                      BorderRadius.circular(12),
+                                                  onTap: () {
+                                                    context
+                                                        .read<TabManagerBloc>()
+                                                        .add(CloseTab(tab.id));
+                                                  },
+                                                  child: Container(
+                                                    padding:
+                                                        const EdgeInsets.all(6),
+                                                    child: const Icon(
+                                                        Icons.close,
+                                                        size: 16),
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
                                           ),
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                }).toList(),
-                                // Add "+" tab at the end
-                                Tab(
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 4),
-                                    child: const Tooltip(
-                                      message: 'Add new tab',
-                                      child: Icon(Icons.add, size: 18),
-                                    ),
+                                        );
+                                      }).toList(),
+                                    ],
                                   ),
                                 ),
-                              ],
+                          actions: [
+                            // Remove drawer pin controls from app bar and keep only tab management actions
+                            IconButton(
+                              icon: const Icon(Icons.more_vert),
+                              onPressed: () => _showTabOptions(context),
                             ),
-                          ),
-                    actions: [
-                      // Remove drawer pin controls from app bar and keep only tab management actions
-                      IconButton(
-                        icon: const Icon(Icons.more_vert),
-                        onPressed: () => _showTabOptions(context),
-                      ),
-                    ],
-                  ),
+                          ],
+                        )
+                      : null, // Không hiển thị AppBar cho giao diện mobile
                   drawer: _isDrawerVisible && !_isDrawerPinned
                       ? CBDrawer(
                           context,
@@ -366,9 +367,7 @@ class _TabScreenState extends State<TabScreen> with TickerProviderStateMixin {
                         ),
                       // Main content area
                       Expanded(
-                        child: state.tabs.isEmpty
-                            ? _buildEmptyTabsView(context)
-                            : _buildTabContent(state),
+                        child: _buildContent(context, state, isTablet),
                       ),
                     ],
                   ),
@@ -385,6 +384,24 @@ class _TabScreenState extends State<TabScreen> with TickerProviderStateMixin {
         );
       },
     );
+  }
+
+  // Phương thức mới để xây dựng nội dung dựa trên loại thiết bị
+  Widget _buildContent(
+      BuildContext context, TabManagerState state, bool isTablet) {
+    // Giao diện cho tablet sử dụng UI hiện tại
+    if (isTablet) {
+      if (state.tabs.isEmpty) {
+        return _buildEmptyTabsView(context);
+      }
+      return _buildTabContent(state);
+    }
+    // Giao diện cho mobile luôn sử dụng kiểu Chrome, ngay cả khi không có tab
+    else {
+      return MobileTabView(
+        onAddNewTab: _handleAddNewTab,
+      );
+    }
   }
 
   Widget _buildEmptyTabsView(BuildContext context) {

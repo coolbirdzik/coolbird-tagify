@@ -125,32 +125,19 @@ class PathNavigationBar extends StatelessWidget {
                     final newHistory = List<String>.from(tab.navigationHistory)
                       ..removeLast();
                     final newPath = newHistory.last;
-                    
-                    // Special handling for Windows drive roots to avoid "path doesn't exist" errors
-                    String validatedPath = newPath;
-                    if (Platform.isWindows) {
-                      // Check if this is a drive root (like "C:" or "D:")
-                      final driveRootPattern = RegExp(r'^[A-Za-z]:$');
-                      if (driveRootPattern.hasMatch(newPath)) {
-                        // Add a trailing slash to make it a proper Windows path
-                        validatedPath = "$newPath\\";
-                        print("Fixed Windows drive root path: $validatedPath");
-                      }
-                    }
-                    
                     // Update TabData
                     tabBloc.emit(state.copyWith(
                       tabs: state.tabs
                           .map((t) => t.id == tabId
                               ? t.copyWith(
-                                  path: validatedPath,
+                                  path: newPath,
                                   navigationHistory: newHistory,
                                   forwardHistory: newForward)
                               : t)
                           .toList(),
                     ));
                     // Update UI through the parent's onPathSubmitted
-                    onPathSubmitted(validatedPath);
+                    onPathSubmitted(newPath);
                   }
                 }
               : null,

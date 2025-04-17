@@ -16,6 +16,7 @@ class ScrollableTabBar extends StatefulWidget {
   final Color? labelColor;
   final Color? unselectedLabelColor;
   final Function(int)? onTap;
+  final VoidCallback? onAddTabPressed; // Thêm callback cho nút thêm tab mới
 
   const ScrollableTabBar({
     Key? key,
@@ -31,6 +32,7 @@ class ScrollableTabBar extends StatefulWidget {
     this.labelColor,
     this.unselectedLabelColor,
     this.onTap,
+    this.onAddTabPressed, // Thêm vào constructor
   }) : super(key: key);
 
   @override
@@ -49,51 +51,74 @@ class _ScrollableTabBarState extends State<ScrollableTabBar> {
 
   @override
   Widget build(BuildContext context) {
-    // We'll wrap the TabBar in a SingleChildScrollView with a custom scroll physics
-    return Listener(
-      onPointerSignal: (PointerSignalEvent event) {
-        // Check if it's a mouse wheel event
-        if (event is PointerScrollEvent && _scrollController.hasClients) {
-          // Prevent the default behavior (vertical scrolling)
-          GestureBinding.instance.pointerSignalResolver.register(event, (_) {});
+    // Tách thanh tab và nút thêm tab thành 2 thành phần riêng biệt
+    return Row(
+      children: [
+        // Phần thanh tab có thể cuộn
+        Expanded(
+          child: Listener(
+            onPointerSignal: (PointerSignalEvent event) {
+              // Check if it's a mouse wheel event
+              if (event is PointerScrollEvent && _scrollController.hasClients) {
+                // Prevent the default behavior (vertical scrolling)
+                GestureBinding.instance.pointerSignalResolver
+                    .register(event, (_) {});
 
-          // Calculate the new scroll position
-          final double newPosition =
-              _scrollController.offset + event.scrollDelta.dy;
+                // Calculate the new scroll position
+                final double newPosition =
+                    _scrollController.offset + event.scrollDelta.dy;
 
-          // Scroll horizontally based on the vertical mouse wheel delta
-          _scrollController.animateTo(
-            // Clamp value between min and max scroll extent
-            newPosition.clamp(
-              _scrollController.position.minScrollExtent,
-              _scrollController.position.maxScrollExtent,
+                // Scroll horizontally based on the vertical mouse wheel delta
+                _scrollController.animateTo(
+                  // Clamp value between min and max scroll extent
+                  newPosition.clamp(
+                    _scrollController.position.minScrollExtent,
+                    _scrollController.position.maxScrollExtent,
+                  ),
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeOutCubic,
+                );
+              }
+            },
+            // Use a SingleChildScrollView to enable horizontal scrolling with our controller
+            child: SingleChildScrollView(
+              controller: _scrollController,
+              scrollDirection: Axis.horizontal,
+              // Cho phép cuộn ngang bằng cách vuốt trên màn hình cảm ứng
+              physics: const BouncingScrollPhysics(),
+              child: TabBar(
+                controller: widget.controller,
+                isScrollable: true,
+                labelPadding: widget.labelPadding,
+                indicatorSize: widget.indicatorSize,
+                indicator: widget.indicator,
+                labelStyle: widget.labelStyle,
+                unselectedLabelStyle: widget.unselectedLabelStyle,
+                labelColor: widget.labelColor,
+                unselectedLabelColor: widget.unselectedLabelColor,
+                onTap: widget.onTap,
+                tabs: widget.tabs,
+              ),
             ),
-            duration: const Duration(milliseconds: 200),
-            curve: Curves.easeOutCubic,
-          );
-        }
-      },
-      // Use a SingleChildScrollView to enable horizontal scrolling with our controller
-      child: SingleChildScrollView(
-        controller: _scrollController,
-        scrollDirection: Axis.horizontal,
-        physics:
-            const NeverScrollableScrollPhysics(), // Disable default scrolling
-        child: TabBar(
-          controller: widget.controller,
-          isScrollable: true, // Must be true since we're handling scrolling
-          labelPadding: widget.labelPadding,
-          indicatorSize: widget.indicatorSize,
-          indicator: widget.indicator,
-          labelStyle: widget.labelStyle,
-          unselectedLabelStyle: widget.unselectedLabelStyle,
-          labelColor: widget.labelColor,
-          unselectedLabelColor: widget.unselectedLabelColor,
-          // Forward the onTap event from the TabBar to our onTap callback
-          onTap: widget.onTap,
-          tabs: widget.tabs,
+          ),
         ),
-      ),
+
+        // Nút thêm tab mới luôn hiển thị bên phải thanh tab
+        Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(20),
+            onTap: widget.onAddTabPressed,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: const Tooltip(
+                message: 'Add new tab',
+                child: Icon(Icons.add, size: 24),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
