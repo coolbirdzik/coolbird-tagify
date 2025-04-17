@@ -18,5 +18,6 @@
     "xstring": "cpp",
     "xtree": "cpp",
     "xutility": "cpp"
-  }
+  },
+  "cmake.ignoreCMakeListsMissing": true
 }
