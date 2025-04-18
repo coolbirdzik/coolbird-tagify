@@ -3,6 +3,7 @@ import 'package:cb_file_manager/main.dart' show goHome;
 import 'package:cb_file_manager/ui/drawer.dart';
 import 'package:cb_file_manager/ui/utils/route.dart';
 import 'package:cb_file_manager/helpers/user_preferences.dart'; // Add UserPreferences import
+import 'package:cb_file_manager/config/translation_helper.dart'; // Import translation helper
 import 'dart:io'; // For Platform check
 
 /// A base screen widget that handles common functionality across all screens
@@ -61,7 +62,6 @@ class _BaseScreenState extends State<BaseScreen> {
 
   // Drawer state variables
   bool _isDrawerPinned = false;
-  bool _isDrawerVisible = true;
 
   @override
   void initState() {
@@ -79,8 +79,9 @@ class _BaseScreenState extends State<BaseScreen> {
       await prefs.init();
 
       setState(() {
-        _isDrawerPinned = prefs.getDrawerPinned();
-        _isDrawerVisible = prefs.getDrawerVisible();
+        // Only set drawer to pinned if not on a small screen
+        final bool isSmallScreen = MediaQuery.of(context).size.width < 600;
+        _isDrawerPinned = isSmallScreen ? false : prefs.getDrawerPinned();
       });
     } catch (e) {
       print('Error loading drawer preferences: $e');
@@ -98,31 +99,32 @@ class _BaseScreenState extends State<BaseScreen> {
     }
   }
 
-  // Save drawer visibility
-  Future<void> _saveDrawerVisible(bool isVisible) async {
-    try {
-      final UserPreferences prefs = UserPreferences();
-      await prefs.init();
-      await prefs.setDrawerVisible(isVisible);
-    } catch (e) {
-      print('Error saving drawer visibility: $e');
-    }
-  }
-
   // Toggle drawer pin state
   void _toggleDrawerPin() {
-    setState(() {
-      _isDrawerPinned = !_isDrawerPinned;
-    });
-    _saveDrawerPinned(_isDrawerPinned);
-  }
+    // Check if we're on a small screen
+    final bool isSmallScreen = MediaQuery.of(context).size.width < 600;
 
-  // Toggle drawer visibility
-  void _toggleDrawerVisibility() {
     setState(() {
-      _isDrawerVisible = !_isDrawerVisible;
+      // Only allow pinning on larger screens
+      if (!isSmallScreen) {
+        _isDrawerPinned = !_isDrawerPinned;
+        _saveDrawerPinned(_isDrawerPinned);
+      } else {
+        // Force unpinned on small screens and show a message
+        _isDrawerPinned = false;
+        _saveDrawerPinned(false);
+
+        // Show a message explaining why pinning isn't available
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Menu pinning is only available on larger screens'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        });
+      }
     });
-    _saveDrawerVisible(_isDrawerVisible);
   }
 
   @override
@@ -151,7 +153,7 @@ class _BaseScreenState extends State<BaseScreen> {
             // Home button for emergency navigation
             IconButton(
               icon: const Icon(Icons.home),
-              tooltip: 'Go to Home',
+              tooltip: context.tr.home,
               onPressed: () => goHome(context),
             ),
 
@@ -165,7 +167,6 @@ class _BaseScreenState extends State<BaseScreen> {
           onPinStateChanged: (isPinned) {
             _toggleDrawerPin();
           },
-          onHideMenu: _toggleDrawerVisibility,
         ),
         body: widget.body,
         backgroundColor: widget.backgroundColor,

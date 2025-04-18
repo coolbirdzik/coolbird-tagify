@@ -300,9 +300,88 @@ Future<List<Directory>> getAllWindowsDrives() async {
   return drives;
 }
 
+/// Get additional Android storage locations
+/// This includes common paths like /storage/, /mnt/, /system/, /data/, etc.
+Future<List<Directory>> getAdditionalAndroidPaths() async {
+  if (!Platform.isAndroid) {
+    return [];
+  }
+
+  List<Directory> additionalPaths = [];
+  List<String> pathsToCheck = [
+    // Root directory
+    '/',
+    // Standard Android internal storage
+    '/sdcard',
+    '/storage/emulated/0',
+    '/storage/self/primary',
+    // System directories
+    '/system',
+    '/data',
+    // Mount points that might contain storage devices
+    '/mnt',
+    '/mnt/sdcard',
+    '/mnt/media_rw',
+    '/storage',
+  ];
+
+  // Check common SD card path patterns
+  for (int i = 0; i < 5; i++) {
+    pathsToCheck.add('/storage/sdcard$i');
+    pathsToCheck.add('/mnt/sdcard$i');
+    pathsToCheck.add('/storage/extSdCard');
+    pathsToCheck.add('/storage/emulated/$i');
+  }
+
+  // Try to list /storage/* directories to find mounted SD cards
+  try {
+    Directory storageDir = Directory('/storage');
+    if (await storageDir.exists()) {
+      List<FileSystemEntity> entries = await storageDir.list().toList();
+      for (var entry in entries) {
+        if (entry is Directory && !pathsToCheck.contains(entry.path)) {
+          pathsToCheck.add(entry.path);
+        }
+      }
+    }
+  } catch (e) {
+    print('Error listing /storage directory: $e');
+  }
+
+  // Check if each path exists and is accessible
+  for (String path in pathsToCheck) {
+    try {
+      Directory dir = Directory(path);
+      if (await dir.exists()) {
+        try {
+          // Try to list at least one file to ensure we have read access
+          await dir.list().first.timeout(
+            const Duration(milliseconds: 500),
+            onTimeout: () {
+              throw TimeoutException('Access check timed out');
+            },
+          );
+
+          // If we got here, the directory exists and is accessible
+          additionalPaths.add(dir);
+          print('Found additional storage location: ${dir.path}');
+        } catch (accessError) {
+          // Path exists but we can't list files (no permission)
+          print('Storage path exists but not accessible: $path');
+        }
+      }
+    } catch (e) {
+      // Path doesn't exist or other error
+      print('Storage path not found or error: $path - $e');
+    }
+  }
+
+  return additionalPaths;
+}
+
 /// Get all available storage locations across platforms
 /// On Windows: returns all available drives
-/// On Android: returns external storage directories
+/// On Android: returns external storage directories and other storage paths
 /// On other platforms: returns the application documents directory
 Future<List<Directory>> getAllStorageLocations() async {
   List<Directory> storageLocations = [];
@@ -312,8 +391,20 @@ Future<List<Directory>> getAllStorageLocations() async {
       // Get all Windows drives
       storageLocations = await getAllWindowsDrives();
     } else if (Platform.isAndroid) {
-      // Use existing Android storage detection
-      storageLocations = await getStorageList();
+      // First try the standard Android storage detection
+      try {
+        List<Directory> standardPaths = await getStorageList();
+        storageLocations.addAll(standardPaths);
+      } catch (e) {
+        print('Error getting standard Android storage: $e');
+      }
+
+      // Try to add additional Android paths
+      try {
+        storageLocations.addAll(await getAdditionalAndroidPaths());
+      } catch (e) {
+        print('Error getting additional Android paths: $e');
+      }
     } else {
       // For other platforms, fallback to application documents directory
       Directory appDocDir = await getApplicationDocumentsDirectory();
@@ -329,6 +420,15 @@ Future<List<Directory>> getAllStorageLocations() async {
       print('Error getting application documents directory: $e');
     }
   }
+
+  // Remove duplicates based on path
+  final uniquePaths = <String>{};
+  storageLocations = storageLocations.where((dir) {
+    final path = dir.path;
+    final isNew = !uniquePaths.contains(path);
+    if (isNew) uniquePaths.add(path);
+    return isNew;
+  }).toList();
 
   return storageLocations;
 }

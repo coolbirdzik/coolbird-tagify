@@ -11,6 +11,9 @@ import 'package:window_manager/window_manager.dart'; // Import window_manager
 import 'helpers/media_kit_audio_helper.dart'; // Import our audio helper
 import 'helpers/user_preferences.dart'; // Import user preferences
 import 'config/app_theme.dart'; // Import global theme configuration
+import 'package:flutter_localizations/flutter_localizations.dart'; // Import for localization
+import 'config/language_controller.dart'; // Import our language controller
+import 'config/languages/app_localizations_delegate.dart'; // Import our localization delegate
 
 // Global key for app state access
 final GlobalKey<MyHomePageState> homeKey = GlobalKey<MyHomePageState>();
@@ -77,7 +80,10 @@ void main() async {
     final preferences = UserPreferences();
     await preferences.init();
 
-    runApp(CBFileApp());
+    // Initialize language controller
+    await LanguageController().initialize();
+
+    runApp(const CBFileApp());
   }, (error, stackTrace) {
     print('Error during app initialization: $error');
     print(stackTrace);
@@ -104,7 +110,7 @@ void goHome(BuildContext context) {
   } catch (e) {
     print('Error navigating home: $e');
     // Last resort fallback
-    runApp(CBFileApp());
+    runApp(const CBFileApp());
   }
 }
 
@@ -137,11 +143,21 @@ class _CBFileAppState extends State<CBFileApp> with WidgetsBindingObserver {
   ThemeMode _themeMode = ThemeMode.system;
   StreamSubscription<ThemeMode>? _themeSubscription;
 
+  // Language controller for handling language changes
+  final LanguageController _languageController = LanguageController();
+  ValueNotifier<Locale>? _localeNotifier;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _loadThemePreference();
+
+    // Initialize locale notifier
+    _localeNotifier = _languageController.languageNotifier;
+    _localeNotifier?.addListener(() {
+      setState(() {});
+    });
 
     // Listen for theme changes
     _themeSubscription =
@@ -156,6 +172,7 @@ class _CBFileAppState extends State<CBFileApp> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _themeSubscription?.cancel();
+    _localeNotifier?.removeListener(() {});
     super.dispose();
   }
 
@@ -185,6 +202,19 @@ class _CBFileAppState extends State<CBFileApp> with WidgetsBindingObserver {
       darkTheme: AppTheme.darkTheme,
       themeMode: _themeMode,
       debugShowCheckedModeBanner: false,
+
+      // Add localization support
+      locale: _languageController.currentLocale,
+      localizationsDelegates: const [
+        AppLocalizationsDelegate(),
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: const [
+        Locale('vi', ''), // Vietnamese
+        Locale('en', ''), // English
+      ],
     );
   }
 }

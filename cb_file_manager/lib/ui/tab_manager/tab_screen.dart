@@ -12,6 +12,7 @@ import '../screens/settings/settings_screen.dart';
 import 'package:flutter/gestures.dart'; // Import for mouse scrolling
 import 'scrollable_tab_bar.dart'; // Import our custom ScrollableTabBar
 import 'mobile_tab_view.dart'; // Import giao diện mobile kiểu Chrome
+import 'package:cb_file_manager/config/translation_helper.dart'; // Import translation helper
 
 // Create a custom scroll behavior that supports mouse wheel scrolling
 class TabBarMouseScrollBehavior extends MaterialScrollBehavior {
@@ -47,7 +48,6 @@ class _TabScreenState extends State<TabScreen> with TickerProviderStateMixin {
 
   // Drawer state variables
   bool _isDrawerPinned = false;
-  bool _isDrawerVisible = true;
 
   // Key for the scaffold to control drawer programmatically
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
@@ -116,8 +116,9 @@ class _TabScreenState extends State<TabScreen> with TickerProviderStateMixin {
       await prefs.init();
 
       setState(() {
-        _isDrawerPinned = prefs.getDrawerPinned();
-        _isDrawerVisible = prefs.getDrawerVisible();
+        // Only set drawer to pinned if not on a small screen
+        final bool isSmallScreen = MediaQuery.of(context).size.width < 600;
+        _isDrawerPinned = isSmallScreen ? false : prefs.getDrawerPinned();
       });
     } catch (e) {
       print('Error loading drawer preferences: $e');
@@ -135,31 +136,32 @@ class _TabScreenState extends State<TabScreen> with TickerProviderStateMixin {
     }
   }
 
-  // Save drawer visibility
-  Future<void> _saveDrawerVisible(bool isVisible) async {
-    try {
-      final UserPreferences prefs = UserPreferences();
-      await prefs.init();
-      await prefs.setDrawerVisible(isVisible);
-    } catch (e) {
-      print('Error saving drawer visibility: $e');
-    }
-  }
-
   // Toggle drawer pin state
   void _toggleDrawerPin() {
-    setState(() {
-      _isDrawerPinned = !_isDrawerPinned;
-    });
-    _saveDrawerPinned(_isDrawerPinned);
-  }
+    // Check if we're on a small screen
+    final bool isSmallScreen = MediaQuery.of(context).size.width < 600;
 
-  // Toggle drawer visibility
-  void _toggleDrawerVisibility() {
     setState(() {
-      _isDrawerVisible = !_isDrawerVisible;
+      // Only allow pinning on larger screens
+      if (!isSmallScreen) {
+        _isDrawerPinned = !_isDrawerPinned;
+        _saveDrawerPinned(_isDrawerPinned);
+      } else {
+        // Force unpinned on small screens and show a message
+        _isDrawerPinned = false;
+        _saveDrawerPinned(false);
+
+        // Show a message explaining why pinning isn't available
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Menu pinning is only available on larger screens'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        });
+      }
     });
-    _saveDrawerVisible(_isDrawerVisible);
   }
 
   // Xác định thiết bị là tablet hay điện thoại dựa trên kích thước màn hình
@@ -273,7 +275,7 @@ class _TabScreenState extends State<TabScreen> with TickerProviderStateMixin {
                       ? AppBar(
                           // Move TabBar to the title area instead of using bottom
                           title: state.tabs.isEmpty
-                              ? const Text('File Manager')
+                              ? Text(context.tr.appTitle)
                               : ScrollConfiguration(
                                   // Apply custom scroll behavior that supports mouse wheel scrolling
                                   behavior: TabBarMouseScrollBehavior(),
@@ -340,20 +342,19 @@ class _TabScreenState extends State<TabScreen> with TickerProviderStateMixin {
                           ],
                         )
                       : null, // Không hiển thị AppBar cho giao diện mobile
-                  drawer: _isDrawerVisible && !_isDrawerPinned
+                  drawer: !_isDrawerPinned
                       ? CBDrawer(
                           context,
                           isPinned: _isDrawerPinned,
                           onPinStateChanged: (isPinned) {
                             _toggleDrawerPin();
                           },
-                          onHideMenu: _toggleDrawerVisibility,
                         )
                       : null,
                   body: Row(
                     children: [
                       // Pinned drawer (if enabled)
-                      if (_isDrawerVisible && _isDrawerPinned)
+                      if (_isDrawerPinned)
                         SizedBox(
                           width: 280,
                           child: CBDrawer(
@@ -362,7 +363,6 @@ class _TabScreenState extends State<TabScreen> with TickerProviderStateMixin {
                             onPinStateChanged: (isPinned) {
                               _toggleDrawerPin();
                             },
-                            onHideMenu: _toggleDrawerVisibility,
                           ),
                         ),
                       // Main content area
@@ -374,6 +374,7 @@ class _TabScreenState extends State<TabScreen> with TickerProviderStateMixin {
                   floatingActionButton: state.tabs.isEmpty
                       ? FloatingActionButton(
                           onPressed: _handleAddNewTab,
+                          tooltip: context.tr.newFolder,
                           child: const Icon(Icons.add),
                         )
                       : null,
@@ -415,19 +416,19 @@ class _TabScreenState extends State<TabScreen> with TickerProviderStateMixin {
             color: Colors.grey,
           ),
           const SizedBox(height: 16),
-          const Text(
+          Text(
             'No tabs open',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             'Open a new tab to get started',
-            style: TextStyle(color: Colors.grey),
+            style: const TextStyle(color: Colors.grey),
           ),
           const SizedBox(height: 24),
           ElevatedButton.icon(
             icon: const Icon(Icons.add),
-            label: const Text('New Tab'),
+            label: Text(context.tr.newFolder),
             onPressed: _handleAddNewTab,
           ),
         ],
@@ -479,13 +480,13 @@ class _TabScreenState extends State<TabScreen> with TickerProviderStateMixin {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Tab Options'),
+        title: Text(context.tr.settings),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
               leading: const Icon(Icons.add),
-              title: const Text('New Tab'),
+              title: Text('New Tab'),
               onTap: () {
                 Navigator.pop(context);
                 _handleAddNewTab();
@@ -493,7 +494,7 @@ class _TabScreenState extends State<TabScreen> with TickerProviderStateMixin {
             ),
             ListTile(
               leading: const Icon(Icons.refresh),
-              title: const Text('Refresh Current Tab'),
+              title: Text(context.tr.refresh),
               onTap: () {
                 Navigator.pop(context);
                 // Get the current tab and refresh its content
@@ -507,19 +508,9 @@ class _TabScreenState extends State<TabScreen> with TickerProviderStateMixin {
                 }
               },
             ),
-            // Add menu visibility toggle option
-            ListTile(
-              leading: Icon(
-                  _isDrawerVisible ? Icons.visibility : Icons.visibility_off),
-              title: Text(_isDrawerVisible ? 'Hide Menu' : 'Show Menu'),
-              onTap: () {
-                Navigator.pop(context);
-                _toggleDrawerVisibility();
-              },
-            ),
             ListTile(
               leading: const Icon(Icons.settings),
-              title: const Text('Settings'),
+              title: Text(context.tr.settings),
               onTap: () {
                 Navigator.pop(context);
                 Navigator.push(
@@ -535,7 +526,7 @@ class _TabScreenState extends State<TabScreen> with TickerProviderStateMixin {
             ),
             ListTile(
               leading: const Icon(Icons.close),
-              title: const Text('Close All Tabs'),
+              title: Text(context.tr.close),
               onTap: () {
                 Navigator.pop(context);
                 // Get all tabs and close them one by one
@@ -550,7 +541,7 @@ class _TabScreenState extends State<TabScreen> with TickerProviderStateMixin {
         ),
         actions: [
           TextButton(
-            child: const Text('Close'),
+            child: Text(context.tr.close),
             onPressed: () => Navigator.of(context).pop(),
           ),
         ],

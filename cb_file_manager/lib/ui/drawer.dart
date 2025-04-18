@@ -15,20 +15,19 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:cb_file_manager/ui/tab_manager/tab_manager.dart';
 import 'package:cb_file_manager/helpers/user_preferences.dart'; // Add UserPreferences import
 import 'package:cb_file_manager/config/app_theme.dart'; // Import theme configuration
+import 'package:cb_file_manager/config/translation_helper.dart'; // Import translation helper
 
 class CBDrawer extends StatefulWidget {
   final BuildContext parentContext;
   // Add parameters for pinned state
   final bool isPinned;
   final Function(bool) onPinStateChanged;
-  final Function() onHideMenu;
 
   const CBDrawer(
     this.parentContext, {
     Key? key,
     required this.isPinned,
     required this.onPinStateChanged,
-    required this.onHideMenu,
   }) : super(key: key);
 
   @override
@@ -37,37 +36,35 @@ class CBDrawer extends StatefulWidget {
 
 class _CBDrawerState extends State<CBDrawer> {
   bool _isStorageExpanded = false;
-  List<Directory> _drives = [];
-  bool _isLoadingDrives = false;
+  List<Directory> _storageLocations = [];
+  bool _isLoadingStorages = false;
 
   @override
   void initState() {
     super.initState();
-    // Load drives when initialized
-    if (Platform.isWindows) {
-      _loadDrives();
-    }
+    // Load all storage locations when initialized
+    _loadStorageLocations();
   }
 
-  Future<void> _loadDrives() async {
+  Future<void> _loadStorageLocations() async {
     setState(() {
-      _isLoadingDrives = true;
+      _isLoadingStorages = true;
     });
 
     try {
-      final drives = await getAllWindowsDrives();
+      final locations = await getAllStorageLocations();
       setState(() {
-        _drives = drives;
-        _isLoadingDrives = false;
+        _storageLocations = locations;
+        _isLoadingStorages = false;
       });
     } catch (e) {
       setState(() {
-        _isLoadingDrives = false;
+        _isLoadingStorages = false;
       });
       if (mounted) {
         ScaffoldMessenger.of(widget.parentContext).showSnackBar(
           SnackBar(
-            content: Text('Error loading drives: $e'),
+            content: Text('Error loading storage locations: $e'),
           ),
         );
       }
@@ -76,6 +73,9 @@ class _CBDrawerState extends State<CBDrawer> {
 
   @override
   Widget build(BuildContext context) {
+    // Check if the screen is small (width < 600)
+    final bool isSmallScreen = MediaQuery.of(context).size.width < 600;
+
     return Drawer(
       child: ListView(
         padding: EdgeInsets.zero,
@@ -100,37 +100,28 @@ class _CBDrawerState extends State<CBDrawer> {
                       width: 40,
                     ),
                   ),
-                  const Expanded(
+                  Expanded(
                     child: Text(
-                      'CoolBird File Manager',
-                      style: TextStyle(
+                      context.tr.appTitle,
+                      style: const TextStyle(
                         color: Colors.white,
                         fontSize: 20,
                       ),
                     ),
                   ),
-                  // Pin button in drawer
-                  IconButton(
-                    icon: Icon(
-                      widget.isPinned
-                          ? Icons.push_pin
-                          : Icons.push_pin_outlined,
-                      color: Colors.white,
-                    ),
-                    tooltip: widget.isPinned ? 'Unpin menu' : 'Pin menu',
-                    onPressed: () {
-                      widget.onPinStateChanged(!widget.isPinned);
-                    },
-                  ),
-                  // Hide menu button (only shown when not pinned)
-                  if (!widget.isPinned)
+                  // Pin button in drawer (hidden on small screens)
+                  if (!isSmallScreen)
                     IconButton(
-                      icon: const Icon(
-                        Icons.visibility_off,
+                      icon: Icon(
+                        widget.isPinned
+                            ? Icons.push_pin
+                            : Icons.push_pin_outlined,
                         color: Colors.white,
                       ),
-                      tooltip: 'Hide menu',
-                      onPressed: widget.onHideMenu,
+                      tooltip: widget.isPinned ? 'Unpin menu' : 'Pin menu',
+                      onPressed: () {
+                        widget.onPinStateChanged(!widget.isPinned);
+                      },
                     ),
                 ],
               ),
@@ -138,7 +129,7 @@ class _CBDrawerState extends State<CBDrawer> {
           ),
           ListTile(
             leading: const Icon(Icons.home),
-            title: const Text('Homepage'),
+            title: Text(context.tr.home),
             onTap: () {
               Navigator.pop(context);
               RouteUtils.toNewScreen(context, const TabMainScreen());
@@ -146,7 +137,7 @@ class _CBDrawerState extends State<CBDrawer> {
           ),
           ExpansionTile(
             leading: const Icon(Icons.phone_android),
-            title: const Text('Local'),
+            title: const Text('Storage'),
             initiallyExpanded: _isStorageExpanded,
             onExpansionChanged: (isExpanded) {
               setState(() {
@@ -154,22 +145,11 @@ class _CBDrawerState extends State<CBDrawer> {
               });
             },
             children: <Widget>[
-              if (Platform.isWindows) ..._buildWindowsDrivesList(),
-              if (!Platform.isWindows || _drives.isEmpty)
-                ListTile(
-                  contentPadding: const EdgeInsets.only(left: 30),
-                  leading: const Icon(Icons.folder),
-                  title: const Text('Documents'),
-                  onTap: () async {
-                    final directory = await getApplicationDocumentsDirectory();
-                    Navigator.pop(context);
-                    _showOpenOptions(context, directory.path, 'Documents');
-                  },
-                ),
+              ..._buildStorageLocationsList(),
               ListTile(
                 contentPadding: const EdgeInsets.only(left: 30),
                 leading: const Icon(Icons.label),
-                title: const Text('Tags'),
+                title: Text(context.tr.tags),
                 onTap: () async {
                   Navigator.pop(context);
                   // Get documents directory as starting directory
@@ -204,7 +184,7 @@ class _CBDrawerState extends State<CBDrawer> {
           const Divider(),
           ListTile(
             leading: const Icon(Icons.settings),
-            title: const Text('Settings'),
+            title: Text(context.tr.settings),
             onTap: () {
               Navigator.pop(context);
               _showSettingsDialog(context);
@@ -223,8 +203,8 @@ class _CBDrawerState extends State<CBDrawer> {
     );
   }
 
-  List<Widget> _buildWindowsDrivesList() {
-    if (_isLoadingDrives) {
+  List<Widget> _buildStorageLocationsList() {
+    if (_isLoadingStorages) {
       return [
         const ListTile(
           contentPadding: EdgeInsets.only(left: 30),
@@ -239,33 +219,28 @@ class _CBDrawerState extends State<CBDrawer> {
       ];
     }
 
-    if (_drives.isEmpty) {
+    if (_storageLocations.isEmpty) {
       return [
         ListTile(
           contentPadding: const EdgeInsets.only(left: 30),
-          title: const Text('No drives found'),
+          title: const Text('No storage locations found'),
           trailing: IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: _loadDrives,
+            onPressed: _loadStorageLocations,
           ),
         )
       ];
     }
 
-    return _drives.map((drive) {
-      // Get drive letter for display
-      String driveLetter = drive.path.split(r'\')[0];
-      String driveLabel = '$driveLetter (${_getDriveTypeIcon(drive)})';
-
-      // Check if the drive requires admin privileges
-      bool requiresAdmin = drive.requiresAdmin;
+    return _storageLocations.map((storage) {
+      String displayName = _getStorageDisplayName(storage);
+      IconData icon = _getStorageIcon(storage);
+      bool requiresAdmin = storage.requiresAdmin;
 
       return ListTile(
         contentPadding: const EdgeInsets.only(left: 30),
-        leading: requiresAdmin
-            ? const Icon(Icons.admin_panel_settings, color: Colors.orange)
-            : const Icon(Icons.drive_folder_upload),
-        title: Text(driveLabel),
+        leading: Icon(icon, color: requiresAdmin ? Colors.orange : null),
+        title: Text(displayName),
         subtitle: requiresAdmin
             ? const Text('Requires administrator privileges',
                 style: TextStyle(fontSize: 12, color: Colors.orange))
@@ -273,11 +248,67 @@ class _CBDrawerState extends State<CBDrawer> {
         onTap: () {
           if (requiresAdmin) {
             // Show warning dialog for protected drives
-            _showAdminAccessDialog(context, drive);
+            _showAdminAccessDialog(context, storage);
           } else {
             // Regular drive access
             Navigator.pop(context);
-            _openInCurrentTab(drive.path, driveLabel);
+            _openInCurrentTab(storage.path, displayName);
+          }
+        },
+      );
+    }).toList();
+  }
+
+  List<Widget> _buildWindowsDrivesList() {
+    if (_isLoadingStorages) {
+      return [
+        const ListTile(
+          contentPadding: EdgeInsets.only(left: 30),
+          title: Center(
+            child: SizedBox(
+              height: 20,
+              width: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          ),
+        )
+      ];
+    }
+
+    if (_storageLocations.isEmpty) {
+      return [
+        ListTile(
+          contentPadding: const EdgeInsets.only(left: 30),
+          title: const Text('No storage locations found'),
+          trailing: IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _loadStorageLocations,
+          ),
+        )
+      ];
+    }
+
+    return _storageLocations.map((storage) {
+      String displayName = _getStorageDisplayName(storage);
+      IconData icon = _getStorageIcon(storage);
+      bool requiresAdmin = storage.requiresAdmin;
+
+      return ListTile(
+        contentPadding: const EdgeInsets.only(left: 30),
+        leading: Icon(icon, color: requiresAdmin ? Colors.orange : null),
+        title: Text(displayName),
+        subtitle: requiresAdmin
+            ? const Text('Requires administrator privileges',
+                style: TextStyle(fontSize: 12, color: Colors.orange))
+            : null,
+        onTap: () {
+          if (requiresAdmin) {
+            // Show warning dialog for protected drives
+            _showAdminAccessDialog(context, storage);
+          } else {
+            // Regular drive access
+            Navigator.pop(context);
+            _openInCurrentTab(storage.path, displayName);
           }
         },
       );
@@ -298,11 +329,17 @@ class _CBDrawerState extends State<CBDrawer> {
       // Lấy tab hiện tại và cập nhật đường dẫn
       final activeTab = tabBloc.state.activeTab;
       if (activeTab != null) {
+        // Add path to navigation history first
+        tabBloc.add(AddToTabHistory(activeTab.id, path));
+
+        // Update the tab path
         tabBloc.add(UpdateTabPath(activeTab.id, path));
 
         // Cập nhật tên tab để phản ánh thư mục mới
         final tabName = _getNameFromPath(path);
         tabBloc.add(UpdateTabName(activeTab.id, tabName));
+
+        print("Drawer: Navigating to path: $path");
       } else {
         // Nếu không có tab nào đang mở, tạo tab mới
         tabBloc.add(AddTab(path: path, name: _getNameFromPath(path)));
@@ -363,7 +400,7 @@ class _CBDrawerState extends State<CBDrawer> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
+            child: Text(context.tr.cancel),
           ),
           TextButton(
             onPressed: () {
@@ -371,7 +408,7 @@ class _CBDrawerState extends State<CBDrawer> {
               Navigator.pop(context);
               _openInCurrentTab(drive.path, drive.path.split(r'\')[0]);
             },
-            child: const Text('Continue'),
+            child: Text(context.tr.ok),
           ),
         ],
       ),
@@ -480,7 +517,7 @@ class _CBDrawerState extends State<CBDrawer> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('CoolBird File Manager'),
+        title: Text(context.tr.appTitle),
         content: const Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -495,11 +532,105 @@ class _CBDrawerState extends State<CBDrawer> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
+            child: Text(context.tr.close),
           ),
         ],
       ),
     );
+  }
+
+  // Helper method to get a display name for a storage location
+  String _getStorageDisplayName(Directory storage) {
+    String path = storage.path;
+
+    // For Windows drives
+    if (Platform.isWindows && path.contains(':')) {
+      String driveLetter = path.split(r'\')[0];
+      return '$driveLetter (${_getDriveTypeIcon(storage)})';
+    }
+
+    // For Android/Linux paths
+    if (path == '/') {
+      return 'Root (/)';
+    }
+
+    if (path == '/storage/emulated/0' || path == '/sdcard') {
+      return 'Internal Storage';
+    }
+
+    if (path.startsWith('/storage/') && path != '/storage') {
+      // Extract the SD card name from path like /storage/XXXX-XXXX
+      String sdName = path.substring('/storage/'.length);
+      return 'SD Card ($sdName)';
+    }
+
+    if (path == '/storage') {
+      return 'Storage';
+    }
+
+    if (path == '/system') {
+      return 'System';
+    }
+
+    if (path == '/data') {
+      return 'Data';
+    }
+
+    if (path.startsWith('/mnt/')) {
+      String mntName = path.substring('/mnt/'.length);
+      return 'Mount ($mntName)';
+    }
+
+    // Default - show the last part of the path
+    List<String> parts = path.split(Platform.pathSeparator);
+    String lastPart =
+        parts.lastWhere((part) => part.isNotEmpty, orElse: () => path);
+    return lastPart.isEmpty ? path : lastPart;
+  }
+
+  // Helper method to get an appropriate icon for a storage location
+  IconData _getStorageIcon(Directory storage) {
+    String path = storage.path;
+
+    // Icons for different storage types
+    if (Platform.isWindows && path.contains(':')) {
+      if (path.startsWith('C:')) {
+        return Icons.computer;
+      }
+      return Icons.drive_folder_upload;
+    }
+
+    // Android/Linux paths
+    if (path == '/') {
+      return Icons.admin_panel_settings;
+    }
+
+    if (path == '/storage/emulated/0' || path == '/sdcard') {
+      return Icons.phone_android;
+    }
+
+    if (path.startsWith('/storage/') && path != '/storage') {
+      return Icons.sd_card;
+    }
+
+    if (path == '/storage') {
+      return Icons.storage;
+    }
+
+    if (path == '/system') {
+      return Icons.system_security_update;
+    }
+
+    if (path == '/data') {
+      return Icons.data_usage;
+    }
+
+    if (path.startsWith('/mnt/')) {
+      return Icons.folder_special;
+    }
+
+    // Default icon
+    return Icons.folder;
   }
 }
 
@@ -508,13 +639,11 @@ class AppDrawer extends StatefulWidget {
   // Add parameters for pinned state like in CBDrawer
   final bool isPinned;
   final Function(bool) onPinStateChanged;
-  final Function() onHideMenu;
 
   const AppDrawer({
     Key? key,
     required this.isPinned,
     required this.onPinStateChanged,
-    required this.onHideMenu,
   }) : super(key: key);
 
   @override
@@ -523,36 +652,35 @@ class AppDrawer extends StatefulWidget {
 
 class _AppDrawerState extends State<AppDrawer> {
   bool _isStorageExpanded = false;
-  List<Directory> _drives = [];
-  bool _isLoadingDrives = false;
+  List<Directory> _storageLocations = [];
+  bool _isLoadingStorages = false;
 
   @override
   void initState() {
     super.initState();
-    if (Platform.isWindows) {
-      _loadDrives();
-    }
+    // Load all storage locations when initialized
+    _loadStorageLocations();
   }
 
-  Future<void> _loadDrives() async {
+  Future<void> _loadStorageLocations() async {
     setState(() {
-      _isLoadingDrives = true;
+      _isLoadingStorages = true;
     });
 
     try {
-      final drives = await getAllWindowsDrives();
+      final locations = await getAllStorageLocations();
       setState(() {
-        _drives = drives;
-        _isLoadingDrives = false;
+        _storageLocations = locations;
+        _isLoadingStorages = false;
       });
     } catch (e) {
       setState(() {
-        _isLoadingDrives = false;
+        _isLoadingStorages = false;
       });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error loading drives: $e'),
+            content: Text('Error loading storage locations: $e'),
           ),
         );
       }
@@ -561,6 +689,9 @@ class _AppDrawerState extends State<AppDrawer> {
 
   @override
   Widget build(BuildContext context) {
+    // Check if the screen is small (width < 600)
+    final bool isSmallScreen = MediaQuery.of(context).size.width < 600;
+
     return Drawer(
       child: ListView(
         padding: EdgeInsets.zero,
@@ -583,37 +714,28 @@ class _AppDrawerState extends State<AppDrawer> {
                         width: 40,
                       ),
                     ),
-                    const Expanded(
+                    Expanded(
                       child: Text(
-                        'CoolBird File Manager',
-                        style: TextStyle(
+                        context.tr.appTitle,
+                        style: const TextStyle(
                           color: Colors.white,
                           fontSize: 24,
                         ),
                       ),
                     ),
-                    // Pin button in drawer
-                    IconButton(
-                      icon: Icon(
-                        widget.isPinned
-                            ? Icons.push_pin
-                            : Icons.push_pin_outlined,
-                        color: Colors.white,
-                      ),
-                      tooltip: widget.isPinned ? 'Unpin menu' : 'Pin menu',
-                      onPressed: () {
-                        widget.onPinStateChanged(!widget.isPinned);
-                      },
-                    ),
-                    // Hide menu button (only shown when not pinned)
-                    if (!widget.isPinned)
+                    // Pin button in drawer (hidden on small screens)
+                    if (!isSmallScreen)
                       IconButton(
-                        icon: const Icon(
-                          Icons.visibility_off,
+                        icon: Icon(
+                          widget.isPinned
+                              ? Icons.push_pin
+                              : Icons.push_pin_outlined,
                           color: Colors.white,
                         ),
-                        tooltip: 'Hide menu',
-                        onPressed: widget.onHideMenu,
+                        tooltip: widget.isPinned ? 'Unpin menu' : 'Pin menu',
+                        onPressed: () {
+                          widget.onPinStateChanged(!widget.isPinned);
+                        },
                       ),
                   ],
                 ),
@@ -630,7 +752,7 @@ class _AppDrawerState extends State<AppDrawer> {
           ),
           ListTile(
             leading: const Icon(Icons.home),
-            title: const Text('Home'),
+            title: Text(context.tr.home),
             onTap: () {
               Navigator.pop(context);
             },
@@ -638,31 +760,18 @@ class _AppDrawerState extends State<AppDrawer> {
           // Storage section
           ExpansionTile(
             leading: const Icon(Icons.storage),
-            title: const Text('Local Storage'),
+            title: const Text('Storage'),
             initiallyExpanded: _isStorageExpanded,
             onExpansionChanged: (isExpanded) {
               setState(() {
                 _isStorageExpanded = isExpanded;
               });
             },
-            children: [
-              if (Platform.isWindows) ..._buildWindowsDrivesList(),
-              if (!Platform.isWindows)
-                ListTile(
-                  contentPadding: const EdgeInsets.only(left: 30),
-                  leading: const Icon(Icons.folder),
-                  title: const Text('Documents'),
-                  onTap: () async {
-                    Navigator.pop(context);
-                    final directory = await getApplicationDocumentsDirectory();
-                    _showOpenOptions(context, directory.path, 'Documents');
-                  },
-                ),
-            ],
+            children: _buildStorageLocationsList(),
           ),
           ListTile(
             leading: const Icon(Icons.label),
-            title: const Text('Tags'),
+            title: Text(context.tr.tags),
             onTap: () async {
               Navigator.pop(context);
               try {
@@ -690,7 +799,7 @@ class _AppDrawerState extends State<AppDrawer> {
           ),
           ListTile(
             leading: const Icon(Icons.settings),
-            title: const Text('Settings'),
+            title: Text(context.tr.settings),
             onTap: () {
               Navigator.pop(context);
               _showSettingsDialog(context);
@@ -709,8 +818,8 @@ class _AppDrawerState extends State<AppDrawer> {
     );
   }
 
-  List<Widget> _buildWindowsDrivesList() {
-    if (_isLoadingDrives) {
+  List<Widget> _buildStorageLocationsList() {
+    if (_isLoadingStorages) {
       return [
         const ListTile(
           contentPadding: EdgeInsets.only(left: 30),
@@ -725,33 +834,28 @@ class _AppDrawerState extends State<AppDrawer> {
       ];
     }
 
-    if (_drives.isEmpty) {
+    if (_storageLocations.isEmpty) {
       return [
         ListTile(
           contentPadding: const EdgeInsets.only(left: 30),
-          title: const Text('No drives found'),
+          title: const Text('No storage locations found'),
           trailing: IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: _loadDrives,
+            onPressed: _loadStorageLocations,
           ),
         )
       ];
     }
 
-    return _drives.map((drive) {
-      // Get drive letter for display
-      String driveLetter = drive.path.split(r'\')[0];
-      String driveLabel = '$driveLetter (${_getDriveTypeIcon(drive)})';
-
-      // Check if the drive requires admin privileges
-      bool requiresAdmin = drive.requiresAdmin;
+    return _storageLocations.map((storage) {
+      String displayName = _getStorageDisplayName(storage);
+      IconData icon = _getStorageIcon(storage);
+      bool requiresAdmin = storage.requiresAdmin;
 
       return ListTile(
         contentPadding: const EdgeInsets.only(left: 30),
-        leading: requiresAdmin
-            ? const Icon(Icons.admin_panel_settings, color: Colors.orange)
-            : const Icon(Icons.drive_folder_upload),
-        title: Text(driveLabel),
+        leading: Icon(icon, color: requiresAdmin ? Colors.orange : null),
+        title: Text(displayName),
         subtitle: requiresAdmin
             ? const Text('Requires administrator privileges',
                 style: TextStyle(fontSize: 12, color: Colors.orange))
@@ -759,11 +863,67 @@ class _AppDrawerState extends State<AppDrawer> {
         onTap: () {
           if (requiresAdmin) {
             // Show warning dialog for protected drives
-            _showAdminAccessDialog(context, drive);
+            _showAdminAccessDialog(context, storage);
           } else {
             // Regular drive access
             Navigator.pop(context);
-            _openInCurrentTab(drive.path, driveLabel);
+            _openInCurrentTab(storage.path, displayName);
+          }
+        },
+      );
+    }).toList();
+  }
+
+  List<Widget> _buildWindowsDrivesList() {
+    if (_isLoadingStorages) {
+      return [
+        const ListTile(
+          contentPadding: EdgeInsets.only(left: 30),
+          title: Center(
+            child: SizedBox(
+              height: 20,
+              width: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          ),
+        )
+      ];
+    }
+
+    if (_storageLocations.isEmpty) {
+      return [
+        ListTile(
+          contentPadding: const EdgeInsets.only(left: 30),
+          title: const Text('No storage locations found'),
+          trailing: IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _loadStorageLocations,
+          ),
+        )
+      ];
+    }
+
+    return _storageLocations.map((storage) {
+      String displayName = _getStorageDisplayName(storage);
+      IconData icon = _getStorageIcon(storage);
+      bool requiresAdmin = storage.requiresAdmin;
+
+      return ListTile(
+        contentPadding: const EdgeInsets.only(left: 30),
+        leading: Icon(icon, color: requiresAdmin ? Colors.orange : null),
+        title: Text(displayName),
+        subtitle: requiresAdmin
+            ? const Text('Requires administrator privileges',
+                style: TextStyle(fontSize: 12, color: Colors.orange))
+            : null,
+        onTap: () {
+          if (requiresAdmin) {
+            // Show warning dialog for protected drives
+            _showAdminAccessDialog(context, storage);
+          } else {
+            // Regular drive access
+            Navigator.pop(context);
+            _openInCurrentTab(storage.path, displayName);
           }
         },
       );
@@ -784,11 +944,17 @@ class _AppDrawerState extends State<AppDrawer> {
       // Lấy tab hiện tại và cập nhật đường dẫn
       final activeTab = tabBloc.state.activeTab;
       if (activeTab != null) {
+        // Add path to navigation history first
+        tabBloc.add(AddToTabHistory(activeTab.id, path));
+
+        // Update the tab path
         tabBloc.add(UpdateTabPath(activeTab.id, path));
 
         // Cập nhật tên tab để phản ánh thư mục mới
         final tabName = _getNameFromPath(path);
         tabBloc.add(UpdateTabName(activeTab.id, tabName));
+
+        print("Drawer: Navigating to path: $path");
       } else {
         // Nếu không có tab nào đang mở, tạo tab mới
         tabBloc.add(AddTab(path: path, name: _getNameFromPath(path)));
@@ -849,7 +1015,7 @@ class _AppDrawerState extends State<AppDrawer> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
+            child: Text(context.tr.cancel),
           ),
           TextButton(
             onPressed: () {
@@ -857,7 +1023,7 @@ class _AppDrawerState extends State<AppDrawer> {
               Navigator.pop(context);
               _openInCurrentTab(drive.path, drive.path.split(r'\')[0]);
             },
-            child: const Text('Continue'),
+            child: Text(context.tr.ok),
           ),
         ],
       ),
@@ -868,7 +1034,7 @@ class _AppDrawerState extends State<AppDrawer> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('CoolBird File Manager'),
+        title: Text(context.tr.appTitle),
         content: const Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -883,10 +1049,104 @@ class _AppDrawerState extends State<AppDrawer> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
+            child: Text(context.tr.close),
           ),
         ],
       ),
     );
+  }
+
+  // Helper method to get a display name for a storage location
+  String _getStorageDisplayName(Directory storage) {
+    String path = storage.path;
+
+    // For Windows drives
+    if (Platform.isWindows && path.contains(':')) {
+      String driveLetter = path.split(r'\')[0];
+      return '$driveLetter (${_getDriveTypeIcon(storage)})';
+    }
+
+    // For Android/Linux paths
+    if (path == '/') {
+      return 'Root (/)';
+    }
+
+    if (path == '/storage/emulated/0' || path == '/sdcard') {
+      return 'Internal Storage';
+    }
+
+    if (path.startsWith('/storage/') && path != '/storage') {
+      // Extract the SD card name from path like /storage/XXXX-XXXX
+      String sdName = path.substring('/storage/'.length);
+      return 'SD Card ($sdName)';
+    }
+
+    if (path == '/storage') {
+      return 'Storage';
+    }
+
+    if (path == '/system') {
+      return 'System';
+    }
+
+    if (path == '/data') {
+      return 'Data';
+    }
+
+    if (path.startsWith('/mnt/')) {
+      String mntName = path.substring('/mnt/'.length);
+      return 'Mount ($mntName)';
+    }
+
+    // Default - show the last part of the path
+    List<String> parts = path.split(Platform.pathSeparator);
+    String lastPart =
+        parts.lastWhere((part) => part.isNotEmpty, orElse: () => path);
+    return lastPart.isEmpty ? path : lastPart;
+  }
+
+  // Helper method to get an appropriate icon for a storage location
+  IconData _getStorageIcon(Directory storage) {
+    String path = storage.path;
+
+    // Icons for different storage types
+    if (Platform.isWindows && path.contains(':')) {
+      if (path.startsWith('C:')) {
+        return Icons.computer;
+      }
+      return Icons.drive_folder_upload;
+    }
+
+    // Android/Linux paths
+    if (path == '/') {
+      return Icons.admin_panel_settings;
+    }
+
+    if (path == '/storage/emulated/0' || path == '/sdcard') {
+      return Icons.phone_android;
+    }
+
+    if (path.startsWith('/storage/') && path != '/storage') {
+      return Icons.sd_card;
+    }
+
+    if (path == '/storage') {
+      return Icons.storage;
+    }
+
+    if (path == '/system') {
+      return Icons.system_security_update;
+    }
+
+    if (path == '/data') {
+      return Icons.data_usage;
+    }
+
+    if (path.startsWith('/mnt/')) {
+      return Icons.folder_special;
+    }
+
+    // Default icon
+    return Icons.folder;
   }
 }

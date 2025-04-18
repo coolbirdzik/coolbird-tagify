@@ -35,7 +35,6 @@ class UserPreferences {
   static const String _videoPlayerVolumeKey = 'video_player_volume';
   static const String _videoPlayerMuteKey = 'video_player_mute';
   static const String _drawerPinnedKey = 'drawer_pinned';
-  static const String _drawerVisibleKey = 'drawer_visible';
   static const String _themePreferenceKey = 'theme_preference';
   static const String _keySearchTipShown = 'search_tip_shown';
 
@@ -203,17 +202,6 @@ class UserPreferences {
   /// Save drawer pinned state
   Future<bool> setDrawerPinned(bool isPinned) async {
     return await _preferences?.setBool(_drawerPinnedKey, isPinned) ?? false;
-  }
-
-  /// Get drawer visibility state
-  bool getDrawerVisible() {
-    return _preferences?.getBool(_drawerVisibleKey) ??
-        true; // Default to visible
-  }
-
-  /// Save drawer visibility state
-  Future<bool> setDrawerVisible(bool isVisible) async {
-    return await _preferences?.setBool(_drawerVisibleKey, isVisible) ?? false;
   }
 
   /// Get current theme preference

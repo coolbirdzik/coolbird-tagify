@@ -678,6 +678,9 @@ class MobileTabView extends StatelessWidget {
     final isDarkMode = theme.brightness == Brightness.dark;
     final textColor = isDarkMode ? Colors.white : Colors.black;
 
+    // Get the TabManagerBloc instance from the current context
+    final tabManagerBloc = BlocProvider.of<TabManagerBloc>(context);
+
     // Phân tách đường dẫn thành các phần
     List<String> pathParts = tab.path.split(Platform.pathSeparator);
     if (tab.path.startsWith(Platform.pathSeparator)) {
@@ -693,206 +696,246 @@ class MobileTabView extends StatelessWidget {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        decoration: BoxDecoration(
-          color: theme.scaffoldBackgroundColor,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-        ),
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.7,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Thanh kéo ở trên cùng
-            Container(
-              margin: const EdgeInsets.only(top: 8),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.grey.withOpacity(0.3),
-                borderRadius: BorderRadius.circular(2),
-              ),
+      builder: (bottomSheetContext) =>
+          // Wrap with BlocProvider.value to make the TabManagerBloc available inside the bottom sheet
+          BlocProvider.value(
+        value: tabManagerBloc,
+        child: Builder(
+          builder: (newContext) => Container(
+            decoration: BoxDecoration(
+              color: theme.scaffoldBackgroundColor,
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(16)),
             ),
-
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
-              child: Row(
-                children: [
-                  Text(
-                    'Chọn vị trí',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: theme.colorScheme.onSurface,
-                    ),
-                  ),
-                  const Spacer(),
-                  // Nút đóng
-                  IconButton(
-                    icon: Icon(Icons.close, color: textColor),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                ],
-              ),
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.7,
             ),
-
-            const Divider(height: 1),
-
-            // Hiển thị đường dẫn hiện tại
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(8.0),
-                decoration: BoxDecoration(
-                  color: isDarkMode ? Colors.grey[800] : Colors.grey[200],
-                  borderRadius: BorderRadius.circular(8.0),
-                ),
-                child: Text(
-                  tab.path.isEmpty ? 'Drives' : tab.path,
-                  style: TextStyle(
-                    color: isDarkMode ? Colors.white : Colors.black87,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Thanh kéo ở trên cùng
+                Container(
+                  margin: const EdgeInsets.only(top: 8),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.withOpacity(0.3),
+                    borderRadius: BorderRadius.circular(2),
                   ),
                 ),
-              ),
-            ),
 
-            // Danh sách các phần của đường dẫn
-            Flexible(
-              child: ListView.builder(
-                shrinkWrap: true,
-                itemCount: pathParts.length,
-                itemBuilder: (context, index) {
-                  // Tạo đường dẫn từ đầu đến phần hiện tại
-                  String currentPath;
-                  if (pathParts[0] == "Drives") {
-                    currentPath = index == 0
-                        ? ""
-                        : pathParts
-                            .sublist(1, index + 1)
-                            .join(Platform.pathSeparator);
-                  } else {
-                    if (pathParts[0] == Platform.pathSeparator) {
-                      currentPath = index == 0
-                          ? Platform.pathSeparator
-                          : Platform.pathSeparator +
-                              pathParts
-                                  .sublist(1, index + 1)
-                                  .join(Platform.pathSeparator);
-                    } else {
-                      currentPath = pathParts
-                          .sublist(0, index + 1)
-                          .join(Platform.pathSeparator);
-                    }
-                  }
+                Padding(
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+                  child: Row(
+                    children: [
+                      Text(
+                        'Chọn vị trí',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: theme.colorScheme.onSurface,
+                        ),
+                      ),
+                      const Spacer(),
+                      // Nút đóng
+                      IconButton(
+                        icon: Icon(Icons.close, color: textColor),
+                        onPressed: () => Navigator.pop(newContext),
+                      ),
+                    ],
+                  ),
+                ),
 
-                  return ListTile(
-                    leading: Icon(
-                      index == 0 ? Icons.computer : Icons.folder,
-                      color: theme.colorScheme.primary,
+                const Divider(height: 1),
+
+                // Hiển thị đường dẫn hiện tại
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(8.0),
+                    decoration: BoxDecoration(
+                      color: isDarkMode ? Colors.grey[800] : Colors.grey[200],
+                      borderRadius: BorderRadius.circular(8.0),
                     ),
-                    title: Text(
-                      pathParts[index].isEmpty ? 'Root' : pathParts[index],
+                    child: Text(
+                      tab.path.isEmpty ? 'Drives' : tab.path,
                       style: TextStyle(
-                        fontWeight: index == pathParts.length - 1
-                            ? FontWeight.bold
-                            : null,
+                        color: isDarkMode ? Colors.white : Colors.black87,
                       ),
                     ),
-                    onTap: () {
-                      Navigator.pop(context);
-                      // Cập nhật đường dẫn hiện tại
-                      context
-                          .read<TabManagerBloc>()
-                          .add(UpdateTabPath(tab.id, currentPath));
-                    },
-                  );
-                },
-              ),
-            ),
-
-            // Phần chân với lịch sử điều hướng
-            if (tab.navigationHistory.isNotEmpty) ...[
-              const Divider(),
-              Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    'Lịch sử điều hướng:',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: theme.colorScheme.onSurface,
-                    ),
                   ),
                 ),
-              ),
-              Container(
-                height: 60,
-                padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                child: ListView.builder(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: tab.navigationHistory.length,
-                  itemBuilder: (context, index) {
-                    final historyPath = tab.navigationHistory[index];
-                    final isCurrentPath = historyPath == tab.path;
 
-                    return Padding(
-                      padding: const EdgeInsets.only(right: 8.0),
-                      child: InkWell(
-                        onTap: () {
-                          Navigator.pop(context);
-                          if (!isCurrentPath) {
-                            context
-                                .read<TabManagerBloc>()
-                                .add(UpdateTabPath(tab.id, historyPath));
-                          }
-                        },
-                        borderRadius: BorderRadius.circular(20),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: isCurrentPath
-                                ? theme.colorScheme.primary.withOpacity(0.2)
-                                : isDarkMode
-                                    ? Colors.grey[800]
-                                    : Colors.grey[200],
-                            borderRadius: BorderRadius.circular(20),
+                // Danh sách các phần của đường dẫn
+                Flexible(
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: pathParts.length,
+                    itemBuilder: (context, index) {
+                      // Tạo đường dẫn từ đầu đến phần hiện tại
+                      String currentPath;
+                      if (pathParts[0] == "Drives") {
+                        currentPath = index == 0
+                            ? ""
+                            : pathParts
+                                .sublist(1, index + 1)
+                                .join(Platform.pathSeparator);
+                      } else {
+                        if (pathParts[0] == Platform.pathSeparator) {
+                          currentPath = index == 0
+                              ? Platform.pathSeparator
+                              : Platform.pathSeparator +
+                                  pathParts
+                                      .sublist(1, index + 1)
+                                      .join(Platform.pathSeparator);
+                        } else {
+                          currentPath = pathParts
+                              .sublist(0, index + 1)
+                              .join(Platform.pathSeparator);
+                        }
+                      }
+
+                      return ListTile(
+                        leading: Icon(
+                          index == 0 ? Icons.computer : Icons.folder,
+                          color: theme.colorScheme.primary,
+                        ),
+                        title: Text(
+                          pathParts[index].isEmpty ? 'Root' : pathParts[index],
+                          style: TextStyle(
+                            fontWeight: index == pathParts.length - 1
+                                ? FontWeight.bold
+                                : null,
                           ),
-                          child: Center(
-                            child: Text(
-                              historyPath.isEmpty
-                                  ? 'Drives'
-                                  : historyPath
-                                          .split(Platform.pathSeparator)
-                                          .last
-                                          .isEmpty
-                                      ? Platform.pathSeparator
-                                      : historyPath
-                                          .split(Platform.pathSeparator)
-                                          .last,
-                              style: TextStyle(
+                        ),
+                        onTap: () {
+                          Navigator.pop(newContext);
+                          // Use the new context to access the BlocProvider
+                          final tabBloc =
+                              BlocProvider.of<TabManagerBloc>(newContext);
+
+                          // Add this path to navigation history
+                          tabBloc.add(AddToTabHistory(tab.id, currentPath));
+
+                          // Update the tab path
+                          tabBloc.add(UpdateTabPath(tab.id, currentPath));
+
+                          // Update tab name
+                          final pathParts =
+                              currentPath.split(Platform.pathSeparator);
+                          final lastPart = pathParts.lastWhere(
+                              (part) => part.isNotEmpty,
+                              orElse: () =>
+                                  currentPath.isEmpty ? 'Drives' : 'Root');
+                          final tabName = lastPart.isEmpty
+                              ? (currentPath.isEmpty ? 'Drives' : 'Root')
+                              : lastPart;
+                          tabBloc.add(UpdateTabName(tab.id, tabName));
+
+                          // Debug print to track path updates
+                          print('Navigating to path: $currentPath');
+                        },
+                      );
+                    },
+                  ),
+                ),
+
+                // Phần chân với lịch sử điều hướng
+                if (tab.navigationHistory.isNotEmpty) ...[
+                  const Divider(),
+                  Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Lịch sử điều hướng:',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: theme.colorScheme.onSurface,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Container(
+                    height: 60,
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: tab.navigationHistory.length,
+                      itemBuilder: (context, index) {
+                        final historyPath = tab.navigationHistory[index];
+                        final isCurrentPath = historyPath == tab.path;
+
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 8.0),
+                          child: InkWell(
+                            onTap: () {
+                              Navigator.pop(newContext);
+                              if (!isCurrentPath) {
+                                // Use the new context to access the BlocProvider
+                                final tabBloc =
+                                    BlocProvider.of<TabManagerBloc>(newContext);
+
+                                // Add the navigation history
+                                tabBloc
+                                    .add(AddToTabHistory(tab.id, historyPath));
+
+                                // Update the tab path
+                                tabBloc.add(UpdateTabPath(tab.id, historyPath));
+
+                                // Debug print
+                                print(
+                                    'Navigating to history path: $historyPath');
+                              }
+                            },
+                            borderRadius: BorderRadius.circular(20),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 8),
+                              decoration: BoxDecoration(
                                 color: isCurrentPath
-                                    ? theme.colorScheme.primary
+                                    ? theme.colorScheme.primary.withOpacity(0.2)
                                     : isDarkMode
-                                        ? Colors.white
-                                        : Colors.black87,
-                                fontWeight:
-                                    isCurrentPath ? FontWeight.bold : null,
+                                        ? Colors.grey[800]
+                                        : Colors.grey[200],
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  historyPath.isEmpty
+                                      ? 'Drives'
+                                      : historyPath
+                                              .split(Platform.pathSeparator)
+                                              .last
+                                              .isEmpty
+                                          ? Platform.pathSeparator
+                                          : historyPath
+                                              .split(Platform.pathSeparator)
+                                              .last,
+                                  style: TextStyle(
+                                    color: isCurrentPath
+                                        ? theme.colorScheme.primary
+                                        : isDarkMode
+                                            ? Colors.white
+                                            : Colors.black87,
+                                    fontWeight:
+                                        isCurrentPath ? FontWeight.bold : null,
+                                  ),
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(height: 16),
-            ],
-          ],
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -912,12 +955,17 @@ class TabContentScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Import và sử dụng TabbedFolderListScreen nhưng ẩn AppBar
-    // do thanh địa chỉ đã được hiển thị ở MobileTabView
-    return TabbedFolderListScreen(
-      path: path,
-      tabId: tabId,
-      showAppBar: false, // Thêm tham số này vào TabbedFolderListScreen
+    // Get the current TabManagerBloc from context
+    final tabManagerBloc = BlocProvider.of<TabManagerBloc>(context);
+
+    // Use BlocProvider.value to pass down the same instance of TabManagerBloc
+    return BlocProvider.value(
+      value: tabManagerBloc,
+      child: TabbedFolderListScreen(
+        path: path,
+        tabId: tabId,
+        showAppBar: false, // Thêm tham số này vào TabbedFolderListScreen
+      ),
     );
   }
 }

@@ -60,10 +60,14 @@ class FileGridItem extends StatelessWidget {
     // Get tags for this file
     final List<String> fileTags = state.getTagsForFile(file.path);
 
-    return Card(
-      color: isSelected ? Colors.blue.shade50 : null,
+    // Use a Container with border instead of Card with elevation for flat design
+    return Container(
+      decoration: BoxDecoration(
+        color: isSelected ? Colors.blue.shade50 : Theme.of(context).cardColor,
+        border: Border.all(color: Colors.grey.shade300),
+        borderRadius: BorderRadius.circular(8.0),
+      ),
       clipBehavior: Clip.antiAlias,
-      elevation: 2,
       child: InkWell(
         onTap: () {
           if (isSelectionMode) {

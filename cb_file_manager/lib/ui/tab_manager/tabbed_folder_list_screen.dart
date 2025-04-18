@@ -18,6 +18,7 @@ import '../screens/folder_list/components/index.dart' as folder_list_components;
 
 // Import our new components with a clear namespace
 import 'components/index.dart' as tab_components;
+import 'tab_data.dart'; // Import TabData explicitly
 
 /// A modified version of FolderListScreen that works with the tab system
 class TabbedFolderListScreen extends StatefulWidget {
@@ -64,6 +65,9 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
   // Global search toggle for tag search
   bool isGlobalSearch = false;
 
+  // Flag to track if we're handling a path update to avoid duplicate loads
+  bool _isHandlingPathUpdate = false;
+
   @override
   void initState() {
     super.initState();
@@ -83,15 +87,29 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    // Set up a listener for TabManagerBloc state changes
+    final tabBloc = BlocProvider.of<TabManagerBloc>(context);
+    final activeTab = tabBloc.state.activeTab;
+
+    if (activeTab != null &&
+        activeTab.id == widget.tabId &&
+        activeTab.path != _currentPath) {
+      // Only update if the path has actually changed
+      _updatePath(activeTab.path);
+    }
+  }
+
+  @override
   void didUpdateWidget(TabbedFolderListScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
 
     // If the path prop changes from parent, update our current path
     // and reload the folder list with the new path
     if (widget.path != oldWidget.path && widget.path != _currentPath) {
-      _currentPath = widget.path;
-      _pathController.text = _currentPath;
-      _folderListBloc.add(FolderListLoad(_currentPath));
+      _updatePath(widget.path);
     }
   }
 
@@ -419,6 +437,31 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
     return true;
   }
 
+  // Centralized method to update path and reload folder contents
+  void _updatePath(String newPath) {
+    if (_isHandlingPathUpdate) return; // Prevent recursive updates
+
+    _isHandlingPathUpdate = true;
+
+    setState(() {
+      _currentPath = newPath;
+      _pathController.text = newPath;
+    });
+
+    // Clear any search or filter state when navigating
+    if (_currentFilter != null || _currentSearchTag != null) {
+      _folderListBloc.add(ClearSearchAndFilters());
+    }
+
+    // Load the folder contents with the new path
+    _folderListBloc.add(FolderListLoad(newPath));
+
+    // Save as last accessed folder
+    _saveLastAccessedFolder();
+
+    _isHandlingPathUpdate = false;
+  }
+
   @override
   Widget build(BuildContext context) {
     // If path is empty, show drive picker view
@@ -438,133 +481,150 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
       );
     }
 
-    return WillPopScope(
-      onWillPop: _handleBackNavigation,
-      // Wrap with Listener to detect mouse button events
-      child: Listener(
-        onPointerDown: (PointerDownEvent event) {
-          // Mouse button 4 is usually the back button (button value is 8)
-          if (event.buttons == 8) {
-            _handleMouseBackButton();
-          }
-          // Mouse button 5 is usually the forward button (button value is 16)
-          else if (event.buttons == 16) {
-            _handleMouseForwardButton();
-          }
-        },
-        child: BlocProvider<FolderListBloc>.value(
-          value: _folderListBloc,
-          child: BlocBuilder<FolderListBloc, FolderListState>(
-            builder: (context, state) {
-              _currentSearchTag = state.currentSearchTag;
-              _currentFilter = state.currentFilter;
+    // Add a BlocListener to actively listen for TabManagerBloc state changes
+    return BlocListener<TabManagerBloc, TabManagerState>(
+      listener: (context, tabManagerState) {
+        // Find the current tab data
+        final currentTab = tabManagerState.tabs.firstWhere(
+          (tab) => tab.id == widget.tabId,
+          orElse: () => TabData(id: '', name: '', path: ''),
+        );
 
-              // Create actions for the app bar
-              List<Widget> actions = [];
-              actions.addAll(_isSelectionMode
-                  ? []
-                  : SharedActionBar.buildCommonActions(
-                      context: context,
-                      onSearchPressed: () => _showSearchTip(context),
-                      onSortOptionSelected: (SortOption option) {
-                        _folderListBloc.add(SetSortOption(option));
-                        _saveSortSetting(option);
-                      },
-                      currentSortOption: state.sortOption,
-                      viewMode: state.viewMode,
-                      onViewModeToggled: _toggleViewMode,
-                      onRefresh: _refreshFileList,
-                      onGridSizePressed: state.viewMode == ViewMode.grid
-                          ? () => SharedActionBar.showGridSizeDialog(
-                                context,
-                                currentGridSize: state.gridZoomLevel,
-                                onApply: _handleGridZoomChange,
-                              )
-                          : null,
-                      onSelectionModeToggled: _toggleSelectionMode,
-                      onManageTagsPressed: () {
-                        tab_components.showManageTagsDialog(
-                            context, state.allTags.toList());
-                      },
-                      onGallerySelected: (value) {
-                        if (value == 'image_gallery') {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => ImageGalleryScreen(
-                                path: _currentPath,
-                                recursive: false,
-                              ),
-                            ),
-                          );
-                        } else if (value == 'video_gallery') {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => VideoGalleryScreen(
-                                path: _currentPath,
-                                recursive: false,
-                              ),
-                            ),
-                          );
-                        }
-                      },
-                      currentPath: _currentPath,
-                    ));
+        // If the tab's path has changed and is different from our current path, update it
+        if (currentTab.id.isNotEmpty && currentTab.path != _currentPath) {
+          print('Tab path updated from $_currentPath to ${currentTab.path}');
+          // Use updatePath method to update our state and folder list
+          _updatePath(currentTab.path);
+        }
+      },
+      child: WillPopScope(
+        onWillPop: _handleBackNavigation,
+        // Wrap with Listener to detect mouse button events
+        child: Listener(
+          onPointerDown: (PointerDownEvent event) {
+            // Mouse button 4 is usually the back button (button value is 8)
+            if (event.buttons == 8) {
+              _handleMouseBackButton();
+            }
+            // Mouse button 5 is usually the forward button (button value is 16)
+            else if (event.buttons == 16) {
+              _handleMouseForwardButton();
+            }
+          },
+          child: BlocProvider<FolderListBloc>.value(
+            value: _folderListBloc,
+            child: BlocBuilder<FolderListBloc, FolderListState>(
+              builder: (context, state) {
+                _currentSearchTag = state.currentSearchTag;
+                _currentFilter = state.currentFilter;
 
-              // If we're in selection mode, show a custom app bar
-              if (_isSelectionMode) {
+                // Create actions for the app bar
+                List<Widget> actions = [];
+                actions.addAll(_isSelectionMode
+                    ? []
+                    : SharedActionBar.buildCommonActions(
+                        context: context,
+                        onSearchPressed: () => _showSearchTip(context),
+                        onSortOptionSelected: (SortOption option) {
+                          _folderListBloc.add(SetSortOption(option));
+                          _saveSortSetting(option);
+                        },
+                        currentSortOption: state.sortOption,
+                        viewMode: state.viewMode,
+                        onViewModeToggled: _toggleViewMode,
+                        onRefresh: _refreshFileList,
+                        onGridSizePressed: state.viewMode == ViewMode.grid
+                            ? () => SharedActionBar.showGridSizeDialog(
+                                  context,
+                                  currentGridSize: state.gridZoomLevel,
+                                  onApply: _handleGridZoomChange,
+                                )
+                            : null,
+                        onSelectionModeToggled: _toggleSelectionMode,
+                        onManageTagsPressed: () {
+                          tab_components.showManageTagsDialog(
+                              context, state.allTags.toList());
+                        },
+                        onGallerySelected: (value) {
+                          if (value == 'image_gallery') {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => ImageGalleryScreen(
+                                  path: _currentPath,
+                                  recursive: false,
+                                ),
+                              ),
+                            );
+                          } else if (value == 'video_gallery') {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => VideoGalleryScreen(
+                                  path: _currentPath,
+                                  recursive: false,
+                                ),
+                              ),
+                            );
+                          }
+                        },
+                        currentPath: _currentPath,
+                      ));
+
+                // If we're in selection mode, show a custom app bar
+                if (_isSelectionMode) {
+                  return Scaffold(
+                    appBar: tab_components.SelectionAppBar(
+                      selectedCount: _selectedFilePaths.length,
+                      onClearSelection: _clearSelection,
+                      selectedFilePaths: _selectedFilePaths.toList(),
+                      showRemoveTagsDialog: _showRemoveTagsDialog,
+                      showManageAllTagsDialog: (context) =>
+                          _showManageAllTagsDialog(context),
+                      showDeleteConfirmationDialog: (context) =>
+                          _showDeleteConfirmationDialog(context),
+                    ),
+                    body: _buildBody(context, state),
+                    floatingActionButton: FloatingActionButton(
+                      onPressed: () {
+                        tab_components.showBatchAddTagDialog(
+                            context, _selectedFilePaths.toList());
+                      },
+                      child: const Icon(Icons.label),
+                    ),
+                  );
+                }
+
+                // Note: We're not using BaseScreen here since we're already inside a tab
                 return Scaffold(
-                  appBar: tab_components.SelectionAppBar(
-                    selectedCount: _selectedFilePaths.length,
-                    onClearSelection: _clearSelection,
-                    selectedFilePaths: _selectedFilePaths.toList(),
-                    showRemoveTagsDialog: _showRemoveTagsDialog,
-                    showManageAllTagsDialog: (context) =>
-                        _showManageAllTagsDialog(context),
-                    showDeleteConfirmationDialog: (context) =>
-                        _showDeleteConfirmationDialog(context),
-                  ),
+                  appBar: widget.showAppBar
+                      ? AppBar(
+                          title: _showSearchBar
+                              ? tab_components.SearchBar(
+                                  currentPath: _currentPath,
+                                  onCloseSearch: () {
+                                    setState(() {
+                                      _showSearchBar = false;
+                                    });
+                                  },
+                                )
+                              : tab_components.PathNavigationBar(
+                                  tabId: widget.tabId,
+                                  pathController: _pathController,
+                                  onPathSubmitted: _handlePathSubmit,
+                                  currentPath: _currentPath,
+                                ),
+                          actions: _showSearchBar ? [] : actions,
+                        )
+                      : null,
                   body: _buildBody(context, state),
                   floatingActionButton: FloatingActionButton(
-                    onPressed: () {
-                      tab_components.showBatchAddTagDialog(
-                          context, _selectedFilePaths.toList());
-                    },
-                    child: const Icon(Icons.label),
+                    onPressed: _toggleSelectionMode,
+                    child: const Icon(Icons.checklist),
                   ),
                 );
-              }
-
-              // Note: We're not using BaseScreen here since we're already inside a tab
-              return Scaffold(
-                appBar: widget.showAppBar
-                    ? AppBar(
-                        title: _showSearchBar
-                            ? tab_components.SearchBar(
-                                currentPath: _currentPath,
-                                onCloseSearch: () {
-                                  setState(() {
-                                    _showSearchBar = false;
-                                  });
-                                },
-                              )
-                            : tab_components.PathNavigationBar(
-                                tabId: widget.tabId,
-                                pathController: _pathController,
-                                onPathSubmitted: _handlePathSubmit,
-                                currentPath: _currentPath,
-                              ),
-                        actions: _showSearchBar ? [] : actions,
-                      )
-                    : null,
-                body: _buildBody(context, state),
-                floatingActionButton: FloatingActionButton(
-                  onPressed: _toggleSelectionMode,
-                  child: const Icon(Icons.checklist),
-                ),
-              );
-            },
+              },
+            ),
           ),
         ),
       ),

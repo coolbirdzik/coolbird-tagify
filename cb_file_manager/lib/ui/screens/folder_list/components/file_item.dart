@@ -63,9 +63,13 @@ class FileItem extends StatelessWidget {
     // Get tags for this file
     final List<String> fileTags = state.getTagsForFile(file.path);
 
-    return Card(
+    return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
-      color: isSelected ? Colors.blue.shade50 : null,
+      decoration: BoxDecoration(
+        color: isSelected ? Colors.blue.shade50 : Theme.of(context).cardColor,
+        border: Border.all(color: Colors.grey.shade300),
+        borderRadius: BorderRadius.circular(8.0),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

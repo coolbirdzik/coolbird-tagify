@@ -16,9 +16,13 @@ class FolderGridItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        border: Border.all(color: Colors.grey.shade300),
+        borderRadius: BorderRadius.circular(8.0),
+      ),
       clipBehavior: Clip.antiAlias,
-      elevation: 2,
       child: InkWell(
         onTap: () {
           if (onTap != null) {
@@ -26,8 +30,7 @@ class FolderGridItem extends StatelessWidget {
           }
         },
         child: Column(
-          mainAxisSize: MainAxisSize
-              .min, // Ensure the column only takes the minimum vertical space needed
+          mainAxisSize: MainAxisSize.min,
           children: [
             // Icon section
             Expanded(
