@@ -98,9 +98,9 @@ class BreadcrumbNavigation extends StatelessWidget {
     // Special handling for common Android paths
     if (parts.length > 2 && parts[1] == 'storage') {
       if (parts.length > 3 && parts[2] == 'emulated' && parts[3] == '0') {
-        // /storage/emulated/0 -> Internal Storage
+        // /storage/emulated/0 -> Internal Storage (Primary)
         String currentPath = '/storage/emulated/0';
-        result.add(BreadcrumbItem(currentPath, 'Internal Storage'));
+        result.add(BreadcrumbItem(currentPath, 'Internal Storage (Primary)'));
 
         for (int i = 4; i < parts.length; i++) {
           if (parts[i].isEmpty) continue;
@@ -110,12 +110,28 @@ class BreadcrumbNavigation extends StatelessWidget {
 
         return result;
       } else if (parts.length > 2 && parts[2] != 'emulated') {
-        // /storage/XXXX-XXXX -> SD Card
+        // /storage/XXXX-XXXX -> SD Card (XXXX-XXXX)
         String sdName = parts[2];
         String currentPath = '/storage/$sdName';
         result.add(BreadcrumbItem(currentPath, 'SD Card ($sdName)'));
 
         for (int i = 3; i < parts.length; i++) {
+          if (parts[i].isEmpty) continue;
+          currentPath += '/${parts[i]}';
+          result.add(BreadcrumbItem(currentPath, parts[i]));
+        }
+
+        return result;
+      } else if (parts.length > 3 &&
+          parts[2] == 'emulated' &&
+          parts[3] != '0') {
+        // /storage/emulated/X -> Secondary Storage (X)
+        String storageId = parts[3];
+        String currentPath = '/storage/emulated/$storageId';
+        result
+            .add(BreadcrumbItem(currentPath, 'Secondary Storage ($storageId)'));
+
+        for (int i = 4; i < parts.length; i++) {
           if (parts[i].isEmpty) continue;
           currentPath += '/${parts[i]}';
           result.add(BreadcrumbItem(currentPath, parts[i]));

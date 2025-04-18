@@ -554,14 +554,28 @@ class _CBDrawerState extends State<CBDrawer> {
       return 'Root (/)';
     }
 
-    if (path == '/storage/emulated/0' || path == '/sdcard') {
-      return 'Internal Storage';
+    // Clearly identify the main internal storage
+    if (path == '/storage/emulated/0') {
+      return 'Internal Storage (Primary)';
+    }
+
+    // Provide clarity for the sdcard path, which typically points to internal storage on modern devices
+    if (path == '/sdcard') {
+      return 'Internal Storage (sdcard)';
     }
 
     if (path.startsWith('/storage/') && path != '/storage') {
-      // Extract the SD card name from path like /storage/XXXX-XXXX
+      // For paths like /storage/XXXX-XXXX that are actually external SD cards
       String sdName = path.substring('/storage/'.length);
-      return 'SD Card ($sdName)';
+      if (sdName != 'emulated' && !sdName.startsWith('emulated/')) {
+        return 'SD Card ($sdName)';
+      }
+      // For paths like /storage/emulated/1 or other numbered emulated storage
+      else if (sdName.startsWith('emulated/') &&
+          !sdName.startsWith('emulated/0')) {
+        String emulatedId = sdName.substring('emulated/'.length);
+        return 'Secondary Storage ($emulatedId)';
+      }
     }
 
     if (path == '/storage') {
@@ -610,7 +624,8 @@ class _CBDrawerState extends State<CBDrawer> {
     }
 
     if (path.startsWith('/storage/') && path != '/storage') {
-      return Icons.sd_card;
+      // Sử dụng icon thẻ nhớ SD phù hợp hơn thay vì Icons.sd_card
+      return Icons.sd_storage;
     }
 
     if (path == '/storage') {
@@ -1071,14 +1086,28 @@ class _AppDrawerState extends State<AppDrawer> {
       return 'Root (/)';
     }
 
-    if (path == '/storage/emulated/0' || path == '/sdcard') {
-      return 'Internal Storage';
+    // Clearly identify the main internal storage
+    if (path == '/storage/emulated/0') {
+      return 'Internal Storage (Primary)';
+    }
+
+    // Provide clarity for the sdcard path, which typically points to internal storage on modern devices
+    if (path == '/sdcard') {
+      return 'Internal Storage (sdcard)';
     }
 
     if (path.startsWith('/storage/') && path != '/storage') {
-      // Extract the SD card name from path like /storage/XXXX-XXXX
+      // For paths like /storage/XXXX-XXXX that are actually external SD cards
       String sdName = path.substring('/storage/'.length);
-      return 'SD Card ($sdName)';
+      if (sdName != 'emulated' && !sdName.startsWith('emulated/')) {
+        return 'SD Card ($sdName)';
+      }
+      // For paths like /storage/emulated/1 or other numbered emulated storage
+      else if (sdName.startsWith('emulated/') &&
+          !sdName.startsWith('emulated/0')) {
+        String emulatedId = sdName.substring('emulated/'.length);
+        return 'Secondary Storage ($emulatedId)';
+      }
     }
 
     if (path == '/storage') {
@@ -1127,7 +1156,8 @@ class _AppDrawerState extends State<AppDrawer> {
     }
 
     if (path.startsWith('/storage/') && path != '/storage') {
-      return Icons.sd_card;
+      // Sử dụng icon thẻ nhớ SD phù hợp hơn thay vì Icons.sd_card
+      return Icons.sd_storage;
     }
 
     if (path == '/storage') {
