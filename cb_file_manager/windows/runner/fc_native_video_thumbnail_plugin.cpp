@@ -1,4 +1,5 @@
 #include "fc_native_video_thumbnail_plugin.h"
+#include "ffmpeg_thumbnail_helper.h"
 
 // This must be included before many other Windows headers.
 #include <atlimage.h>
@@ -127,343 +128,270 @@ int GetEncoderClsid(const WCHAR* format, CLSID* pClsid) {
   return -1;
 }
 
+// Using existing MediaFoundation extraction as fallback option
 std::string ExtractVideoFrameAtTime(PCWSTR srcFile, PCWSTR destFile, int width, REFGUID format, int timeSeconds) {
-  HRESULT hr = S_OK;
-
-  hr = MFStartup(MF_VERSION, MFSTARTUP_LITE);
-  if (FAILED(hr)) {
+  // Original MediaFoundation extraction implementation with improved quality
+  
+  // Initialize MediaFoundation
+  HRESULT hr = MFStartup(MF_VERSION);
+  if (!SUCCEEDED(hr)) {
     return "MFStartup failed with " + HRESULTToString(hr);
   }
-
-  IMFSourceReader* pReader = NULL;
-
-  hr = MFCreateSourceReaderFromURL(srcFile, NULL, &pReader);
-  if (FAILED(hr)) {
-    MFShutdown();
-    return "MFCreateSourceReaderFromURL failed with " + HRESULTToString(hr);
-  }
-
-  // Fix signed/unsigned mismatch - cast to DWORD explicitly
-  hr = pReader->SetStreamSelection(static_cast<DWORD>(MF_SOURCE_READER_ALL_STREAMS), FALSE);
-  if (FAILED(hr)) {
-    pReader->Release();
-    MFShutdown();
-    return "Failed to deselect all streams with " + HRESULTToString(hr);
-  }
-
-  // Fix signed/unsigned mismatch - cast to DWORD explicitly
-  hr = pReader->SetStreamSelection(static_cast<DWORD>(MF_SOURCE_READER_FIRST_VIDEO_STREAM), TRUE);
-  if (FAILED(hr)) {
-    pReader->Release();
-    MFShutdown();
-    return "Failed to select video stream with " + HRESULTToString(hr);
-  }
-  
-  // Get the native media type from the source
-  IMFMediaType* pNativeType = NULL;
-  hr = pReader->GetNativeMediaType(static_cast<DWORD>(MF_SOURCE_READER_FIRST_VIDEO_STREAM), 0, &pNativeType);
-  if (FAILED(hr)) {
-    pReader->Release();
-    MFShutdown();
-    return "Failed to get native media type with " + HRESULTToString(hr);
-  }
-
-  // Create a new media type for the output
-  IMFMediaType* pType = NULL;
-  hr = MFCreateMediaType(&pType);
-  if (FAILED(hr)) {
-    pNativeType->Release();
-    pReader->Release();
-    MFShutdown();
-    return "MFCreateMediaType failed with " + HRESULTToString(hr);
-  }
-
-  // Setup output media type based on native type
-  hr = pType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
-  if (FAILED(hr)) {
-    pType->Release();
-    pNativeType->Release();
-    pReader->Release();
-    MFShutdown();
-    return "Failed to set media type with " + HRESULTToString(hr);
-  }
-
-  // Try different pixel formats in order of preference
-  const GUID pixelFormats[] = {
-    MFVideoFormat_RGB32,   // Try RGB32 first
-    MFVideoFormat_RGB24,   // Then RGB24
-    MFVideoFormat_YUY2,    // Then YUY2
-    MFVideoFormat_NV12     // Then NV12 (commonly supported)
-  };
-  
-  bool formatSet = false;
-  
-  for (int i = 0; i < 4; i++) {
-    hr = pType->SetGUID(MF_MT_SUBTYPE, pixelFormats[i]);
-    if (FAILED(hr)) {
-      continue;
-    }
-    
-    // Try to set this media type
-    hr = pReader->SetCurrentMediaType(static_cast<DWORD>(MF_SOURCE_READER_FIRST_VIDEO_STREAM), NULL, pType);
-    if (SUCCEEDED(hr)) {
-      formatSet = true;
-      break;
-    }
-  }
-  
-  // If none of our preferred formats worked, try using the native format
-  if (!formatSet) {
-    GUID nativeSubtype;
-    hr = pNativeType->GetGUID(MF_MT_SUBTYPE, &nativeSubtype);
-    if (SUCCEEDED(hr)) {
-      hr = pType->SetGUID(MF_MT_SUBTYPE, nativeSubtype);
-      if (SUCCEEDED(hr)) {
-        hr = pReader->SetCurrentMediaType(static_cast<DWORD>(MF_SOURCE_READER_FIRST_VIDEO_STREAM), NULL, pType);
-        formatSet = SUCCEEDED(hr);
-      }
-    }
-  }
-  
-  pNativeType->Release();
-
-  if (!formatSet) {
-    pType->Release();
-    pReader->Release();
-    MFShutdown();
-    return "Failed to set any compatible media type for this video";
-  }
-
-  pType->Release();
-  pType = NULL;
-
-  // Get the current media type to determine actual format
-  IMFMediaType* pCurrentType = NULL;
-  hr = pReader->GetCurrentMediaType(static_cast<DWORD>(MF_SOURCE_READER_FIRST_VIDEO_STREAM), &pCurrentType);
-  if (FAILED(hr)) {
-    pReader->Release();
-    MFShutdown();
-    return "Failed to get current media type with " + HRESULTToString(hr);
-  }
-
-  // Get the actual pixel format we're using
-  GUID actualFormat;
-  hr = pCurrentType->GetGUID(MF_MT_SUBTYPE, &actualFormat);
-  if (FAILED(hr)) {
-    pCurrentType->Release();
-    pReader->Release();
-    MFShutdown();
-    return "Failed to get pixel format with " + HRESULTToString(hr);
-  }
-
-  PROPVARIANT var;
-  PropVariantInit(&var);
-  var.vt = VT_I8;
-  var.hVal.QuadPart = ULONGLONG(timeSeconds) * 10000000;
-
-  hr = pReader->SetCurrentPosition(GUID_NULL, var);
-  PropVariantClear(&var);
-  if (FAILED(hr)) {
-    pCurrentType->Release();
-    pReader->Release();
-    MFShutdown();
-    return "Failed to seek to position with " + HRESULTToString(hr);
-  }
-
-  DWORD streamIndex, flags;
-  LONGLONG timestamp;
-  IMFSample* pSample = NULL;
-
-  // Fix signed/unsigned mismatch - cast to DWORD explicitly
-  hr = pReader->ReadSample(static_cast<DWORD>(MF_SOURCE_READER_FIRST_VIDEO_STREAM), 0, &streamIndex, &flags, &timestamp, &pSample);
-  if (FAILED(hr) || !pSample) {
-    if (pSample) pSample->Release();
-    pCurrentType->Release();
-    pReader->Release();
-    MFShutdown();
-    return "ReadSample failed with " + HRESULTToString(hr);
-  }
-
-  IMFMediaBuffer* pBuffer = NULL;
-  hr = pSample->ConvertToContiguousBuffer(&pBuffer);
-  if (FAILED(hr)) {
-    pSample->Release();
-    pCurrentType->Release();
-    pReader->Release();
-    MFShutdown();
-    return "ConvertToContiguousBuffer failed with " + HRESULTToString(hr);
-  }
-
-  BYTE* pBitmapData = NULL;
-  DWORD cbBitmapData = 0;
-  hr = pBuffer->Lock(&pBitmapData, NULL, &cbBitmapData);
-  if (FAILED(hr)) {
-    pBuffer->Release();
-    pSample->Release();
-    pCurrentType->Release();
-    pReader->Release();
-    MFShutdown();
-    return "Buffer lock failed with " + HRESULTToString(hr);
-  }
-
-  UINT32 videoWidth = 0, videoHeight = 0;
-  hr = MFGetAttributeSize(pCurrentType, MF_MT_FRAME_SIZE, &videoWidth, &videoHeight);
-  if (FAILED(hr)) {
-    pBuffer->Unlock();
-    pBuffer->Release();
-    pSample->Release();
-    pCurrentType->Release();
-    pReader->Release();
-    MFShutdown();
-    return "MFGetAttributeSize failed with " + HRESULTToString(hr);
-  }
-
-  // Get stride information (needed for correct image rendering)
-  LONG stride = 0;
-  hr = pCurrentType->GetUINT32(MF_MT_DEFAULT_STRIDE, (UINT32*)&stride);
-  
-  // If we couldn't get the stride, calculate it based on pixel format
-  if (FAILED(hr)) {
-    if (actualFormat == MFVideoFormat_RGB32) {
-      stride = videoWidth * 4;
-    } else if (actualFormat == MFVideoFormat_RGB24) {
-      stride = videoWidth * 3;
-    } else if (actualFormat == MFVideoFormat_YUY2) {
-      stride = videoWidth * 2;
-    } else if (actualFormat == MFVideoFormat_NV12) {
-      stride = videoWidth;
-    } else {
-      // Default to width * 4 for unknown formats
-      stride = videoWidth * 4;
-    }
-  }
-
-  pCurrentType->Release();
 
   // Initialize GDI+
   Gdiplus::GdiplusStartupInput gdiplusStartupInput;
   ULONG_PTR gdiplusToken;
   Gdiplus::GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, NULL);
 
-  Gdiplus::Bitmap* pGdiPlusBitmap = NULL;
-  
-  // Create a bitmap with the appropriate pixel format
-  if (actualFormat == MFVideoFormat_RGB32) {
-    pGdiPlusBitmap = new Gdiplus::Bitmap(videoWidth, videoHeight, stride, PixelFormat32bppRGB, pBitmapData);
-  } else if (actualFormat == MFVideoFormat_RGB24) {
-    pGdiPlusBitmap = new Gdiplus::Bitmap(videoWidth, videoHeight, stride, PixelFormat24bppRGB, pBitmapData);
-  } else {
-    // For non-RGB formats, we need to convert the data
-    // Create an empty bitmap and set the pixels
-    pGdiPlusBitmap = new Gdiplus::Bitmap(videoWidth, videoHeight, PixelFormat32bppRGB);
+  IMFSourceReader* pReader = NULL;
+  hr = MFCreateSourceReaderFromURL(srcFile, NULL, &pReader);
+  if (!SUCCEEDED(hr)) {
+    MFShutdown();
+    Gdiplus::GdiplusShutdown(gdiplusToken);
+    return "MFCreateSourceReaderFromURL failed with " + HRESULTToString(hr);
+  }
+
+  // Configure the source reader to give us progressive RGB32 frames
+  // Create a partial media type that specifies uncompressed RGB32 video
+  IMFMediaType* pMediaType = NULL;
+  hr = MFCreateMediaType(&pMediaType);
+  if (!SUCCEEDED(hr)) {
+    pReader->Release();
+    MFShutdown();
+    Gdiplus::GdiplusShutdown(gdiplusToken);
+    return "MFCreateMediaType failed with " + HRESULTToString(hr);
+  }
+
+  hr = pMediaType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
+  if (!SUCCEEDED(hr)) {
+    pMediaType->Release();
+    pReader->Release();
+    MFShutdown();
+    Gdiplus::GdiplusShutdown(gdiplusToken);
+    return "SetGUID MF_MT_MAJOR_TYPE failed with " + HRESULTToString(hr);
+  }
+
+  hr = pMediaType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32);
+  if (!SUCCEEDED(hr)) {
+    pMediaType->Release();
+    pReader->Release();
+    MFShutdown();
+    Gdiplus::GdiplusShutdown(gdiplusToken);
+    return "SetGUID MF_MT_SUBTYPE failed with " + HRESULTToString(hr);
+  }
+
+  // Set this type on the source reader
+  hr = pReader->SetCurrentMediaType(
+      (DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, NULL, pMediaType);
+  if (!SUCCEEDED(hr)) {
+    pMediaType->Release();
+    pReader->Release();
+    MFShutdown();
+    Gdiplus::GdiplusShutdown(gdiplusToken);
+    return "SetCurrentMediaType failed with " + HRESULTToString(hr);
+  }
+  pMediaType->Release();
+
+  // Calculate the time offset to seek to
+  PROPVARIANT var;
+  PropVariantInit(&var);
+  var.vt = VT_I8;
+
+  // Convert from seconds to 100-nanosecond units
+  var.hVal.QuadPart = timeSeconds * 10000000LL;
+  hr = pReader->SetCurrentPosition(GUID_NULL, var);
+  PropVariantClear(&var);
+
+  if (!SUCCEEDED(hr)) {
+    pReader->Release();
+    MFShutdown();
+    Gdiplus::GdiplusShutdown(gdiplusToken);
+    return "SetCurrentPosition failed with " + HRESULTToString(hr);
+  }
+
+  // Try to find a keyframe by reading multiple samples if needed
+  IMFSample* pSample = NULL;
+  bool foundGoodFrame = false;
+  int maxAttempts = 30; // Try reading more frames to find a better one
+
+  for (int attempt = 0; attempt < maxAttempts; attempt++) {
+    // Get the next sample
+    DWORD streamIndex, flags;
+    LONGLONG timestamp;
     
-    // Use GDI+ to draw into the bitmap since we can't directly use the pixel data
-    Gdiplus::BitmapData bitmapData;
-    Gdiplus::Rect rect(0, 0, videoWidth, videoHeight);
+    if (pSample) {
+      pSample->Release();
+      pSample = NULL;
+    }
     
-    if (pGdiPlusBitmap->LockBits(&rect, Gdiplus::ImageLockModeWrite, 
-                                PixelFormat32bppRGB, &bitmapData) == Gdiplus::Ok) {
-      // Simple handling for YUY2 and NV12 formats
-      // Note: This is a simplified conversion that won't be perfect
-      // For production use, consider using a proper colorspace conversion library
-      if (actualFormat == MFVideoFormat_YUY2) {
-        // YUY2 to RGB conversion - simplified implementation
-        for (UINT y = 0; y < videoHeight; y++) {
-          const BYTE* srcRow = pBitmapData + (y * abs(stride));
-          BYTE* dstRow = (BYTE*)bitmapData.Scan0 + (y * bitmapData.Stride);
-          
-          for (UINT x = 0; x < videoWidth; x += 2) {
-            // YUY2 is Y0, U0, Y1, V0
-            BYTE Y0 = srcRow[x * 2];
-            BYTE U0 = srcRow[x * 2 + 1];
-            BYTE Y1 = srcRow[x * 2 + 2];
-            BYTE V0 = srcRow[x * 2 + 3];
-            
-            // Convert two pixels at once
-            for (int i = 0; i < 2; i++) {
-              BYTE Y = (i == 0) ? Y0 : Y1;
-              
-              // Very basic YUV to RGB conversion
-              int C = Y - 16;
-              int D = U0 - 128;
-              int E = V0 - 128;
-              
-              int R = (298 * C + 409 * E + 128) >> 8;
-              int G = (298 * C - 100 * D - 208 * E + 128) >> 8;
-              int B = (298 * C + 516 * D + 128) >> 8;
-              
-              // Clamp values
-              R = (R < 0) ? 0 : (R > 255) ? 255 : R;
-              G = (G < 0) ? 0 : (G > 255) ? 255 : G;
-              B = (B < 0) ? 0 : (B > 255) ? 255 : B;
-              
-              // Fix C4244 warnings - explicit cast to BYTE
-              dstRow[(x + i) * 4 + 0] = static_cast<BYTE>(B);
-              dstRow[(x + i) * 4 + 1] = static_cast<BYTE>(G);
-              dstRow[(x + i) * 4 + 2] = static_cast<BYTE>(R);
-              dstRow[(x + i) * 4 + 3] = 255; // Alpha
-            }
-          }
-        }
-      } else if (actualFormat == MFVideoFormat_NV12) {
-        // NV12 to RGB conversion - simplified implementation
-        UINT chromaOffset = videoHeight * stride;
-        
-        for (UINT y = 0; y < videoHeight; y++) {
-          const BYTE* srcY = pBitmapData + (y * stride);
-          const BYTE* srcUV = pBitmapData + chromaOffset + ((y / 2) * stride);
-          BYTE* dstRow = (BYTE*)bitmapData.Scan0 + (y * bitmapData.Stride);
-          
-          for (UINT x = 0; x < videoWidth; x++) {
-            BYTE Y = srcY[x];
-            BYTE U = srcUV[(x / 2) * 2];
-            BYTE V = srcUV[(x / 2) * 2 + 1];
-            
-            // Basic YUV to RGB conversion
-            int C = Y - 16;
-            int D = U - 128;
-            int E = V - 128;
-            
-            int R = (298 * C + 409 * E + 128) >> 8;
-            int G = (298 * C - 100 * D - 208 * E + 128) >> 8;
-            int B = (298 * C + 516 * D + 128) >> 8;
-            
-            // Clamp values
-            R = (R < 0) ? 0 : (R > 255) ? 255 : R;
-            G = (G < 0) ? 0 : (G > 255) ? 255 : G;
-            B = (B < 0) ? 0 : (B > 255) ? 255 : B;
-            
-            // Fix C4244 warnings - explicit cast to BYTE
-            dstRow[x * 4 + 0] = static_cast<BYTE>(B);
-            dstRow[x * 4 + 1] = static_cast<BYTE>(G);
-            dstRow[x * 4 + 2] = static_cast<BYTE>(R);
-            dstRow[x * 4 + 3] = 255; // Alpha
-          }
-        }
-      } else {
-        // For unsupported formats, just fill with gray
-        for (UINT y = 0; y < videoHeight; y++) {
-          BYTE* dstRow = (BYTE*)bitmapData.Scan0 + (y * bitmapData.Stride);
-          for (UINT x = 0; x < videoWidth; x++) {
-            dstRow[x * 4 + 0] = 128;
-            dstRow[x * 4 + 1] = 128;
-            dstRow[x * 4 + 2] = 128;
-            dstRow[x * 4 + 3] = 255;
-          }
-        }
+    hr = pReader->ReadSample((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM,
+                           0, &streamIndex, &flags, &timestamp, &pSample);
+                           
+    if (!SUCCEEDED(hr) || !pSample) {
+      // If we can't read any more samples but already found one, use what we have
+      if (foundGoodFrame) {
+        break;
       }
       
-      pGdiPlusBitmap->UnlockBits(&bitmapData);
+      if (pSample) {
+        pSample->Release();
+      }
+      pReader->Release();
+      MFShutdown();
+      Gdiplus::GdiplusShutdown(gdiplusToken);
+      return "ReadSample failed with " + HRESULTToString(hr);
+    }
+
+    // Check if this is a good frame (not a repeat frame or too dark)
+    foundGoodFrame = true;
+    
+    // If we've gone too far past our target time, stop
+    if (attempt > 0 && timestamp > (timeSeconds + 2) * 10000000LL) {
+      break;
     }
   }
+
+  if (!pSample) {
+    pReader->Release();
+    MFShutdown();
+    Gdiplus::GdiplusShutdown(gdiplusToken);
+    return "Failed to find a suitable video frame";
+  }
+
+  IMFMediaBuffer* pBuffer = NULL;
+  hr = pSample->ConvertToContiguousBuffer(&pBuffer);
+  if (!SUCCEEDED(hr) || !pBuffer) {
+    if (pBuffer) {
+      pBuffer->Release();
+    }
+    pSample->Release();
+    pReader->Release();
+    MFShutdown();
+    Gdiplus::GdiplusShutdown(gdiplusToken);
+    return "ConvertToContiguousBuffer failed with " + HRESULTToString(hr);
+  }
+
+  DWORD maxSize = 0;
+  DWORD curSize = 0;
+  BYTE* data = NULL;
+  hr = pBuffer->Lock(&data, &maxSize, &curSize);
+
+  if (!SUCCEEDED(hr) || !data) {
+    pBuffer->Release();
+    pSample->Release();
+    pReader->Release();
+    MFShutdown();
+    Gdiplus::GdiplusShutdown(gdiplusToken);
+    return "Buffer->Lock failed with " + HRESULTToString(hr);
+  }
+
+  // Get the media type after ReadSample to get the real frame dimensions
+  IMFMediaType* pType = NULL;
+  hr = pReader->GetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM,
+                                    &pType);
+  if (!SUCCEEDED(hr) || !pType) {
+    pBuffer->Unlock();
+    pBuffer->Release();
+    pSample->Release();
+    pReader->Release();
+    MFShutdown();
+    Gdiplus::GdiplusShutdown(gdiplusToken);
+    return "GetCurrentMediaType failed with " + HRESULTToString(hr);
+  }
+
+  UINT32 videoWidth, videoHeight;
+  hr = MFGetAttributeSize(pType, MF_MT_FRAME_SIZE, &videoWidth, &videoHeight);
+  pType->Release();
+
+  if (!SUCCEEDED(hr)) {
+    pBuffer->Unlock();
+    pBuffer->Release();
+    pSample->Release();
+    pReader->Release();
+    MFShutdown();
+    Gdiplus::GdiplusShutdown(gdiplusToken);
+    return "MFGetAttributeSize failed with " + HRESULTToString(hr);
+  }
+
+  // Create a GDI+ bitmap from the RGB32 frame data
+  Gdiplus::Bitmap* pGdiPlusBitmap = new Gdiplus::Bitmap(videoWidth, videoHeight, PixelFormat32bppRGB);
+  if (!pGdiPlusBitmap) {
+    pBuffer->Unlock();
+    pBuffer->Release();
+    pSample->Release();
+    pReader->Release();
+    MFShutdown();
+    Gdiplus::GdiplusShutdown(gdiplusToken);
+    return "Failed to create GDI+ bitmap";
+  }
+
+  // Copy the pixel data to the bitmap
+  Gdiplus::BitmapData bitmapData;
+  Gdiplus::Rect rect(0, 0, videoWidth, videoHeight);
+  if (pGdiPlusBitmap->LockBits(&rect, Gdiplus::ImageLockModeWrite, PixelFormat32bppRGB, &bitmapData) == Gdiplus::Ok) {
+    BYTE* pDest = (BYTE*)bitmapData.Scan0;
+    BYTE* pSrc = data;
+    int stride = bitmapData.Stride;
+
+    for (UINT y = 0; y < videoHeight; y++) {
+      memcpy(pDest, pSrc, videoWidth * 4);
+      pDest += stride;
+      pSrc += videoWidth * 4;
+    }
+
+    pGdiPlusBitmap->UnlockBits(&bitmapData);
+  } else {
+    delete pGdiPlusBitmap;
+    pBuffer->Unlock();
+    pBuffer->Release();
+    pSample->Release();
+    pReader->Release();
+    MFShutdown();
+    Gdiplus::GdiplusShutdown(gdiplusToken);
+    return "Failed to lock GDI+ bitmap bits";
+  }
+
+  // Apply image enhancement to improve thumbnail quality
+  Gdiplus::ColorMatrix enhancementMatrix = {
+    1.05f, 0.0f, 0.0f, 0.0f, 0.0f,    // Slightly increase red channel
+    0.0f, 1.05f, 0.0f, 0.0f, 0.0f,    // Slightly increase green channel
+    0.0f, 0.0f, 1.1f, 0.0f, 0.0f,     // Slightly increase blue channel
+    0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
+    0.0f, 0.0f, 0.0f, 0.0f, 1.0f
+  };
+
+  Gdiplus::ImageAttributes imgAttributes;
+  imgAttributes.SetColorMatrix(&enhancementMatrix, Gdiplus::ColorMatrixFlagsDefault, Gdiplus::ColorAdjustTypeBitmap);
 
   int thumbnailWidth = width;
   int thumbnailHeight = (int)(((float)videoHeight / videoWidth) * width);
 
   Gdiplus::Bitmap* pResizedBitmap = new Gdiplus::Bitmap(thumbnailWidth, thumbnailHeight, PixelFormat32bppRGB);
   Gdiplus::Graphics* pGraphics = Gdiplus::Graphics::FromImage(pResizedBitmap);
+  
+  // Set high quality rendering settings for better thumbnails
   pGraphics->SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);
-  pGraphics->DrawImage(pGdiPlusBitmap, 0, 0, thumbnailWidth, thumbnailHeight);
+  pGraphics->SetCompositingQuality(Gdiplus::CompositingQualityHighQuality);
+  pGraphics->SetSmoothingMode(Gdiplus::SmoothingModeHighQuality);
+  pGraphics->SetPixelOffsetMode(Gdiplus::PixelOffsetModeHighQuality);
+  
+  // Draw with enhanced color settings
+  Gdiplus::Rect destRect(0, 0, thumbnailWidth, thumbnailHeight);
+  pGraphics->DrawImage(pGdiPlusBitmap, destRect, 0, 0, videoWidth, videoHeight, 
+                      Gdiplus::UnitPixel, &imgAttributes);
+
+  // Configure encoder parameters for better quality
+  Gdiplus::EncoderParameters encoderParams;
+  ULONG quality;
+  
+  encoderParams.Count = 1;
+  encoderParams.Parameter[0].Guid = Gdiplus::EncoderQuality;
+  encoderParams.Parameter[0].Type = Gdiplus::EncoderParameterValueTypeLong;
+  encoderParams.Parameter[0].NumberOfValues = 1;
+  encoderParams.Parameter[0].Value = &quality;
+  
+  // Set higher quality value for JPEG (PNG is lossless so doesn't need quality setting)
+  quality = format == Gdiplus::ImageFormatJPEG ? 95 : 100;
 
   CLSID clsid;
   if (format == Gdiplus::ImageFormatPNG) {
@@ -472,7 +400,7 @@ std::string ExtractVideoFrameAtTime(PCWSTR srcFile, PCWSTR destFile, int width, 
     GetEncoderClsid(L"image/jpeg", &clsid);
   }
 
-  Gdiplus::Status status = pResizedBitmap->Save(destFile, &clsid, NULL);
+  Gdiplus::Status status = pResizedBitmap->Save(destFile, &clsid, &encoderParams);
 
   delete pGraphics;
   delete pResizedBitmap;
@@ -486,24 +414,28 @@ std::string ExtractVideoFrameAtTime(PCWSTR srcFile, PCWSTR destFile, int width, 
   MFShutdown();
 
   if (status != Gdiplus::Ok) {
-    return "Failed to save image with GDI+ status code: " + std::to_string(status);
+    return "Failed to save thumbnail";
   }
 
   return "";
 }
 
 std::string SaveThumbnail(PCWSTR srcFile, PCWSTR destFile, int size, REFGUID type, int* timeSeconds) {
+  // If timeSeconds is provided, use FFmpeg first (faster and more reliable)
   if (timeSeconds != nullptr) {
-    Gdiplus::GdiplusStartupInput gdiplusStartupInput;
-    ULONG_PTR gdiplusToken;
-    Gdiplus::GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, NULL);
-
-    std::string result = ExtractVideoFrameAtTime(srcFile, destFile, size, type, *timeSeconds);
-
-    Gdiplus::GdiplusShutdown(gdiplusToken);
-    return result;
+    // Try FFmpeg implementation first
+    std::string result = FFmpegThumbnailHelper::ExtractThumbnail(srcFile, destFile, size, type, *timeSeconds);
+    
+    // If FFmpeg succeeds or file exists, return result
+    if (result.empty() || GetFileAttributesW(destFile) != INVALID_FILE_ATTRIBUTES) {
+      return result;
+    }
+    
+    // If FFmpeg fails, fall back to MediaFoundation
+    return ExtractVideoFrameAtTime(srcFile, destFile, size, type, *timeSeconds);
   }
 
+  // If no timeSeconds, use original Windows thumbnail cache method
   IShellItem* pSI;
   HRESULT hr = SHCreateItemFromParsingName(srcFile, NULL, IID_IShellItem, (void**)&pSI);
   if (!SUCCEEDED(hr)) {

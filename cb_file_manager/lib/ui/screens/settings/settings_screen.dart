@@ -128,7 +128,64 @@ class _SettingsScreenState extends State<SettingsScreen> {
       // Call the clearCache method from VideoThumbnailHelper
       await VideoThumbnailHelper.clearCache();
 
-      // Show success message
+      // Get the current directory path from context or last opened folder
+      String currentDirectory = _preferences.getLastAccessedFolder() ?? '';
+
+      // Only attempt to regenerate thumbnails if we're still mounted
+      // This prevents crashes when users navigate back immediately
+      if (mounted && currentDirectory.isNotEmpty) {
+        try {
+          // Regenerate thumbnails for the current directory automatically
+          // Add timeout to prevent hanging if the process takes too long
+          await VideoThumbnailHelper.regenerateThumbnailsForDirectory(
+                  currentDirectory)
+              .timeout(
+            const Duration(seconds: 3),
+            onTimeout: () {
+              // Just log timeout but don't throw an exception
+              debugPrint(
+                  'Thumbnail regeneration timed out, user may have navigated away');
+            },
+          );
+        } catch (e) {
+          // Catch and log errors but don't fail the entire operation
+          debugPrint('Error during thumbnail regeneration: $e');
+        }
+      }
+
+      // Force refresh of the UI by rebuilding the widget tree
+      if (mounted) {
+        // Notify the ImageCache to clear Flutter's internal image cache
+        PaintingBinding.instance.imageCache.clear();
+        PaintingBinding.instance.imageCache.clearLiveImages();
+
+        // Send a notification to folder screens that thumbnails have been cleared
+        // This will trigger a rebuild of any folder screens that are visible
+        VideoThumbnailHelper.setVerboseLogging(true);
+
+        // Force the application to rebuild screens that might be showing thumbnails
+        try {
+          // Wait a short time for the cache clearing operation to complete
+          await Future.delayed(const Duration(milliseconds: 100));
+
+          // Use this special method to notify the app's state needs to refresh
+          final navigatorState = Navigator.of(context);
+          if (navigatorState.canPop()) {
+            // Briefly pop and push the same screen to force a refresh
+            navigatorState.pop();
+            await Future.delayed(const Duration(milliseconds: 50));
+            if (mounted) {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const SettingsScreen()),
+              );
+            }
+          }
+        } catch (e) {
+          debugPrint('Error refreshing UI after cache clear: $e');
+        }
+      }
+
+      // Show success message only if we're still mounted
       if (mounted) {
         ScaffoldMessenger.of(context).clearSnackBars();
         ScaffoldMessenger.of(context).showSnackBar(

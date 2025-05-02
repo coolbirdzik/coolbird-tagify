@@ -1,10 +1,13 @@
 import 'dart:io';
+import 'dart:async'; // Add this import for Completer
 
 import 'package:cb_file_manager/ui/screens/folder_list/file_details_screen.dart'; // Add this import
 import 'package:cb_file_manager/ui/screens/media_gallery/image_gallery_screen.dart';
 import 'package:cb_file_manager/ui/screens/media_gallery/video_gallery_screen.dart';
 import 'package:cb_file_manager/ui/components/shared_action_bar.dart';
+import 'package:cb_file_manager/helpers/frame_timing_optimizer.dart'; // Import frame timing optimizer
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart'; // Add for scheduler bindings
 import 'package:flutter/gestures.dart'; // Import for mouse buttons
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:cb_file_manager/helpers/user_preferences.dart';
@@ -230,24 +233,56 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
   }
 
   void _refreshFileList() {
-    // Clear Flutter's image cache to force reload of all images
+    // Show loading indicator
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Đang làm mới thumbnails...'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+
+    // Đặt cờ để đánh dấu đang trong quá trình refresh
+    bool isRefreshing = true;
+
+    // Xóa cache hình ảnh của Flutter
     PaintingBinding.instance.imageCache.clear();
     PaintingBinding.instance.imageCache.clearLiveImages();
 
-    // Clear thumbnail cache and system-level caches
+    // Xóa cache thumbnail và cache hệ thống
     VideoThumbnailHelper.clearCache();
 
-    // Reload the folder with forceRegenerate flag to ensure fresh thumbnails
+    // Reload thư mục với forceRegenerateThumbnails để đảm bảo thumbnail được tạo mới
     _folderListBloc
         .add(FolderListRefresh(_currentPath, forceRegenerateThumbnails: true));
 
-    // Show a brief message that thumbnails are refreshing
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Refreshing thumbnails...'),
-        duration: Duration(seconds: 1),
-      ),
-    );
+    // Thiết lập thời gian chờ cố định 3 giây (đủ để đảm bảo hoàn tất các thao tác trên UI)
+    Future.delayed(const Duration(seconds: 3), () {
+      if (mounted && isRefreshing) {
+        isRefreshing = false;
+        // Thông báo hoàn tất làm mới
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Đã làm mới xong!'),
+            duration: Duration(seconds: 1),
+          ),
+        );
+      }
+    });
+
+    // Thiết lập timeout dài hơn để đảm bảo không bị kẹt
+    Future.delayed(const Duration(seconds: 15), () {
+      // Đảm bảo không hiển thị thông báo hai lần
+      if (mounted && isRefreshing) {
+        isRefreshing = false;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+                'Đã hoàn tất làm mới. Một số thumbnail có thể cần thời gian để cập nhật.'),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    });
   }
 
   void _showSearchScreen(BuildContext context, FolderListState state) {
@@ -661,6 +696,9 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
   }
 
   Widget _buildBody(BuildContext context, FolderListState state) {
+    // Apply frame timing optimization before heavy UI operations
+    FrameTimingOptimizer().optimizeBeforeHeavyOperation();
+
     if (state.isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -792,19 +830,46 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
     // Default view - folders and files
     return RefreshIndicator(
       onRefresh: () async {
+        // Create the completer first
+        final completer = Completer<void>();
+
+        // Create the subscription variable
+        late StreamSubscription subscription;
+
+        // Now set up the listener
+        subscription = _folderListBloc.stream.listen((state) {
+          // When loading is done (changed from true to false), complete the Future
+          if (!state.isLoading) {
+            completer.complete();
+            subscription.cancel();
+          }
+        });
+
         // Use FolderListRefresh instead of FolderListLoad to force thumbnail regeneration
         VideoThumbnailHelper.trimCache();
         _folderListBloc.add(
             FolderListRefresh(_currentPath, forceRegenerateThumbnails: true));
+
+        // Wait for the loading to complete before returning
+        return completer.future;
       },
       child: _buildFolderAndFileList(state),
     );
   }
 
   Widget _buildFolderAndFileList(FolderListState state) {
+    // Apply frame timing optimizations before heavy list/grid operations
+    FrameTimingOptimizer().optimizeBeforeHeavyOperation();
+
     if (state.viewMode == ViewMode.grid) {
       return GridView.builder(
         padding: const EdgeInsets.all(8.0),
+        // Add physics for better scrolling performance
+        physics: const BouncingScrollPhysics(
+          parent: AlwaysScrollableScrollPhysics(),
+        ),
+        // Add caching for better scroll performance
+        cacheExtent: 500,
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: state.gridZoomLevel,
           crossAxisSpacing: 8,
@@ -812,55 +877,55 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
         ),
         itemCount: state.folders.length + state.files.length,
         itemBuilder: (context, index) {
-          if (index < state.folders.length) {
-            // This is a folder
-            final folder = state.folders[index] as Directory;
-            return tab_components.FolderGridItem(
-                folder: folder, onNavigate: _navigateToPath);
-          } else {
-            // This is a file
-            final fileIndex = index - state.folders.length;
-            if (fileIndex < state.files.length) {
-              final file = state.files[fileIndex] as File;
-              return folder_list_components.FileGridItem(
-                file: file,
-                state: state,
-                isSelectionMode: _isSelectionMode,
-                isSelected: _selectedFilePaths.contains(file.path),
-                toggleFileSelection: _toggleFileSelection,
-                toggleSelectionMode: _toggleSelectionMode,
-                onFileTap: _onFileTap, // Thêm callback để mở file
-              );
-            }
-            return Container(); // Fallback for any index issues
-          }
+          // Wrap with RepaintBoundary to optimize rendering
+          return RepaintBoundary(
+            child: index < state.folders.length
+                ? tab_components.FolderGridItem(
+                    folder: state.folders[index] as Directory,
+                    onNavigate: _navigateToPath)
+                : folder_list_components.FileGridItem(
+                    file: state.files[index - state.folders.length] as File,
+                    state: state,
+                    isSelectionMode: _isSelectionMode,
+                    isSelected: _selectedFilePaths.contains(
+                        state.files[index - state.folders.length].path),
+                    toggleFileSelection: _toggleFileSelection,
+                    toggleSelectionMode: _toggleSelectionMode,
+                    onFileTap: _onFileTap,
+                  ),
+          );
         },
       );
     } else {
-      return ListView(
-        children: [
-          // Folders list
-          ...state.folders
-              .map((folder) => tab_components.FolderListItem(
-                    folder: folder as Directory,
+      return ListView.builder(
+        // Add physics for better scrolling performance
+        physics: const BouncingScrollPhysics(
+          parent: AlwaysScrollableScrollPhysics(),
+        ),
+        // Add caching for better scroll performance
+        cacheExtent: 500,
+        itemCount: state.folders.length + state.files.length,
+        itemBuilder: (context, index) {
+          // Use RepaintBoundary to reduce rendering load
+          return RepaintBoundary(
+            child: index < state.folders.length
+                ? tab_components.FolderListItem(
+                    folder: state.folders[index] as Directory,
                     onNavigate: _navigateToPath,
-                  ))
-              .toList(),
-
-          // Files list
-          ...state.files
-              .map((file) => folder_list_components.FileItem(
-                    file: file as File,
+                  )
+                : folder_list_components.FileItem(
+                    file: state.files[index - state.folders.length] as File,
                     state: state,
                     isSelectionMode: _isSelectionMode,
-                    isSelected: _selectedFilePaths.contains(file.path),
+                    isSelected: _selectedFilePaths.contains(
+                        state.files[index - state.folders.length].path),
                     toggleFileSelection: _toggleFileSelection,
                     showDeleteTagDialog: _showDeleteTagDialog,
                     showAddTagToFileDialog: _showAddTagToFileDialog,
-                    onFileTap: _onFileTap, // Thêm callback để mở file
-                  ))
-              .toList(),
-        ],
+                    onFileTap: _onFileTap,
+                  ),
+          );
+        },
       );
     }
   }

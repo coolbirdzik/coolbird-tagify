@@ -1,18 +1,22 @@
 import 'dart:io';
+import 'dart:async';
 
 import 'package:cb_file_manager/helpers/io_extensions.dart';
 import 'package:cb_file_manager/helpers/batch_tag_manager.dart';
 import 'package:cb_file_manager/helpers/tag_manager.dart';
+import 'package:cb_file_manager/helpers/frame_timing_optimizer.dart';
 import 'package:cb_file_manager/ui/screens/folder_list/file_details_screen.dart';
 import 'package:cb_file_manager/ui/screens/media_gallery/image_gallery_screen.dart';
 import 'package:cb_file_manager/ui/screens/media_gallery/video_gallery_screen.dart';
 import 'package:cb_file_manager/ui/utils/base_screen.dart';
 import 'package:cb_file_manager/ui/components/shared_action_bar.dart'; // Import SharedActionBar
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:path/path.dart' as pathlib;
 import 'package:cb_file_manager/helpers/user_preferences.dart';
 import 'package:cb_file_manager/main.dart'; // Import for goHome function
+import 'package:cb_file_manager/helpers/video_thumbnail_helper.dart';
 
 import 'folder_list_bloc.dart';
 import 'folder_list_event.dart';
@@ -211,7 +215,61 @@ class _FolderListScreenState extends State<FolderListScreen> {
   }
 
   void _refreshFileList() {
-    _folderListBloc.add(FolderListLoad(widget.path));
+    // Hiển thị thông báo đang làm mới
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Đang làm mới thumbnails...'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+
+    // Đặt cờ để theo dõi trạng thái refresh
+    bool isRefreshing = true;
+
+    // Xóa cache hình ảnh của Flutter - sửa từ SchedulerBinding sang PaintingBinding
+    PaintingBinding.instance.imageCache.clear();
+    PaintingBinding.instance.imageCache.clearLiveImages();
+
+    // Gọi hàm xóa cache thumbnail
+    try {
+      // Xóa cache thumbnail
+      VideoThumbnailHelper.clearCache();
+    } catch (e) {
+      print('Error clearing thumbnail cache: $e');
+    }
+
+    // Reload folder với forceRegenerateThumbnails để tạo lại thumbnail
+    _folderListBloc
+        .add(FolderListRefresh(widget.path, forceRegenerateThumbnails: true));
+
+    // Thiết lập thời gian cố định để hiển thị hoàn thành
+    Future.delayed(const Duration(seconds: 3), () {
+      if (mounted && isRefreshing) {
+        isRefreshing = false;
+        // Thông báo hoàn tất làm mới
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Đã làm mới xong!'),
+            duration: Duration(seconds: 1),
+          ),
+        );
+      }
+    });
+
+    // Thiết lập timeout dài hơn để đảm bảo không bị kẹt
+    Future.delayed(const Duration(seconds: 15), () {
+      if (mounted && isRefreshing) {
+        isRefreshing = false;
+        // Thông báo hoàn tất khi timeout
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+                'Đã hoàn tất làm mới. Một số thumbnail có thể cần thời gian để cập nhật.'),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    });
   }
 
   void _showSearchScreen(BuildContext context, FolderListState state) {

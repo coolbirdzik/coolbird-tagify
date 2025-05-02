@@ -154,142 +154,119 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
 
   void _onFolderListRefresh(
       FolderListRefresh event, Emitter<FolderListState> emit) async {
-    emit(state.copyWith(
-      isLoading: true,
-      currentPath: Directory(event.path),
-    ));
-
-    // Special case for empty path on Windows - this is used for the drive listing view
-    if (event.path.isEmpty && Platform.isWindows) {
-      emit(state.copyWith(
-          isLoading: false, folders: [], files: [], error: null));
-      return;
-    }
+    emit(state.copyWith(isLoading: true));
 
     try {
-      if (event.forceRegenerateThumbnails) {
-        // Call VideoThumbnailHelper's method to invalidate thumbnails for videos in this directory
-        await _invalidateVideoThumbnails(event.path);
-      }
-
       final directory = Directory(event.path);
       if (await directory.exists()) {
-        try {
-          List<FileSystemEntity> contents = await directory.list().toList();
+        // Load folder contents first
+        List<FileSystemEntity> contents = await directory.list().toList();
 
-          // Separate folders and files
-          final List<FileSystemEntity> folders = [];
-          final List<FileSystemEntity> files = [];
+        // Separate folders and files
+        final List<FileSystemEntity> folders = [];
+        final List<FileSystemEntity> files = [];
 
-          for (var entity in contents) {
-            if (entity is Directory) {
-              folders.add(entity);
-            } else if (entity is File) {
-              // Skip tag files - no longer needed with global tags
-              if (!entity.path.endsWith('.tags')) {
-                files.add(entity);
-              }
+        for (var entity in contents) {
+          if (entity is Directory) {
+            folders.add(entity);
+          } else if (entity is File) {
+            // Skip tag files
+            if (!entity.path.endsWith('.tags')) {
+              files.add(entity);
             }
-          }
-
-          // Load tags for all files
-          Map<String, List<String>> fileTags = {};
-          for (var file in files) {
-            if (file is File) {
-              final tags = await TagManager.getTags(file.path);
-              if (tags.isNotEmpty) {
-                fileTags[file.path] = tags;
-              }
-            }
-          }
-
-          emit(state.copyWith(
-            isLoading: false,
-            folders: folders,
-            files: files,
-            fileTags: fileTags,
-            error: null, // Clear any previous errors
-          ));
-
-          // Load all unique tags in this directory (async)
-          add(LoadAllTags(event.path));
-        } catch (e) {
-          // Handle specific permission errors
-          if (e.toString().toLowerCase().contains('permission denied') ||
-              e.toString().toLowerCase().contains('access denied')) {
-            emit(state.copyWith(
-              isLoading: false,
-              error:
-                  "Access denied: Administrator privileges required to access ${event.path}",
-              folders: [],
-              files: [],
-            ));
-          } else {
-            emit(state.copyWith(
-              isLoading: false,
-              error: "Error accessing directory: ${e.toString()}",
-              folders: [],
-              files: [],
-            ));
           }
         }
+
+        // Load tags for all files
+        Map<String, List<String>> fileTags = {};
+        for (var file in files) {
+          if (file is File) {
+            final tags = await TagManager.getTags(file.path);
+            if (tags.isNotEmpty) {
+              fileTags[file.path] = tags;
+            }
+          }
+        }
+
+        // IMPORTANT: Update UI state IMMEDIATELY to show content, even before thumbnails are ready
+        // This prevents UI blocking while thumbnails are generated
+        emit(state.copyWith(
+          isLoading: false, // Set to false right away so UI is not blocked
+          folders: folders,
+          files: files,
+          fileTags: fileTags,
+          error: null,
+          currentPath: Directory(event.path),
+        ));
+
+        // Start thumbnail generation in background AFTER updating UI
+        if (event.forceRegenerateThumbnails) {
+          // Find video files
+          final videoFiles = files.where((file) {
+            if (file is File) {
+              String extension = file.path.split('.').last.toLowerCase();
+              return [
+                'mp4',
+                'mov',
+                'avi',
+                'mkv',
+                'flv',
+                'wmv',
+                'webm',
+                '3gp',
+                'm4v'
+              ].contains(extension);
+            }
+            return false;
+          }).toList();
+
+          // Don't await here - process in background
+          _generateThumbnailsInBackground(videoFiles);
+        }
+
+        // Load all unique tags in this directory (async)
+        add(LoadAllTags(event.path));
       } else {
         emit(state.copyWith(
-            isLoading: false, error: "Directory does not exist"));
+          isLoading: false,
+          error: 'Directory does not exist: ${event.path}',
+        ));
       }
     } catch (e) {
-      // Improved error handling with user-friendly messages
-      if (e.toString().toLowerCase().contains('permission denied') ||
-          e.toString().toLowerCase().contains('access denied')) {
-        emit(state.copyWith(
-          isLoading: false,
-          error:
-              "Access denied: Administrator privileges required to access ${event.path}",
-          folders: [],
-          files: [],
-        ));
-      } else {
-        emit(state.copyWith(
-          isLoading: false,
-          error: "Error: ${e.toString()}",
-          folders: [],
-          files: [],
-        ));
+      emit(state.copyWith(
+        isLoading: false,
+        error: 'Error loading directory: ${e.toString()}',
+      ));
+    } finally {
+      // Extra safety: ensure loading indicator is gone
+      if (state.isLoading) {
+        emit(state.copyWith(isLoading: false));
       }
     }
   }
 
-  // Helper method to invalidate video thumbnails in a specific directory
-  Future<void> _invalidateVideoThumbnails(String directoryPath) async {
+  // New method to generate thumbnails without blocking UI
+  Future<void> _generateThumbnailsInBackground(
+      List<FileSystemEntity> videoFiles) async {
+    if (videoFiles.isEmpty) return;
+
     try {
-      final directory = Directory(directoryPath);
-      if (await directory.exists()) {
-        final List<FileSystemEntity> contents = await directory.list().toList();
-
-        // Find all video files in the directory
-        final List<String> videoFilePaths = [];
-        for (var entity in contents) {
-          if (entity is File) {
-            final extension = entity.path.split('.').last.toLowerCase();
-            if (['mp4', 'mov', 'avi', 'mkv', 'flv', 'wmv', 'webm', '3gp', 'm4v']
-                .contains(extension)) {
-              videoFilePaths.add(entity.path);
-            }
+      for (var videoFile in videoFiles) {
+        if (videoFile is File) {
+          try {
+            await VideoThumbnailHelper.forceRegenerateThumbnail(videoFile.path)
+                .timeout(const Duration(seconds: 3), onTimeout: () {
+              print('Thumbnail generation timed out for: ${videoFile.path}');
+              return;
+            });
+          } catch (e) {
+            print('Error generating thumbnail for ${videoFile.path}: $e');
+            // Continue with next file, don't stop on error
           }
-        }
-
-        // Force regeneration of thumbnails for all video files
-        for (var videoPath in videoFilePaths) {
-          // Schedule thumbnail regeneration with force flag
-          VideoThumbnailHelper.generateThumbnail(
-            videoPath,
-            isPriority: true,
-            forceRegenerate: true,
-          );
         }
       }
     } catch (e) {
-      print('Error invalidating video thumbnails: $e');
+      print('Error in background thumbnail generation: $e');
     }
   }
 

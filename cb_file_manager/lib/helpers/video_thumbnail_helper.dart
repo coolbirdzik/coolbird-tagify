@@ -3,97 +3,317 @@ import 'dart:async';
 import 'dart:typed_data';
 import 'dart:collection';
 import 'dart:convert';
+import 'dart:math';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
 import 'package:path/path.dart' as path;
 import 'package:ffmpeg_helper/ffmpeg_helper.dart';
 import 'package:cb_file_manager/helpers/user_preferences.dart';
-import 'package:media_kit/media_kit.dart';
-import 'package:media_kit_video/media_kit_video.dart';
 
-// Import the native Windows thumbnail provider
 import 'fc_native_video_thumbnail.dart';
 
-/// A simpler implementation of video thumbnail generation using video_thumbnail package
-/// and ffmpeg_helper for Windows, with proper error handling and debugging
+Future<int> _getEstimatedVideoDurationIsolate(String videoPath) async {
+  try {
+    final videoFile = File(videoPath);
+    if (await videoFile.exists()) {
+      final fileSize = await videoFile.length();
+      final estimatedSeconds = (fileSize / (1024 * 1024) * 10).round();
+      final clampedDuration = estimatedSeconds.clamp(1, 600);
+      return clampedDuration > 0 ? clampedDuration : 1;
+    }
+  } catch (_) {}
+  return 60;
+}
+
+Future<int> _calculateTimestampFromPercentageIsolate(
+    String videoPath, double percentage) async {
+  final estimatedDuration = await _getEstimatedVideoDurationIsolate(videoPath);
+  int timestampSeconds = ((percentage / 100.0) * estimatedDuration).round();
+  timestampSeconds = timestampSeconds.clamp(0, max(0, estimatedDuration - 1));
+  return timestampSeconds;
+}
+
+String _createCacheFilenameIsolate(String videoPath) {
+  final bytes = utf8.encode(videoPath);
+  final digest = md5.convert(bytes);
+  return 'thumb_${digest.toString()}.jpg';
+}
+
+class _ThumbnailIsolateArgs {
+  final String videoPath;
+  final String cacheFilename;
+  final String absoluteVideoPath;
+  final double thumbnailPercentage;
+  final int quality;
+  final int maxSize;
+  final bool isWindows;
+  final RootIsolateToken? rootIsolateToken;
+  final bool forceRegenerate;
+
+  _ThumbnailIsolateArgs({
+    required this.videoPath,
+    required this.cacheFilename,
+    required this.absoluteVideoPath,
+    required this.thumbnailPercentage,
+    required this.quality,
+    required this.maxSize,
+    required this.isWindows,
+    required this.rootIsolateToken,
+    required this.forceRegenerate,
+  });
+}
+
+Future<String?> _generateThumbnailIsolate(_ThumbnailIsolateArgs args) async {
+  String? finalThumbnailPath;
+
+  try {
+    if (args.rootIsolateToken != null) {
+      BackgroundIsolateBinaryMessenger.ensureInitialized(
+          args.rootIsolateToken!);
+    } else {
+      debugPrint(
+          'VideoThumbnail (Isolate): Warning - RootIsolateToken is null, platform channels may fail.');
+    }
+
+    final Directory tempDir = await getTemporaryDirectory();
+    final String thumbnailPath = path.join(tempDir.path, args.cacheFilename);
+    final cacheFile = File(thumbnailPath);
+
+    // Non-blocking file check
+    bool cacheExists = false;
+    try {
+      cacheExists = !args.forceRegenerate &&
+          await cacheFile.exists() &&
+          await cacheFile.length() > 0;
+
+      if (cacheExists) {
+        return thumbnailPath;
+      }
+    } catch (e) {
+      debugPrint(
+          'VideoThumbnail (Isolate): Error checking cache file $thumbnailPath: $e');
+    }
+
+    // Delete existing thumbnail if force regenerating
+    if (args.forceRegenerate) {
+      try {
+        if (await cacheFile.exists()) {
+          await cacheFile.delete();
+        }
+      } catch (e) {
+        debugPrint(
+            'VideoThumbnail (Isolate): Error deleting existing thumbnail during forceRegenerate: $e');
+      }
+    }
+
+    final int timestampSeconds = await _calculateTimestampFromPercentageIsolate(
+        args.videoPath, args.thumbnailPercentage);
+
+    // Try to generate thumbnail using native method on Windows
+    if (args.isWindows) {
+      try {
+        if (FcNativeVideoThumbnail.isSupportedFormat(args.videoPath)) {
+          final nativeThumbnailPath =
+              await FcNativeVideoThumbnail.generateThumbnail(
+            videoPath: args.videoPath,
+            outputPath: thumbnailPath,
+            width: args.maxSize,
+            format: 'jpg',
+            timeSeconds: timestampSeconds,
+          ).timeout(const Duration(seconds: 5), onTimeout: () {
+            debugPrint(
+                'VideoThumbnail (Isolate): Native thumbnail generation timed out for ${args.videoPath}');
+            return null;
+          });
+
+          if (nativeThumbnailPath != null) {
+            final bool fileValid =
+                await _isFileValidNonBlocking(nativeThumbnailPath);
+            if (fileValid) {
+              finalThumbnailPath = nativeThumbnailPath;
+              return finalThumbnailPath;
+            }
+          }
+        }
+      } catch (e, stackTrace) {
+        debugPrint(
+            'VideoThumbnail (Isolate): Native error for ${args.videoPath}: $e\n$stackTrace');
+      }
+    }
+
+    // Fallback to VideoThumbnail package
+    try {
+      final thumbnailFile = await VideoThumbnail.thumbnailFile(
+        video: args.absoluteVideoPath,
+        thumbnailPath: thumbnailPath,
+        imageFormat: ImageFormat.JPEG,
+        quality: args.quality,
+        maxHeight: args.maxSize,
+        maxWidth: args.maxSize,
+        timeMs: timestampSeconds * 1000,
+      );
+
+      if (thumbnailFile != null) {
+        final bool fileValid = await _isFileValidNonBlocking(thumbnailFile);
+        if (fileValid) {
+          finalThumbnailPath = thumbnailFile;
+          return finalThumbnailPath;
+        }
+      }
+    } catch (e, stackTrace) {
+      debugPrint(
+          'VideoThumbnail (Isolate): video_thumbnail error for ${args.absoluteVideoPath}: $e\n$stackTrace');
+    }
+  } catch (e, stackTrace) {
+    debugPrint(
+        'VideoThumbnail (Isolate): General error for ${args.videoPath}: $e\n$stackTrace');
+  }
+
+  return null;
+}
+
+// Helper method to check if file exists and is valid without blocking
+Future<bool> _isFileValidNonBlocking(String filePath) async {
+  try {
+    final file = File(filePath);
+    final exists = await file.exists();
+    if (!exists) return false;
+
+    final length = await file.length();
+    return length > 0;
+  } catch (e) {
+    debugPrint('VideoThumbnail (Isolate): Error validating file $filePath: $e');
+    return false;
+  }
+}
+
 class VideoThumbnailHelper {
-  // LRU cache for file paths - stores mapping of video path to thumbnail path
   static final LinkedHashMap<String, String> _fileCache =
       LinkedHashMap<String, String>();
 
-  // Request queue for limiting concurrent thumbnail generation
   static final _processingQueue = <_ThumbnailRequest>[];
   static final _pendingQueue = <_ThumbnailRequest>[];
 
-  // Maximum number of concurrent FFmpeg processes
-  static const int _maxConcurrentProcesses = 2;
+  // Reduce maximum concurrent processes to prevent system overload
+  static const int _maxConcurrentProcesses = 1;
 
-  // If we're currently processing the queue
+  // Add throttling for native Windows thumbnail operations
+  static bool _nativeOperationInProgress = false;
+  static const Duration _nativeOperationTimeout = Duration(seconds: 5);
+
   static bool _isProcessingQueue = false;
 
-  // Priority management
-  static const int _visiblePriority =
-      100; // Higher priority for visible thumbnails
-  static const int _prefetchPriority = 10; // Medium priority for prefetch
-  static const int _defaultPriority =
-      0; // Default priority for background loading
+  // Higher priority for visible thumbnails
+  static const int _visiblePriority = 100;
+  // Medium priority for prefetch operations
+  static const int _prefetchPriority = 20;
+  // Lower priority for background operations
+  static const int _defaultPriority = 0;
 
-  // Cache size limits
   static const int _maxFileCacheSize = 500;
 
-  // Settings to control thumbnail quality and size
-  static const int thumbnailQuality = 70;
-  static const int maxThumbnailSize = 200;
+  // Increase quality for better thumbnails (was 70)
+  static const int thumbnailQuality = 90;
+  // Increase size for sharper thumbnails (was 200)
+  static const int maxThumbnailSize = 300;
 
-  // Flag to detect Windows platform
   static bool get _isWindows => Platform.isWindows;
 
-  // Flag to check if FFmpeg is initialized
   static bool _ffmpegInitialized = false;
 
-  // Last cleanup timestamp to avoid frequent cleanups
   static DateTime _lastCleanupTime = DateTime.now();
 
-  // Current directory being viewed - used to cancel thumbnails when changing directories
   static String _currentDirectory = '';
 
-  // Flag to enable verbose debugging
   static bool _verboseLogging = false;
 
-  // Path to the cache index file
   static String? _cacheIndexFilePath;
 
-  // Flag to track if the cache is initialized
   static bool _cacheInitialized = false;
 
-  /// Enable or disable verbose logging
+  static final UserPreferences _userPrefs = UserPreferences();
+  static bool _userPrefsInitialized = false;
+  static double _thumbnailPercentage = 10.0;
+
+  static Timer? _saveCacheTimer;
+  static const Duration _saveCacheThrottleDuration = Duration(seconds: 10);
+
+  static bool _initializing = false;
+  static Completer<void> _initCompleter = Completer<void>();
+
+  /// Tạo một cache lưu trữ các đường dẫn thumbnail trong bộ nhớ
+  /// Được sử dụng cho hiển thị nhanh khi cuộn
+  static final Map<String, String> _inMemoryPathCache = {};
+
+  /// Kích thước tối đa của cache trong bộ nhớ
+  static const int _maxMemoryCacheSize = 500;
+
+  /// Thời gian trước khi dọn dẹp cache (10 phút)
+  static const Duration _memoryCacheCleanupInterval = Duration(minutes: 10);
+
+  /// Thời điểm dọn dẹp cache cuối cùng
+  static DateTime _lastMemoryCacheCleanup = DateTime.now();
+
+  /// A tracker to remember which items have had loading attempts
+  /// This prevents items from being forgotten after scrolling
+  static final Set<String> _attemptedPaths = {};
+
+  /// Flag to prevent items from being completely forgotten when scrolled out of viewport
+  static bool _preserveRequestsWhenScrolled = true;
+
   static void setVerboseLogging(bool enabled) {
     _verboseLogging = enabled;
   }
 
-  /// Log a message with optional verbose mode
   static void _log(String message, {bool forceShow = false}) {
     if (_verboseLogging || forceShow) {
       debugPrint(message);
     }
   }
 
-  /// Initialize cache from disk - call this early in app startup
   static Future<void> initializeCache() async {
     if (_cacheInitialized) return;
+    if (_initializing) return _initCompleter.future;
 
-    await _loadCacheFromDisk();
-    _cacheInitialized = true;
+    _initializing = true;
+    _initCompleter = Completer<void>();
 
-    // Start a timer to periodically save cache to disk
-    Timer.periodic(const Duration(minutes: 5), (_) {
-      _saveCacheToDisk();
-    });
+    try {
+      if (!_userPrefsInitialized) {
+        try {
+          await _userPrefs.init();
+          _thumbnailPercentage =
+              _userPrefs.getVideoThumbnailPercentage().toDouble();
+          _userPrefsInitialized = true;
+          _log(
+              'VideoThumbnail: UserPreferences initialized. Thumbnail percentage: $_thumbnailPercentage%');
+        } catch (e) {
+          _log('VideoThumbnail: Error initializing UserPreferences: $e',
+              forceShow: true);
+          _thumbnailPercentage = 10.0;
+        }
+      }
+
+      await _loadCacheFromDisk();
+      _cacheInitialized = true;
+      _log('VideoThumbnail: Cache system initialized.');
+
+      _initCompleter.complete();
+    } catch (e) {
+      _log('VideoThumbnail: Error during cache initialization: $e',
+          forceShow: true);
+      _initCompleter.completeError(e);
+      _cacheInitialized = false;
+      _userPrefsInitialized = false;
+    } finally {
+      _initializing = false;
+    }
   }
 
-  /// Set the current directory - will cancel pending requests for other directories
   static void setCurrentDirectory(String dirPath) {
     if (_currentDirectory == dirPath) return;
 
@@ -102,17 +322,14 @@ class VideoThumbnailHelper {
         forceShow: true);
     _currentDirectory = dirPath;
 
-    // Cancel thumbnail generation for files not in this directory
     cancelThumbnailsNotInDirectory(dirPath);
   }
 
-  /// Cancel all pending thumbnails not in the specified directory
   static void cancelThumbnailsNotInDirectory(String dirPath) {
     if (dirPath.isEmpty) return;
 
     int canceledCount = 0;
 
-    // Filter the pending queue to keep only the current directory files
     final List<_ThumbnailRequest> requestsToRemove = [];
 
     for (final request in _pendingQueue) {
@@ -133,61 +350,39 @@ class VideoThumbnailHelper {
         forceShow: true);
   }
 
-  /// Initialize the FFmpeg helper, especially important for Windows
   static Future<bool> initializeFFmpeg() async {
     if (_ffmpegInitialized) return true;
 
     try {
       debugPrint('VideoThumbnailHelper: Initializing FFmpeg...');
 
-      // Initialize the FFmpeg helper - method name has changed in newer version
       await FFMpegHelper.instance.initialize();
 
-      // For Windows, we need to ensure FFmpeg is set up
       if (_isWindows) {
-        // Method name has changed in newer version
         final isInstalled = await FFMpegHelper.instance.isFFMpegPresent();
         if (!isInstalled) {
-          debugPrint(
-              'VideoThumbnailHelper: FFmpeg not installed, downloading...');
-
-          // In newer version, the progress callback signature has changed
           bool success = await FFMpegHelper.instance.setupFFMpegOnWindows(
             onProgress: (progress) {
-              // New version uses double instead of FFMpegProgress type
               debugPrint('FFmpeg download progress: ${progress}%');
             },
           );
 
           if (!success) {
-            debugPrint(
-                'VideoThumbnailHelper: Failed to setup FFmpeg on Windows');
             return false;
           }
-
-          debugPrint(
-              'VideoThumbnailHelper: FFmpeg successfully installed on Windows');
-        } else {
-          debugPrint(
-              'VideoThumbnailHelper: FFmpeg already installed on Windows');
         }
       }
 
       _ffmpegInitialized = true;
-      debugPrint('VideoThumbnailHelper: FFmpeg initialized successfully');
       return true;
-    } catch (e, stackTrace) {
-      debugPrint('VideoThumbnailHelper: Error initializing FFmpeg: $e');
-      debugPrint('VideoThumbnailHelper: Stack trace: $stackTrace');
+    } catch (_) {
       return false;
     }
   }
 
-  /// Check if a file is likely to be a supported video format
   static bool isSupportedVideoFormat(String filePath) {
     final lowercasePath = filePath.toLowerCase();
 
-    // List of common video extensions that are typically supported
     final supportedExtensions = [
       '.mp4',
       '.mov',
@@ -205,34 +400,27 @@ class VideoThumbnailHelper {
     return supportedExtensions.any((ext) => lowercasePath.endsWith(ext));
   }
 
-  /// Add an item to the file cache with LRU management
-  static void _addToFileCache(String key, String value) {
-    // First verify that the file actually exists
+  static Future<void> _addToFileCache(String key, String value) async {
     final file = File(value);
-    if (!file.existsSync()) {
+    if (!await file.exists()) {
       _log(
           'VideoThumbnail: Warning - Attempted to cache non-existent file: $value');
       return;
     }
 
-    // Remove the item if it already exists to update its position in the LRU order
     _fileCache.remove(key);
 
-    // Check if cache is full, remove oldest item
     if (_fileCache.length >= _maxFileCacheSize) {
       final oldestKey = _fileCache.keys.first;
       _fileCache.remove(oldestKey);
       _log('VideoThumbnail: Removed oldest item from file cache: $oldestKey');
     }
 
-    // Add the new item
     _fileCache[key] = value;
     _log('VideoThumbnail: Added to file cache: $key => $value');
   }
 
-  /// Clean up old temporary thumbnail files
   static Future<void> _cleanupOldTempFiles() async {
-    // Only perform cleanup once per hour
     final now = DateTime.now();
     if (now.difference(_lastCleanupTime).inHours < 1) {
       return;
@@ -244,274 +432,253 @@ class VideoThumbnailHelper {
       final tempDir = await getTemporaryDirectory();
       final directory = Directory(tempDir.path);
 
-      final files = directory
-          .listSync()
-          .whereType<File>()
+      final files = await directory
+          .list()
           .where((file) => path.basename(file.path).startsWith('thumb_'))
           .toList();
 
-      // Keep only recently used thumbnails and delete others
       for (final file in files) {
         if (!_fileCache.values.contains(file.path)) {
           try {
-            // Check if file is older than 24 hours
             final stat = await file.stat();
             if (now.difference(stat.modified).inHours > 24) {
               await file.delete();
-              debugPrint(
-                  'VideoThumbnail: Deleted old temporary file: ${file.path}');
             }
-          } catch (e) {
-            debugPrint('VideoThumbnail: Error deleting old temp file: $e');
-          }
+          } catch (_) {}
         }
       }
-    } catch (e) {
-      debugPrint('VideoThumbnail: Error during temp files cleanup: $e');
+    } catch (_) {}
+  }
+
+  static Future<void> removeFromCache(String videoPath) async {
+    // Xóa khỏi cache trong bộ nhớ ngay lập tức
+    _inMemoryPathCache.remove(videoPath);
+
+    // Xóa khỏi file cache
+    if (_fileCache.containsKey(videoPath)) {
+      final cachedPath = _fileCache[videoPath]!;
+      _fileCache.remove(videoPath);
+
+      // Xóa file trên đĩa trong background
+      unawaited(() async {
+        try {
+          final file = File(cachedPath);
+          if (await file.exists()) {
+            await file.delete();
+          }
+        } catch (e) {
+          _log('VideoThumbnail: Error deleting invalid cached file: $e');
+        }
+      }());
     }
   }
 
-  /// Process the thumbnail generation queue
   static Future<void> _processQueue() async {
     if (_isProcessingQueue) return;
     _isProcessingQueue = true;
 
     try {
+      // Process as many items as allowed by _maxConcurrentProcesses
       while (_processingQueue.length < _maxConcurrentProcesses &&
           _pendingQueue.isNotEmpty) {
-        // Sort pending queue by priority (higher first)
+        // Sort by priority to ensure most visible thumbnails are processed first
         _pendingQueue.sort((a, b) => b.priority.compareTo(a.priority));
 
-        // Take highest priority request
         final request = _pendingQueue.removeAt(0);
         _processingQueue.add(request);
 
-        // Start processing without awaiting (will be handled by completer)
-        _processRequest(request).then((_) {
-          _processingQueue.remove(request);
-          // Continue processing queue
-          _processQueue();
+        // Use microtask to avoid blocking the UI thread
+        // This ensures UI stays responsive between thumbnail processing
+        scheduleMicrotask(() {
+          _processRequest(request).then((_) {
+            _processingQueue.remove(request);
+            // Schedule next batch via microtask to avoid blocking UI
+            scheduleMicrotask(() => _processQueue());
+          });
         });
+
+        // Small delay to ensure the UI thread gets time to process
+        await Future<void>.delayed(const Duration(milliseconds: 5));
       }
     } finally {
       _isProcessingQueue = false;
     }
   }
 
-  /// Process a single thumbnail request
   static Future<void> _processRequest(_ThumbnailRequest request) async {
     try {
-      String? thumbnailPath;
+      final thumbnailPath = await _generateThumbnailInternal(request.videoPath,
+          forceRegenerate: request.forceRegenerate);
 
-      // Check for cache hit first
-      thumbnailPath = await _checkCacheForThumbnail(request.videoPath);
-
-      // If not in cache, generate thumbnail
-      if (thumbnailPath == null) {
-        thumbnailPath = await _generateThumbnailInternal(request.videoPath);
+      if (!request.completer.isCompleted) {
+        request.completer.complete(thumbnailPath);
       }
-
-      // Complete the future with result
-      request.completer.complete(thumbnailPath);
     } catch (e, stackTrace) {
-      debugPrint('VideoThumbnail: Error processing thumbnail request: $e');
-      debugPrint('VideoThumbnail: Stack trace: $stackTrace');
-      request.completer.completeError(e, stackTrace);
+      _log(
+          'VideoThumbnail: Error processing request for ${request.videoPath}: $e\n$stackTrace',
+          forceShow: true);
+      if (!request.completer.isCompleted) {
+        request.completer.completeError(e, stackTrace);
+      }
     }
   }
 
-  /// Request a thumbnail generation (adds to queue and returns a Future)
   static Future<String?> _requestThumbnail(String videoPath,
-      {int priority = _defaultPriority}) {
-    // Create a completer to handle the async result
-    final completer = Completer<String?>();
+      {int priority = _defaultPriority, bool forceRegenerate = false}) {
+    final existingPending = _pendingQueue.firstWhere(
+        (req) => req.videoPath == videoPath,
+        orElse: () => _ThumbnailRequest.empty());
+    final existingProcessing = _processingQueue.firstWhere(
+        (req) => req.videoPath == videoPath,
+        orElse: () => _ThumbnailRequest.empty());
 
-    // Add to pending queue
-    _pendingQueue.add(_ThumbnailRequest(
+    if (existingPending.videoPath.isNotEmpty &&
+        existingPending.priority >= priority) {
+      return existingPending.completer.future;
+    }
+    if (existingProcessing.videoPath.isNotEmpty &&
+        existingProcessing.priority >= priority) {
+      return existingProcessing.completer.future;
+    }
+
+    _ThumbnailRequest? oldRequest;
+    if (existingPending.videoPath.isNotEmpty) {
+      oldRequest = existingPending;
+      _pendingQueue.remove(existingPending);
+    }
+
+    final completer = Completer<String?>();
+    final newRequest = _ThumbnailRequest(
       videoPath: videoPath,
       priority: priority,
       completer: completer,
       timestamp: DateTime.now(),
-    ));
+      forceRegenerate: forceRegenerate,
+    );
 
-    // Start queue processing
-    _processQueue();
+    _pendingQueue.add(newRequest);
+
+    Timer.run(_processQueue);
+
+    if (oldRequest != null && !oldRequest.completer.isCompleted) {
+      completer.future.then((value) {
+        if (!oldRequest!.completer.isCompleted) {
+          oldRequest.completer.complete(value);
+        }
+      }, onError: (error, stackTrace) {
+        if (!oldRequest!.completer.isCompleted) {
+          oldRequest.completer.completeError(error, stackTrace);
+        }
+      });
+    }
 
     return completer.future;
   }
 
-  /// Internal method to generate a thumbnail
-  static Future<String?> _generateThumbnailInternal(String videoPath) async {
-    // Make sure the video file path is valid and exists
-    File videoFile = File(videoPath);
-    if (!videoFile.existsSync()) {
-      debugPrint(
-          'VideoThumbnail: Error - Video file does not exist at path: $videoPath');
-      return null;
-    }
-
+  static Future<String?> _generateThumbnailInternal(String videoPath,
+      {bool forceRegenerate = false}) async {
     try {
-      // Generate a unique filename for the thumbnail based on video path
-      final thumbnailPath = await _generateThumbnailPath(videoPath);
-      debugPrint('VideoThumbnail: Will save thumbnail to: $thumbnailPath');
+      final cacheFilename = _createCacheFilename(videoPath);
 
-      // Check if thumbnail already exists
-      if (File(thumbnailPath).existsSync()) {
-        _addToFileCache(videoPath, thumbnailPath);
-        debugPrint(
-            'VideoThumbnail: Using existing thumbnail at: $thumbnailPath');
-        return thumbnailPath;
-      }
-
-      // Get absolute path and fix path formatting for Windows
-      String absoluteVideoPath = videoFile.absolute.path;
+      String absoluteVideoPath = path.absolute(videoPath);
       if (_isWindows) {
-        // Ensure Windows paths use the correct format
         absoluteVideoPath = absoluteVideoPath.replaceAll('\\', '/');
-        debugPrint(
-            'VideoThumbnail: Windows path formatted: $absoluteVideoPath');
       }
 
-      // Get timestamp preference from user preferences
-      final timestampSeconds =
-          await _calculateTimestampFromPercentage(videoPath);
-      debugPrint(
-          'VideoThumbnail: Using timestamp at $timestampSeconds seconds');
-      // Try Windows native thumbnail extraction first (highest priority on Windows)
-      if (_isWindows) {
+      if (!_userPrefsInitialized) {
+        _log(
+            'VideoThumbnail: Warning - UserPrefs not initialized in _generateThumbnailInternal. Using default percentage.',
+            forceShow: true);
+      }
+      final percentage = _thumbnailPercentage;
+
+      // First check if already exists in cache and valid before using compute
+      if (!forceRegenerate && _fileCache.containsKey(videoPath)) {
+        final cachedPath = _fileCache[videoPath]!;
+        final cacheFile = File(cachedPath);
         try {
-          debugPrint(
-              'VideoThumbnail: Trying Windows native thumbnail extraction');
-
-          // Check if the format is supported by Windows thumbnail API
-          if (FcNativeVideoThumbnail.isSupportedFormat(videoPath)) {
-            final nativeThumbnailPath =
-                await FcNativeVideoThumbnail.generateThumbnail(
-              videoPath: videoPath,
-              outputPath: thumbnailPath,
-              width: maxThumbnailSize,
-              format: 'jpg',
-              timeSeconds:
-                  timestampSeconds, // Pass the timestamp to extract frame at specific time
-            );
-
-            if (nativeThumbnailPath != null) {
-              _addToFileCache(videoPath, nativeThumbnailPath);
-              debugPrint(
-                  'VideoThumbnail: Successfully generated thumbnail with Windows native API at timestamp ${timestampSeconds}s: $nativeThumbnailPath');
-              return nativeThumbnailPath;
-            } else {
-              debugPrint(
-                  'VideoThumbnail: Windows native thumbnail extraction failed, trying fallback methods');
-            }
+          if (await cacheFile.exists() && await cacheFile.length() > 0) {
+            _log('VideoThumbnail: Using valid cache for $videoPath');
+            return cachedPath;
           } else {
-            debugPrint(
-                'VideoThumbnail: Format not supported by Windows native thumbnail API, trying fallback methods');
+            _log('VideoThumbnail: Cache invalid for $videoPath, regenerating');
+            _fileCache.remove(videoPath);
           }
         } catch (e) {
-          debugPrint(
-              'VideoThumbnail: Error using Windows native thumbnail API: $e, trying fallback methods');
-        }
-      }
-
-      // Fallback to video_thumbnail package
-      debugPrint(
-          'VideoThumbnail: Generating thumbnail for: $absoluteVideoPath');
-
-      // Generate the thumbnail using video_thumbnail library
-      final thumbnailFile = await VideoThumbnail.thumbnailFile(
-        video: absoluteVideoPath,
-        thumbnailPath: thumbnailPath,
-        imageFormat: ImageFormat.JPEG,
-        quality: thumbnailQuality,
-        maxHeight: maxThumbnailSize,
-        maxWidth: maxThumbnailSize,
-        timeMs: timestampSeconds *
-            1000, // Convert seconds to milliseconds for video_thumbnail
-      );
-
-      if (thumbnailFile != null) {
-        _addToFileCache(videoPath, thumbnailFile);
-        debugPrint(
-            'VideoThumbnail: Successfully generated thumbnail at: $thumbnailFile');
-
-        // Verify the thumbnail was actually created
-        if (File(thumbnailFile).existsSync()) {
-          return thumbnailFile;
-        } else {
-          debugPrint(
-              'VideoThumbnail: Warning - Thumbnail file reported as created but doesn\'t exist');
-          return null;
-        }
-      } else {
-        debugPrint('VideoThumbnail: Thumbnail generation returned null');
-      }
-
-      // Occasionally clean up old temp files
-      unawaited(_cleanupOldTempFiles());
-    } catch (e, stackTrace) {
-      debugPrint('VideoThumbnail: Error generating thumbnail: $e');
-      debugPrint('VideoThumbnail: Stack trace: $stackTrace');
-    }
-
-    return null;
-  }
-
-  /// Check if a thumbnail exists in cache
-  static Future<String?> _checkCacheForThumbnail(String videoPath) async {
-    // First check in-memory cache
-    if (_fileCache.containsKey(videoPath)) {
-      final cachedPath = _fileCache[videoPath];
-      if (cachedPath != null) {
-        final file = File(cachedPath);
-        if (file.existsSync() && file.lengthSync() > 0) {
-          _log('VideoThumbnail: Cache hit for $videoPath at $cachedPath');
-          return cachedPath;
-        } else {
-          // Remove invalid cache entry
-          _log('VideoThumbnail: Removing invalid cache entry for $videoPath');
+          _log('VideoThumbnail: Error checking cache: $e');
           _fileCache.remove(videoPath);
         }
       }
-    }
 
-    // Check if thumbnail file exists in temp directory with expected naming
-    try {
-      final tempDir = await getTemporaryDirectory();
-      final filename = _createCacheFilename(videoPath);
-      final expectedPath = path.join(tempDir.path, filename);
-
-      final file = File(expectedPath);
-      if (file.existsSync() && file.lengthSync() > 0) {
-        _log('VideoThumbnail: Found thumbnail file on disk: $expectedPath');
-        // Add to in-memory cache
-        _addToFileCache(videoPath, expectedPath);
-        return expectedPath;
+      final rootToken = RootIsolateToken.instance;
+      if (rootToken == null) {
+        _log('VideoThumbnail: Error - RootIsolateToken.instance is null.',
+            forceShow: true);
       }
-    } catch (e) {
-      _log('VideoThumbnail: Error checking disk cache: $e');
+
+      final args = _ThumbnailIsolateArgs(
+        videoPath: videoPath,
+        cacheFilename: cacheFilename,
+        absoluteVideoPath: absoluteVideoPath,
+        thumbnailPercentage: percentage,
+        quality: thumbnailQuality,
+        maxSize: maxThumbnailSize,
+        isWindows: _isWindows,
+        rootIsolateToken: rootToken,
+        forceRegenerate: forceRegenerate,
+      );
+
+      // Use a timeout to prevent isolate from hanging indefinitely
+      final generatedPath =
+          await compute(_generateThumbnailIsolate, args).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          _log('VideoThumbnail: Timeout generating thumbnail for $videoPath',
+              forceShow: true);
+          return null;
+        },
+      );
+
+      if (generatedPath != null) {
+        final resultFile = File(generatedPath);
+        if (await resultFile.exists() && await resultFile.length() > 0) {
+          await _addToFileCache(videoPath, generatedPath);
+          _saveCacheToDiskThrottled();
+          return generatedPath;
+        } else {
+          _log(
+              'VideoThumbnail: Compute returned path but file invalid: $generatedPath');
+          try {
+            if (await resultFile.exists()) await resultFile.delete();
+          } catch (_) {}
+        }
+      }
+    } catch (e, stackTrace) {
+      _log(
+          'VideoThumbnail: Error in _generateThumbnailInternal for $videoPath: $e\n$stackTrace',
+          forceShow: true);
     }
 
     return null;
   }
 
-  /// Create a consistent filename from a video path
   static String _createCacheFilename(String videoPath) {
-    // Generate a consistent hash using MD5
     final bytes = utf8.encode(videoPath);
     final digest = md5.convert(bytes);
     return 'thumb_${digest.toString()}.jpg';
   }
 
-  /// Generate thumbnail path for a video
-  static Future<String> _generateThumbnailPath(String videoPath) async {
-    final String filename = _createCacheFilename(videoPath);
-    final tempDir = await getTemporaryDirectory();
-    return path.join(tempDir.path, filename);
+  static void _saveCacheToDiskThrottled() {
+    if (_saveCacheTimer?.isActive ?? false) {
+      _saveCacheTimer!.cancel();
+    }
+    _saveCacheTimer = Timer(_saveCacheThrottleDuration, () {
+      _saveCacheToDiskActual();
+      _saveCacheTimer = null;
+    });
   }
 
-  /// Save the in-memory cache to disk for persistence
-  static Future<void> _saveCacheToDisk() async {
+  static Future<void> _saveCacheToDiskActual() async {
     try {
       if (_cacheIndexFilePath == null) {
         final tempDir = await getTemporaryDirectory();
@@ -519,29 +686,31 @@ class VideoThumbnailHelper {
             path.join(tempDir.path, 'thumbnail_cache_index.json');
       }
 
-      // Convert cache to a serializable format
-      final cacheData = <String, String>{};
-      for (final entry in _fileCache.entries) {
-        cacheData[entry.key] = entry.value;
-      }
+      final cacheData = Map<String, String>.from(_fileCache);
 
-      // Convert to JSON
-      final jsonData = jsonEncode(cacheData);
-
-      // Save to file
-      await File(_cacheIndexFilePath!).writeAsString(jsonData);
-
-      _log(
-          'VideoThumbnail: Saved cache index with ${_fileCache.length} entries to disk');
+      await compute(_saveCacheIsolate, {
+        'filePath': _cacheIndexFilePath!,
+        'cacheData': cacheData,
+      });
     } catch (e) {
-      debugPrint('VideoThumbnail: Error saving cache to disk: $e');
+      _log('VideoThumbnail: Error initiating cache save: $e', forceShow: true);
     }
   }
 
-  /// Load the cache from disk
-  static Future<void> _loadCacheFromDisk() async {
+  static Future<void> _saveCacheIsolate(Map<String, dynamic> args) async {
+    final String filePath = args['filePath'];
+    final Map<String, String> cacheData = args['cacheData'];
     try {
-      // Clear existing cache
+      final jsonData = jsonEncode(cacheData);
+      await File(filePath).writeAsString(jsonData);
+    } catch (e) {
+      debugPrint('VideoThumbnail (Isolate): Error saving cache to disk: $e');
+    }
+  }
+
+  static Future<void> _loadCacheFromDisk() async {
+    _log('VideoThumbnail: Loading cache from disk...');
+    try {
       _fileCache.clear();
 
       if (_cacheIndexFilePath == null) {
@@ -551,185 +720,229 @@ class VideoThumbnailHelper {
       }
 
       final indexFile = File(_cacheIndexFilePath!);
-      if (!indexFile.existsSync()) {
-        _log(
-            'VideoThumbnail: No cache index file found at ${_cacheIndexFilePath}');
+      if (!await indexFile.exists()) {
+        _log('VideoThumbnail: No cache index file found.');
         return;
       }
 
-      // Read and parse JSON
       final jsonData = await indexFile.readAsString();
-      final cacheData = jsonDecode(jsonData) as Map<String, dynamic>;
-
-      // Verify entries and add valid ones to cache
-      int validCount = 0;
-      for (final entry in cacheData.entries) {
-        final thumbnailPath = entry.value as String;
-        final file = File(thumbnailPath);
-
-        if (file.existsSync() && file.lengthSync() > 0) {
-          _fileCache[entry.key] = thumbnailPath;
-          validCount++;
+      try {
+        final cacheData = jsonDecode(jsonData) as Map<String, dynamic>;
+        int validCount = 0;
+        int invalidCount = 0;
+        for (final entry in cacheData.entries) {
+          final thumbnailPath = entry.value as String?;
+          final videoPath = entry.key;
+          if (thumbnailPath != null && videoPath != null) {
+            _fileCache[videoPath] = thumbnailPath;
+            validCount++;
+          } else {
+            invalidCount++;
+          }
         }
+        _log(
+            'VideoThumbnail: Loaded $validCount entries from disk index (ignored $invalidCount invalid).');
+      } catch (e) {
+        _log(
+            'VideoThumbnail: Error decoding cache JSON: $e. Deleting corrupt index.',
+            forceShow: true);
+        try {
+          await indexFile.delete();
+        } catch (_) {}
       }
-
-      _log(
-          'VideoThumbnail: Loaded $validCount valid cache entries from disk (out of ${cacheData.length})',
+    } catch (e) {
+      _log('VideoThumbnail: Error loading cache from disk: $e',
           forceShow: true);
-    } catch (e) {
-      debugPrint('VideoThumbnail: Error loading cache from disk: $e');
     }
   }
 
-  /// Get an estimated video duration or use a default value
-  static Future<int> _getEstimatedVideoDuration(String videoPath) async {
-    try {
-      // Try to get file size as a rough indicator of video length
-      final videoFile = File(videoPath);
-      if (await videoFile.exists()) {
-        final fileSize = await videoFile.length();
-
-        // Very rough estimate: 1MB ≈ 10 seconds of video (varies greatly by codec)
-        // This is just a heuristic and not very accurate
-        final estimatedSeconds = (fileSize / (1024 * 1024) * 10).round();
-        final clampedDuration =
-            estimatedSeconds.clamp(30, 600); // Between 30s and 10min
-
-        debugPrint(
-            'VideoThumbnail: Estimated duration based on file size: $clampedDuration seconds');
-        return clampedDuration;
-      }
-    } catch (e) {
-      debugPrint('VideoThumbnail: Error estimating duration: $e');
-    }
-
-    // Default fallback duration
-    return 60; // Assume 1 minute
-  }
-
-  /// Calculate timestamp based on percentage and estimated duration
-  static Future<int> _calculateTimestampFromPercentage(String videoPath) async {
-    // Get user preference for thumbnail position (as percentage)
-    final userPrefs = UserPreferences();
-    await userPrefs.init();
-    final percentage = userPrefs.getVideoThumbnailPercentage();
-
-    // Get an estimated duration
-    final estimatedDuration = await _getEstimatedVideoDuration(videoPath);
-
-    // Calculate timestamp based on percentage
-    int timestampSeconds = ((percentage / 100) * estimatedDuration).round();
-
-    // Ensure the timestamp is at least 1 second but not beyond estimated duration
-    timestampSeconds = timestampSeconds.clamp(1, estimatedDuration - 1);
-    debugPrint(
-        'VideoThumbnail: Using $percentage% = $timestampSeconds seconds (estimated)');
-
-    return timestampSeconds;
-  }
-
-  /// Generate a thumbnail for a video file (public API with queue system)
   static Future<String?> generateThumbnail(String videoPath,
       {bool isPriority = false, bool forceRegenerate = false}) async {
-    // Make sure the cache is initialized
     if (!_cacheInitialized) {
-      await initializeCache();
+      if (_initializing) {
+        await _initCompleter.future;
+      } else {
+        await initializeCache();
+      }
     }
 
-    // First check if this is a supported video format
     if (!isSupportedVideoFormat(videoPath)) {
-      debugPrint('VideoThumbnail: Unsupported video format: $videoPath');
+      _log('VideoThumbnail: Unsupported video format: $videoPath');
       return null;
     }
 
-    // Check cache only if not forcing regeneration
-    if (!forceRegenerate) {
-      // Try to get from cache first
-      final cachedPath = await _checkCacheForThumbnail(videoPath);
-      if (cachedPath != null) {
-        final file = File(cachedPath);
-        // Double-check that the file actually exists and is not empty
-        if (file.existsSync() && file.lengthSync() > 0) {
-          return cachedPath;
-        } else {
-          debugPrint(
-              'VideoThumbnail: Cached thumbnail is invalid, will regenerate');
-          // Remove the invalid entry from cache
-          _fileCache.remove(videoPath);
-        }
-      }
-    } else {
-      debugPrint(
-          'VideoThumbnail: Force regenerating thumbnail for: $videoPath');
-      // If forcing regeneration, remove any existing entries
+    if (forceRegenerate) {
+      _log('VideoThumbnail: Force regenerating thumbnail for: $videoPath');
       _fileCache.remove(videoPath);
     }
 
-    debugPrint('VideoThumbnail: Requesting thumbnail for: $videoPath');
-
-    // Determine priority level based on importance
     final priority = isPriority ? _visiblePriority : _defaultPriority;
 
-    // Add to queue and get future result
-    final result = await _requestThumbnail(videoPath, priority: priority);
-
-    // Save cache to disk after new thumbnails are generated
-    _saveCacheToDisk();
+    final result = await _requestThumbnail(videoPath,
+        priority: priority, forceRegenerate: forceRegenerate);
 
     return result;
   }
 
-  /// Generate a thumbnail directly as Uint8List data from file
   static Future<Uint8List?> generateThumbnailData(String videoPath,
-      {bool isPriority = false}) async {
-    // First check if this is a supported video format
+      {bool isPriority = false, bool forceRegenerate = false}) async {
+    if (!_cacheInitialized) {
+      if (_initializing) {
+        await _initCompleter.future;
+      } else {
+        await initializeCache();
+      }
+    }
+
     if (!isSupportedVideoFormat(videoPath)) {
       debugPrint('VideoThumbnail: Unsupported video format: $videoPath');
       return null;
     }
 
-    debugPrint('VideoThumbnail: Generating thumbnail data for: $videoPath');
-
     try {
-      // First get thumbnail file path through cache or generation
-      final thumbnailPath =
-          await generateThumbnail(videoPath, isPriority: isPriority);
+      final thumbnailPath = await generateThumbnail(videoPath,
+          isPriority: isPriority, forceRegenerate: forceRegenerate);
 
       if (thumbnailPath != null) {
-        // Read the thumbnail from file
         try {
           final File thumbnailFile = File(thumbnailPath);
-          if (thumbnailFile.existsSync()) {
+          if (await thumbnailFile.exists()) {
             final bytes = await thumbnailFile.readAsBytes();
             if (bytes.isNotEmpty) {
-              debugPrint(
-                  'VideoThumbnail: Successfully loaded thumbnail data from file: ${bytes.length} bytes');
               return bytes;
+            } else {
+              debugPrint(
+                  'VideoThumbnail: Thumbnail file is empty: $thumbnailPath');
+              _fileCache.remove(videoPath);
+              try {
+                await thumbnailFile.delete();
+              } catch (_) {}
+              return null;
             }
+          } else {
+            debugPrint(
+                'VideoThumbnail: Thumbnail file path obtained but file does not exist: $thumbnailPath');
+            _fileCache.remove(videoPath);
+            return null;
           }
         } catch (e) {
-          debugPrint('VideoThumbnail: Error reading thumbnail file: $e');
+          debugPrint(
+              'VideoThumbnail: Error reading thumbnail file $thumbnailPath: $e');
+          _fileCache.remove(videoPath);
+          try {
+            final file = File(thumbnailPath);
+            if (await file.exists()) await file.delete();
+          } catch (_) {}
+          return null;
         }
+      } else {
+        return null;
       }
     } catch (e, stackTrace) {
-      debugPrint('VideoThumbnail: Error generating thumbnail data: $e');
+      debugPrint(
+          'VideoThumbnail: Error in generateThumbnailData for $videoPath: $e');
       debugPrint('VideoThumbnail: Stack trace: $stackTrace');
     }
 
     return null;
   }
 
-  /// Request a thumbnail with prefetch priority (medium priority)
-  static Future<String?> prefetchThumbnail(String videoPath) async {
-    if (!isSupportedVideoFormat(videoPath)) {
-      return null;
+  static Future<String?> getFromCache(String videoPath) async {
+    if (!_cacheInitialized) {
+      if (_initializing) {
+        await _initCompleter.future;
+      } else {
+        await initializeCache();
+      }
     }
 
-    // Use prefetch priority level
-    return _requestThumbnail(videoPath, priority: _prefetchPriority);
+    // Kiểm tra cache trong bộ nhớ trước
+    if (_inMemoryPathCache.containsKey(videoPath)) {
+      final cachedPath = _inMemoryPathCache[videoPath]!;
+      try {
+        final file = File(cachedPath);
+        if (await file.exists() && await file.length() > 0) {
+          // Đưa lại lên đầu cache nếu tồn tại
+          final value = _inMemoryPathCache.remove(videoPath)!;
+          _inMemoryPathCache[videoPath] = value;
+          return cachedPath;
+        } else {
+          // Xóa khỏi cache nếu không hợp lệ
+          _inMemoryPathCache.remove(videoPath);
+        }
+      } catch (e) {
+        _inMemoryPathCache.remove(videoPath);
+      }
+    }
+
+    // Kiểm tra cache trên đĩa
+    if (_fileCache.containsKey(videoPath)) {
+      final cachedPath = _fileCache[videoPath]!;
+      try {
+        final file = File(cachedPath);
+        if (await file.exists() && await file.length() > 0) {
+          // Thêm vào cache trong bộ nhớ để truy cập nhanh hơn lần sau
+          _addToMemoryCache(videoPath, cachedPath);
+          return cachedPath;
+        } else {
+          // Cache entry không hợp lệ, xóa đi
+          _fileCache.remove(videoPath);
+        }
+      } catch (e) {
+        _log('VideoThumbnail: Error checking cache file $cachedPath: $e');
+        _fileCache.remove(videoPath);
+      }
+    }
+
+    // Không tìm thấy trong cache
+    return null;
   }
 
-  /// Build a widget to display a video thumbnail with lazy loading
+  /// Thêm đường dẫn vào cache bộ nhớ với cơ chế LRU (Least Recently Used)
+  static void _addToMemoryCache(String videoPath, String thumbnailPath) {
+    // Kiểm tra xem đã đến lúc dọn dẹp cache chưa
+    final now = DateTime.now();
+    if (now.difference(_lastMemoryCacheCleanup) > _memoryCacheCleanupInterval) {
+      _cleanMemoryCache();
+    }
+
+    // Nếu đã tồn tại, cập nhật lại vị trí
+    if (_inMemoryPathCache.containsKey(videoPath)) {
+      final value = _inMemoryPathCache.remove(videoPath)!;
+      _inMemoryPathCache[videoPath] = value;
+      return;
+    }
+
+    // Nếu cache đầy, xóa entry cũ nhất (first item in LinkedHashMap)
+    if (_inMemoryPathCache.length >= _maxMemoryCacheSize) {
+      // Xóa entry đầu tiên (cũ nhất)
+      final oldestKey = _inMemoryPathCache.keys.first;
+      _inMemoryPathCache.remove(oldestKey);
+    }
+
+    // Thêm vào cache
+    _inMemoryPathCache[videoPath] = thumbnailPath;
+  }
+
+  /// Dọn dẹp cache trong bộ nhớ
+  static void _cleanMemoryCache() {
+    _log('VideoThumbnail: Cleaning memory cache...');
+    _lastMemoryCacheCleanup = DateTime.now();
+
+    // Giữ lại 2/3 các entry gần đây nhất
+    if (_inMemoryPathCache.length > _maxMemoryCacheSize / 2) {
+      final keepCount = (_maxMemoryCacheSize * 2 / 3).round();
+      final keysToRemove = _inMemoryPathCache.keys
+          .take(_inMemoryPathCache.length - keepCount)
+          .toList();
+      for (final key in keysToRemove) {
+        _inMemoryPathCache.remove(key);
+      }
+      _log(
+          'VideoThumbnail: Memory cache trimmed to ${_inMemoryPathCache.length} entries');
+    }
+  }
+
   static Widget buildVideoThumbnail({
     required String videoPath,
     Widget Function()? fallbackBuilder,
@@ -738,6 +951,8 @@ class VideoThumbnailHelper {
     BoxFit fit = BoxFit.cover,
     bool isPriority = false,
     bool forceRegenerate = false,
+    Key? key,
+    void Function(String?)? onThumbnailGenerated,
   }) {
     final defaultFallback = () => Container(
           color: Colors.grey[300],
@@ -747,248 +962,386 @@ class VideoThumbnailHelper {
         );
 
     return FutureBuilder<String?>(
-      // Pass the isPriority and forceRegenerate parameters to ensure fresh thumbnails
+      key: key ?? ValueKey('thumb_$videoPath'),
       future: generateThumbnail(videoPath,
           isPriority: isPriority, forceRegenerate: forceRegenerate),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return SizedBox(
-            width: width,
-            height: height,
-            child: fallbackBuilder?.call() ?? defaultFallback(),
-          );
-        }
-
+        Widget content;
         final thumbnailPath = snapshot.data;
 
-        if (thumbnailPath == null || !File(thumbnailPath).existsSync()) {
-          return SizedBox(
-            width: width,
-            height: height,
-            child: fallbackBuilder?.call() ?? defaultFallback(),
-          );
+        // Notify the parent when a thumbnail is generated
+        if (thumbnailPath != null && onThumbnailGenerated != null) {
+          // Use a microtask to avoid calling during build
+          scheduleMicrotask(() => onThumbnailGenerated(thumbnailPath));
         }
 
-        return SizedBox(
-          width: width,
-          height: height,
-          child: Image.file(
+        if (snapshot.connectionState == ConnectionState.waiting &&
+            thumbnailPath == null) {
+          content = fallbackBuilder?.call() ?? defaultFallback();
+        } else if (snapshot.hasError) {
+          _log(
+              'VideoThumbnail FutureBuilder error for $videoPath: ${snapshot.error}');
+          content = fallbackBuilder?.call() ?? defaultFallback();
+        } else if (thumbnailPath != null) {
+          content = Image.file(
             File(thumbnailPath),
+            key: ValueKey(thumbnailPath),
+            width: width,
+            height: height,
             fit: fit,
+            // Add null checks and validation before converting to int
+            cacheWidth:
+                (width.isFinite && width > 0) ? (width * 2).toInt() : null,
+            cacheHeight:
+                (height.isFinite && height > 0) ? (height * 2).toInt() : null,
+            filterQuality: FilterQuality.medium,
+            frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+              if (wasSynchronouslyLoaded) return child;
+              return AnimatedOpacity(
+                opacity: frame == null ? 0 : 1,
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeOut,
+                child: child,
+              );
+            },
             errorBuilder: (context, error, stackTrace) {
-              debugPrint('Error loading thumbnail: $error');
+              _log('Error loading thumbnail image file $thumbnailPath: $error');
+              _fileCache.remove(videoPath);
+              unawaited(() async {
+                try {
+                  final file = File(thumbnailPath);
+                  if (await file.exists()) await file.delete();
+                } catch (_) {}
+              }());
               return fallbackBuilder?.call() ?? defaultFallback();
             },
-          ),
-        );
+          );
+        } else {
+          content = fallbackBuilder?.call() ?? defaultFallback();
+        }
+
+        return content;
       },
     );
   }
 
-  /// Clear all caches and queues
   static Future<void> clearCache() async {
-    debugPrint('VideoThumbnail: Clearing all thumbnail caches...');
+    _log('VideoThumbnail: Clearing cache...', forceShow: true);
 
-    // Clear in-memory caches
-    _fileCache.clear();
+    // Set a flag to prevent new thumbnail requests during cache clearing
+    final bool wasProcessing = _isProcessingQueue;
+    _isProcessingQueue = true;
 
-    // Cancel and clear all pending requests
-    for (final request in _pendingQueue) {
-      if (!request.completer.isCompleted) {
-        request.completer.complete(null);
-      }
-    }
-    _pendingQueue.clear();
-
-    // Also cancel active processing requests
-    for (final request in _processingQueue) {
-      if (!request.completer.isCompleted) {
-        request.completer.complete(null);
-      }
-    }
-    _processingQueue.clear();
-
-    debugPrint('VideoThumbnail: In-memory caches and queues cleared');
-
-    // Clear Flutter's image cache to ensure complete refresh
     try {
-      // This works even if PaintingBinding is null, it won't throw
-      PaintingBinding.instance.imageCache.clear();
-      PaintingBinding.instance.imageCache.clearLiveImages();
-      debugPrint('VideoThumbnail: Flutter image cache cleared');
-    } catch (e) {
-      debugPrint('VideoThumbnail: Error clearing Flutter image cache: $e');
-    }
+      _fileCache.clear();
+      _inMemoryPathCache.clear();
+      _attemptedPaths.clear();
 
-    // Delete all thumbnail files from temporary directory
-    try {
-      final tempDir = await getTemporaryDirectory();
-      final directory = Directory(tempDir.path);
+      // Cancel all pending thumbnail requests first
+      final pendingRequests = List<_ThumbnailRequest>.from(_pendingQueue);
+      _pendingQueue.clear();
 
-      final thumbnailFiles = directory
-          .listSync()
-          .whereType<File>()
-          .where((file) => path.basename(file.path).startsWith('thumb_'))
-          .toList();
-
-      int deletedCount = 0;
-      for (final file in thumbnailFiles) {
+      for (final request in pendingRequests) {
         try {
-          if (await file.exists()) {
-            await file.delete();
-            deletedCount++;
+          if (!request.completer.isCompleted) {
+            request.completer.complete(null);
           }
         } catch (e) {
-          debugPrint(
-              'VideoThumbnail: Error deleting thumbnail file ${file.path}: $e');
+          _log('VideoThumbnail: Error completing pending request: $e');
         }
       }
 
-      // Delete the cache index file
-      if (_cacheIndexFilePath != null) {
-        final indexFile = File(_cacheIndexFilePath!);
-        if (await indexFile.exists()) {
-          await indexFile.delete();
-          debugPrint('VideoThumbnail: Deleted cache index file');
+      // Wait briefly for any ongoing compute operations to finish
+      await Future.delayed(const Duration(milliseconds: 50));
+
+      // Cancel all processing requests
+      final processingRequests = List<_ThumbnailRequest>.from(_processingQueue);
+      _processingQueue.clear();
+
+      for (final request in processingRequests) {
+        try {
+          if (!request.completer.isCompleted) {
+            request.completer.complete(null);
+          }
+        } catch (e) {
+          _log('VideoThumbnail: Error completing processing request: $e');
         }
       }
 
-      debugPrint(
-          'VideoThumbnail: Deleted $deletedCount thumbnail files from disk cache');
+      // Reset initialization state
+      _initializing = false;
+      _initCompleter = Completer<void>();
+      _nativeOperationInProgress = false;
+
+      // Clear Flutter's image cache to prevent memory leaks
+      try {
+        PaintingBinding.instance.imageCache.clear();
+        PaintingBinding.instance.imageCache.clearLiveImages();
+      } catch (e) {
+        _log('VideoThumbnail: Error clearing PaintingBinding image cache: $e');
+      }
+
+      // Delete physical thumbnail files
+      try {
+        final tempDir = await getTemporaryDirectory();
+        final directory = Directory(tempDir.path);
+
+        if (!await directory.exists()) {
+          _log(
+              'VideoThumbnail: Temporary directory not found for clearing cache.');
+          return;
+        }
+
+        final thumbnailFiles = await directory
+            .list()
+            .where((file) => path.basename(file.path).startsWith('thumb_'))
+            .toList();
+
+        int deletedCount = 0;
+        for (final file in thumbnailFiles) {
+          try {
+            if (await file.exists()) {
+              await file.delete();
+              deletedCount++;
+            }
+          } catch (e) {
+            _log(
+                'VideoThumbnail: Error deleting thumbnail file ${file.path}: $e');
+          }
+        }
+        _log('VideoThumbnail: Deleted $deletedCount physical thumbnail files.');
+
+        if (_cacheIndexFilePath != null) {
+          final indexFile = File(_cacheIndexFilePath!);
+          if (await indexFile.exists()) {
+            await indexFile.delete();
+            _log('VideoThumbnail: Deleted cache index file.');
+          }
+        }
+      } catch (e) {
+        _log('VideoThumbnail: Error clearing physical cache files: $e',
+            forceShow: true);
+      }
+
+      _lastCleanupTime = DateTime.now();
+      _cacheInitialized = false;
+      _userPrefsInitialized = false;
+      _log('VideoThumbnail: Cache cleared completely.');
+    } finally {
+      // Restore processing flag to previous state if it wasn't already processing
+      _isProcessingQueue = wasProcessing;
+    }
+  }
+
+  /// Regenerate thumbnails for all video files in the specified directory
+  /// This is useful after clearing the cache to ensure thumbnails are regenerated
+  static Future<void> regenerateThumbnailsForDirectory(
+      String directoryPath) async {
+    _log(
+        'VideoThumbnail: Regenerating thumbnails for directory: $directoryPath',
+        forceShow: true);
+
+    if (!_cacheInitialized) {
+      await initializeCache();
+    }
+
+    try {
+      final directory = Directory(directoryPath);
+      if (!await directory.exists()) {
+        _log('VideoThumbnail: Directory does not exist: $directoryPath',
+            forceShow: true);
+        return;
+      }
+
+      // Set as current directory
+      setCurrentDirectory(directoryPath);
+
+      // Get all video files in the directory
+      final fileList = await directory.list().toList();
+      final videoPaths = fileList
+          .where(
+              (entity) => entity is File && isSupportedVideoFormat(entity.path))
+          .map((entity) => entity.path)
+          .toList();
+
+      if (videoPaths.isEmpty) {
+        _log('VideoThumbnail: No video files found in directory',
+            forceShow: true);
+        return;
+      }
+
+      _log(
+          'VideoThumbnail: Found ${videoPaths.length} video files to regenerate thumbnails',
+          forceShow: true);
+
+      // Use the optimized batch preload to regenerate thumbnails
+      await optimizedBatchPreload(videoPaths,
+          maxConcurrent: 2, visibleCount: 10);
+
+      _log(
+          'VideoThumbnail: Regeneration queued for ${videoPaths.length} videos',
+          forceShow: true);
     } catch (e) {
-      debugPrint(
-          'VideoThumbnail: Error clearing thumbnail files from disk: $e');
+      _log('VideoThumbnail: Error regenerating thumbnails: $e',
+          forceShow: true);
     }
-
-    // Update cleanup timestamp
-    _lastCleanupTime = DateTime.now();
-
-    // Reset cache initialization flag to force reload
-    _cacheInitialized = false;
   }
 
-  /// Clear old cache entries to free up memory (can be called periodically)
   static Future<void> trimCache() async {
-    // Keep only the most recent half of the items
+    _log('VideoThumbnail: Trimming cache...');
     if (_fileCache.length > _maxFileCacheSize / 2) {
-      final keysToKeep =
-          _fileCache.keys.toList().sublist(_fileCache.length ~/ 2);
-      final newFileCache = LinkedHashMap<String, String>();
-      for (final key in keysToKeep) {
-        newFileCache[key] = _fileCache[key]!;
+      final keysToRemoveCount = _fileCache.length - (_maxFileCacheSize ~/ 2);
+      final keysToRemove = _fileCache.keys.take(keysToRemoveCount).toList();
+      for (final key in keysToRemove) {
+        _fileCache.remove(key);
       }
-      _fileCache.clear();
-      _fileCache.addAll(newFileCache);
+      _log(
+          'VideoThumbnail: Trimmed in-memory cache to ${_fileCache.length} items.');
+      _saveCacheToDiskThrottled();
     }
 
-    debugPrint(
-        'VideoThumbnail: Cache trimmed - file cache: ${_fileCache.length}');
-
-    // Clean up old thumbnail files
     await _cleanupOldTempFiles();
+    _log('VideoThumbnail: Cache trimming complete.');
   }
 
-  /// Cancel all pending thumbnail generation requests that aren't in process yet
-  static void cancelPendingRequests() {
-    for (final request in _pendingQueue) {
-      if (!request.completer.isCompleted) {
-        request.completer.complete(null);
-      }
+  /// Tối ưu việc tải nhiều thumbnail cùng một lúc với hàng đợi ưu tiên
+  static Future<void> optimizedBatchPreload(
+    List<String> videoPaths, {
+    int maxConcurrent = 2,
+    int visibleCount = 10,
+  }) async {
+    if (!_cacheInitialized) {
+      await initializeCache();
     }
+
+    if (videoPaths.isEmpty) return;
+
+    // Chia thành 3 nhóm ưu tiên:
+    // 1. Nhóm hiển thị - tải ngay với ưu tiên cao
+    // 2. Nhóm gần viewport - tải với ưu tiên trung bình
+    // 3. Nhóm còn lại - tải với ưu tiên thấp
+
+    final visiblePaths = videoPaths.take(visibleCount).toList();
+    final nearPaths =
+        videoPaths.skip(visibleCount).take(visibleCount * 2).toList();
+    final otherPaths = videoPaths.skip(visibleCount * 3).toList();
+
+    // Tạm dừng các yêu cầu đang chờ để xếp các yêu cầu mới
+    _pendingQueue.clear();
+
+    // Thêm vào queue với độ ưu tiên thích hợp
+    for (final path in visiblePaths) {
+      _requestThumbnail(path, priority: _visiblePriority);
+    }
+
+    // Delay trước khi thêm nhóm kế tiếp để tránh nghẽn
+    await Future.delayed(const Duration(milliseconds: 100));
+
+    for (final path in nearPaths) {
+      _requestThumbnail(path, priority: _prefetchPriority);
+    }
+
+    // Delay dài hơn trước khi thêm nhóm cuối
+    await Future.delayed(const Duration(milliseconds: 200));
+
+    for (final path in otherPaths) {
+      _requestThumbnail(path, priority: _defaultPriority);
+    }
+  }
+
+  /// Hủy tất cả các yêu cầu đang chờ xử lý
+  static void cancelPendingRequests() {
     _pendingQueue.clear();
   }
 
-  /// Promote a video path to high priority (for newly visible items)
-  static void prioritizeThumbnail(String videoPath) {
-    // Find the request in the pending queue and increase its priority
-    for (final request in _pendingQueue) {
-      if (request.videoPath == videoPath) {
-        request.priority = _visiblePriority;
-        break;
-      }
-    }
+  /// Flag to mark a thumbnail as attempted for generation
+  /// This prevents the need to retry generating already failed thumbnails
+  static void markAttempted(String videoPath) {
+    _attemptedPaths.add(videoPath);
   }
 
-  /// Check current cache stats and log them - for debugging
-  static void logCacheStats() {
-    debugPrint('--------- VIDEO THUMBNAIL CACHE STATS ---------',
-        wrapWidth: 120);
-    debugPrint('File cache size: ${_fileCache.length}/${_maxFileCacheSize}',
-        wrapWidth: 120);
-
-    if (_fileCache.isNotEmpty) {
-      debugPrint('Sample file cache items (max 5):', wrapWidth: 120);
-      int count = 0;
-      for (final key in _fileCache.keys) {
-        if (count >= 5) break;
-        final value = _fileCache[key]!;
-        final fileExists = File(value).existsSync() ? "exists" : "missing";
-        debugPrint(' - $key => $value ($fileExists)', wrapWidth: 120);
-        count++;
-      }
-    } else {
-      debugPrint('File cache is empty', wrapWidth: 120);
-    }
-
-    debugPrint('Current directory: $_currentDirectory', wrapWidth: 120);
-    debugPrint('Pending queue size: ${_pendingQueue.length}', wrapWidth: 120);
-    debugPrint('Processing queue size: ${_processingQueue.length}',
-        wrapWidth: 120);
-    debugPrint('-----------------------------------------------',
-        wrapWidth: 120);
+  /// Check if a thumbnail generation was already attempted
+  static bool wasAttempted(String videoPath) {
+    return _attemptedPaths.contains(videoPath);
   }
 
-  /// Verify the thumbnail in cache exists and is valid
-  static Future<bool> verifyThumbnailCache(String videoPath) async {
-    bool fileInCache = false;
-    bool fileExists = false;
-    bool thumbnailValid = false;
+  /// Restart thumbnail generation for items that come back into viewport
+  static Future<String?> restartThumbnailRequest(String videoPath) async {
+    // Remove from attempted paths to allow regeneration
+    _attemptedPaths.remove(videoPath);
 
-    // Check if in file cache
-    if (_fileCache.containsKey(videoPath)) {
-      fileInCache = true;
-      final cachedPath = _fileCache[videoPath];
-      if (cachedPath != null) {
-        final file = File(cachedPath);
-        fileExists = file.existsSync();
-        if (fileExists) {
-          // Check if file has valid content
-          try {
-            final bytes = await file.readAsBytes();
-            thumbnailValid =
-                bytes.length > 100; // Very basic check that it's not empty
-          } catch (e) {
-            debugPrint('VideoThumbnail: Error reading cached file: $e');
-          }
-        }
+    // First try cache
+    final cached = await getFromCache(videoPath);
+    if (cached != null) {
+      return cached;
+    }
+
+    // Request with high priority
+    return _requestThumbnail(videoPath, priority: _visiblePriority);
+  }
+
+  /// Force regenerate a thumbnail even if it's already in cache
+  /// Useful when a thumbnail was attempted but failed and needs to be retried
+  static Future<String?> forceRegenerateThumbnail(String videoPath) async {
+    if (!_cacheInitialized) {
+      await initializeCache();
+    }
+
+    // First remove from all caches
+    _inMemoryPathCache.remove(videoPath);
+    _fileCache.remove(videoPath);
+    _attemptedPaths.remove(videoPath);
+
+    // Clear from pending and processing queues
+    final pendingIndex =
+        _pendingQueue.indexWhere((req) => req.videoPath == videoPath);
+    if (pendingIndex != -1) {
+      if (!_pendingQueue[pendingIndex].completer.isCompleted) {
+        _pendingQueue[pendingIndex].completer.complete(null);
       }
+      _pendingQueue.removeAt(pendingIndex);
     }
 
-    // Print debug info
-    debugPrint('VideoThumbnail: Cache verification for: $videoPath');
-    debugPrint(' - In file cache: $fileInCache');
-    if (fileInCache) {
-      debugPrint(' - File exists: $fileExists');
-      debugPrint(' - Thumbnail valid: $thumbnailValid');
-      debugPrint(' - Path: ${_fileCache[videoPath]}');
+    // Delete any existing file
+    try {
+      final cacheFilename = _createCacheFilename(videoPath);
+      final tempDir = await getTemporaryDirectory();
+      final thumbnailPath = path.join(tempDir.path, cacheFilename);
+
+      final File file = File(thumbnailPath);
+      if (await file.exists()) {
+        await file.delete();
+      }
+    } catch (e) {
+      _log('Error deleting thumbnail file for $videoPath: $e');
     }
 
-    // Return true if thumbnail is in cache and valid
-    return fileInCache && fileExists && thumbnailValid;
+    // Request new thumbnail with highest priority
+    return await _requestThumbnail(videoPath,
+        priority: _visiblePriority + 50, // Super high priority
+        forceRegenerate: true);
   }
 }
 
-/// Class representing a thumbnail generation request in the queue
 class _ThumbnailRequest {
   final String videoPath;
   int priority;
   final Completer<String?> completer;
   final DateTime timestamp;
+  final bool forceRegenerate;
+
+  _ThumbnailRequest.empty()
+      : videoPath = '',
+        priority = -1,
+        completer = Completer<String?>(),
+        timestamp = DateTime(0),
+        forceRegenerate = false;
 
   _ThumbnailRequest({
     required this.videoPath,
     required this.priority,
     required this.completer,
     required this.timestamp,
+    required this.forceRegenerate,
   });
 }

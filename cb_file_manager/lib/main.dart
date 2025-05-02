@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // Thêm import này cho SystemUiOverlayStyle
+import 'package:flutter/services.dart'; // For SystemUiOverlayStyle
 import 'package:flutter/foundation.dart'; // For kDebugMode
+import 'package:flutter/scheduler.dart'; // For frame scheduling
 import 'dart:async';
 import 'dart:io';
 import 'ui/home.dart';
@@ -13,6 +14,7 @@ import 'helpers/media_kit_audio_helper.dart'; // Import our audio helper
 import 'helpers/user_preferences.dart'; // Import user preferences
 import 'helpers/folder_thumbnail_service.dart'; // Import thumbnail service
 import 'helpers/video_thumbnail_helper.dart'; // Import our video thumbnail helper
+import 'helpers/frame_timing_optimizer.dart'; // Import our new frame timing optimizer
 import 'config/app_theme.dart'; // Import global theme configuration
 import 'package:flutter_localizations/flutter_localizations.dart'; // Import for localization
 import 'config/language_controller.dart'; // Import our language controller
@@ -29,6 +31,39 @@ void main() async {
   runZonedGuarded(() async {
     // Ensure Flutter is initialized before using platform plugins
     WidgetsFlutterBinding.ensureInitialized();
+
+    // Configure frame timing and rendering for better performance
+    // This helps prevent the "Reported frame time is older than the last one" error
+    // Note: Removed incorrect schedulerPhase setter that caused compilation error
+
+    // Initialize frame timing optimizer
+    await FrameTimingOptimizer().initialize();
+
+    // Platform-specific optimizations
+    if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
+      // For desktop platforms, configure Skia resource cache for better image handling
+      SystemChannels.skia.invokeMethod<void>(
+          'Skia.setResourceCacheMaxBytes', 512 * 1024 * 1024);
+    } else if (Platform.isAndroid || Platform.isIOS) {
+      // For mobile platforms, optimize system UI mode
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+      // Apply specific settings for better rendering on mobile
+      SystemChrome.setSystemUIChangeCallback((systemOverlaysAreVisible) async {
+        return;
+      });
+    }
+
+    // Add a frame callback to help with frame pacing
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      FrameTimingOptimizer().optimizeImageRendering();
+      SchedulerBinding.instance.scheduleFrame();
+    });
+
+    // Tối ưu ImageCache để quản lý bộ nhớ tốt hơn khi scroll
+    PaintingBinding.instance.imageCache.maximumSize =
+        200; // Giới hạn số lượng hình ảnh
+    PaintingBinding.instance.imageCache.maximumSizeBytes =
+        100 * 1024 * 1024; // Giới hạn ~100MB
 
     // Initialize Media Kit with proper audio configuration
     MediaKit.ensureInitialized();
@@ -176,6 +211,11 @@ class _CBFileAppState extends State<CBFileApp> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _loadThemePreference();
+
+    // Initialize the frame timing optimizer once the app is loaded
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      FrameTimingOptimizer().optimizeBeforeHeavyOperation();
+    });
 
     // Initialize locale notifier
     _localeNotifier = _languageController.languageNotifier;

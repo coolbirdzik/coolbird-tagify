@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart'; // Import for keyboard shortcuts
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart'; // Import Eva Icons
+import 'package:cb_file_manager/helpers/frame_timing_optimizer.dart';
 import 'tab_manager.dart';
 import 'tab_data.dart';
 import '../drawer.dart';
@@ -205,6 +207,10 @@ class _TabScreenState extends State<TabScreen> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
+    // Apply frame timing optimization before building the tabbed interface
+    // This helps prevent the "Reported frame time is older than the last one" error
+    FrameTimingOptimizer().optimizeBeforeHeavyOperation();
+
     // Xác định xem thiết bị có phải là tablet hay không
     final isTablet = _isTablet(context);
 

@@ -1,7 +1,9 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:cb_file_manager/ui/screens/folder_list/folder_list_state.dart';
+import 'package:cb_file_manager/helpers/frame_timing_optimizer.dart';
 
 import 'file_item.dart';
 import 'file_grid_item.dart';
@@ -40,6 +42,9 @@ class FileView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Optimize frame timing before building view
+    FrameTimingOptimizer().optimizeBeforeHeavyOperation();
+
     if (isGridView) {
       return _buildGridView();
     } else {
@@ -48,58 +53,76 @@ class FileView extends StatelessWidget {
   }
 
   Widget _buildListView() {
-    return ListView(
-      children: [
-        // Folders list
-        ...folders
-            .map((folder) => FolderItem(folder: folder, onTap: onFolderTap))
-            .toList(),
+    // Optimize scrolling with frame timing
+    FrameTimingOptimizer().optimizeScrolling();
 
-        // Files list
-        ...files
-            .map((file) => FileItem(
-                  file: file,
+    return ListView.builder(
+      // Add better scrolling physics for smoother scrolling
+      physics: const BouncingScrollPhysics(
+        parent: AlwaysScrollableScrollPhysics(),
+      ),
+      // Add caching for better performance during scrolling
+      cacheExtent: 500,
+      itemCount: folders.length + files.length,
+      itemBuilder: (context, index) {
+        // Use RepaintBoundary to reduce rendering load during scrolling
+        return RepaintBoundary(
+          child: index < folders.length
+              ? FolderItem(folder: folders[index], onTap: onFolderTap)
+              : FileItem(
+                  file: files[index - folders.length],
                   state: state,
                   isSelectionMode: isSelectionMode,
-                  isSelected: selectedFiles.contains(file.path),
+                  isSelected: selectedFiles
+                      .contains(files[index - folders.length].path),
                   toggleFileSelection: toggleFileSelection,
                   showDeleteTagDialog: showDeleteTagDialog,
                   showAddTagToFileDialog: showAddTagToFileDialog,
-                  onFileTap: onFileTap, // Truyền callback xuống FileItem
-                ))
-            .toList(),
-      ],
+                  onFileTap: onFileTap,
+                ),
+        );
+      },
     );
   }
 
   Widget _buildGridView() {
+    // Optimize scrolling with frame timing
+    FrameTimingOptimizer().optimizeScrolling();
+
     return GridView.builder(
       padding: const EdgeInsets.all(8.0),
+      // Add physics for better scrolling performance
+      physics: const BouncingScrollPhysics(
+        parent: AlwaysScrollableScrollPhysics(),
+      ),
+      // Add caching for better scroll performance
+      cacheExtent:
+          500, // Cache more items to reduce loading during fast scrolling
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: state
-            .gridZoomLevel, // Sử dụng gridZoomLevel từ state thay vì hardcode 3
+        crossAxisCount: state.gridZoomLevel,
         childAspectRatio: 0.75,
         crossAxisSpacing: 8.0,
         mainAxisSpacing: 8.0,
       ),
       itemCount: folders.length + files.length,
       itemBuilder: (context, index) {
-        if (index < folders.length) {
-          // Render folder item
-          return FolderGridItem(folder: folders[index], onTap: onFolderTap);
-        } else {
-          // Render file item
-          final fileIndex = index - folders.length;
-          return FileGridItem(
-            file: files[fileIndex],
-            state: state,
-            isSelectionMode: isSelectionMode,
-            isSelected: selectedFiles.contains(files[fileIndex].path),
-            toggleFileSelection: toggleFileSelection,
-            toggleSelectionMode: toggleSelectionMode,
-            onFileTap: onFileTap, // Truyền callback xuống FileGridItem
-          );
-        }
+        // Use RepaintBoundary for better rendering performance
+        return RepaintBoundary(
+          child: index < folders.length
+              // Render folder item
+              ? FolderGridItem(folder: folders[index], onTap: onFolderTap)
+              // Render file item
+              : FileGridItem(
+                  file: files[index - folders.length],
+                  state: state,
+                  isSelectionMode: isSelectionMode,
+                  isSelected: selectedFiles
+                      .contains(files[index - folders.length].path),
+                  toggleFileSelection: toggleFileSelection,
+                  toggleSelectionMode: toggleSelectionMode,
+                  onFileTap: onFileTap,
+                ),
+        );
       },
     );
   }

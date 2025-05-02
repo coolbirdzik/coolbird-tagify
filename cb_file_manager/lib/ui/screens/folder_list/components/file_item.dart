@@ -1,11 +1,11 @@
 import 'dart:io';
 
 import 'package:cb_file_manager/ui/screens/folder_list/file_details_screen.dart';
-import 'package:cb_file_manager/ui/screens/folder_list/folder_list_bloc.dart';
-import 'package:cb_file_manager/ui/screens/folder_list/folder_list_event.dart';
 import 'package:cb_file_manager/ui/screens/folder_list/folder_list_state.dart';
-import 'package:cb_file_manager/ui/screens/media_gallery/video_gallery_screen.dart'; // Import VideoGalleryScreen for VideoPlayerFullScreen
+import 'package:cb_file_manager/ui/screens/media_gallery/video_gallery_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:eva_icons_flutter/eva_icons_flutter.dart';
+import 'package:cb_file_manager/widgets/lazy_video_thumbnail.dart';
 
 import 'tag_dialogs.dart';
 
@@ -17,8 +17,7 @@ class FileItem extends StatelessWidget {
   final Function(String) toggleFileSelection;
   final Function(BuildContext, String, List<String>) showDeleteTagDialog;
   final Function(BuildContext, String) showAddTagToFileDialog;
-  final Function(File, bool)?
-      onFileTap; // Callback cho file click, bool chỉ có phải video không
+  final Function(File, bool)? onFileTap;
 
   const FileItem({
     Key? key,
@@ -37,26 +36,26 @@ class FileItem extends StatelessWidget {
     final extension = file.path.split('.').last.toLowerCase();
     IconData icon;
     Color? iconColor;
-    bool isVideo = false; // Flag to check if file is video
+    bool isVideo = false;
 
     // Determine file type and icon
     if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].contains(extension)) {
-      icon = Icons.image;
+      icon = EvaIcons.imageOutline;
       iconColor = Colors.blue;
     } else if (['mp4', 'mov', 'avi', 'mkv', 'flv', 'wmv'].contains(extension)) {
-      icon = Icons.videocam;
+      icon = EvaIcons.videoOutline;
       iconColor = Colors.red;
-      isVideo = true; // Set video flag
+      isVideo = true;
     } else if (['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac']
         .contains(extension)) {
-      icon = Icons.audiotrack;
+      icon = EvaIcons.musicOutline;
       iconColor = Colors.purple;
     } else if (['pdf', 'doc', 'docx', 'txt', 'xls', 'xlsx', 'ppt', 'pptx']
         .contains(extension)) {
-      icon = Icons.description;
+      icon = EvaIcons.fileTextOutline;
       iconColor = Colors.indigo;
     } else {
-      icon = Icons.insert_drive_file;
+      icon = EvaIcons.fileOutline;
       iconColor = Colors.grey;
     }
 
@@ -81,7 +80,7 @@ class FileItem extends StatelessWidget {
                       toggleFileSelection(file.path);
                     },
                   )
-                : Icon(icon, color: iconColor),
+                : _buildLeadingWidget(isVideo, icon, iconColor),
             title: Text(_basename(file)),
             subtitle: FutureBuilder<FileStat>(
               future: file.stat(),
@@ -98,10 +97,8 @@ class FileItem extends StatelessWidget {
               if (isSelectionMode) {
                 toggleFileSelection(file.path);
               } else if (onFileTap != null) {
-                // Sử dụng callback thay vì xử lý trực tiếp
                 onFileTap!(file, isVideo);
               } else if (isVideo) {
-                // Fallback cho các màn hình không truyền callback
                 Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -109,7 +106,6 @@ class FileItem extends StatelessWidget {
                   ),
                 );
               } else {
-                // Fallback cho các màn hình không truyền callback
                 Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -128,7 +124,6 @@ class FileItem extends StatelessWidget {
                       } else if (value == 'delete_tag') {
                         showDeleteTagDialog(context, file.path, fileTags);
                       } else if (value == 'details' && isVideo) {
-                        // Option to view details for video files
                         Navigator.push(
                           context,
                           MaterialPageRoute(
@@ -147,7 +142,6 @@ class FileItem extends StatelessWidget {
                           value: 'delete_tag',
                           child: Text('Remove Tag'),
                         ),
-                      // Add "View Details" option for video files
                       if (isVideo)
                         const PopupMenuItem(
                           value: 'details',
@@ -156,7 +150,6 @@ class FileItem extends StatelessWidget {
                     ],
                   ),
           ),
-          // Show tags if any
           if (fileTags.isNotEmpty)
             Padding(
               padding:
@@ -168,10 +161,7 @@ class FileItem extends StatelessWidget {
                     label: Text(tag),
                     backgroundColor: Colors.green[100],
                     deleteIcon: const Icon(Icons.close, size: 18),
-                    onDeleted: () {
-                      // We need a reference to the bloc here
-                      // This will be improved in further refactoring
-                    },
+                    onDeleted: () {},
                   );
                 }).toList(),
               ),
@@ -179,6 +169,36 @@ class FileItem extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Widget _buildLeadingWidget(bool isVideo, IconData icon, Color? iconColor) {
+    if (isVideo) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(4),
+        child: SizedBox(
+          width: 56,
+          height: 56,
+          child: LazyVideoThumbnail(
+            videoPath: file.path,
+            width: 56,
+            height: 56,
+            keepAlive: true,
+            fallbackBuilder: () => Container(
+              color: Colors.black12,
+              child: Center(
+                child: Icon(
+                  EvaIcons.videoOutline,
+                  size: 24,
+                  color: Colors.red[400],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    } else {
+      return Icon(icon, color: iconColor, size: 36);
+    }
   }
 
   String _basename(File file) {

@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as path;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:cb_file_manager/helpers/video_thumbnail_helper.dart';
 
 class FolderThumbnailService {
@@ -165,7 +164,8 @@ class FolderThumbnailService {
               await VideoThumbnailHelper.generateThumbnail(videoPath);
           if (thumbnailPath != null) {
             // Still keep the video:: prefix to identify it's a video
-            final result = 'video::$thumbnailPath';
+            // Store the original video path with the thumbnail path for reference
+            final result = 'video::$videoPath::$thumbnailPath';
             _addToCache(folderPath, result);
             return result;
           }
@@ -232,7 +232,8 @@ class FolderThumbnailService {
 
             if (thumbnailPath != null) {
               debugPrint('Generated video thumbnail: $thumbnailPath');
-              return 'video::$thumbnailPath';
+              // Store both video path and thumbnail path for better reference
+              return 'video::$videoPath::$thumbnailPath';
             }
 
             // Fallback to original video path if thumbnail generation fails

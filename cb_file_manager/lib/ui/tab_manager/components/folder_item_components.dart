@@ -4,7 +4,7 @@ import 'package:flutter/gestures.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
 import 'package:cb_file_manager/helpers/io_extensions.dart';
 import 'package:cb_file_manager/helpers/folder_thumbnail_service.dart';
-import 'package:cb_file_manager/helpers/video_thumbnail_helper.dart';
+import 'package:cb_file_manager/widgets/lazy_video_thumbnail.dart';
 import 'package:path/path.dart' as path;
 
 /// Component for displaying a folder item in grid view
@@ -310,8 +310,24 @@ class _FolderThumbnailState extends State<FolderThumbnail> {
     return path.startsWith("video::");
   }
 
-  String _getActualPath(String path) {
-    return path.startsWith("video::") ? path.substring(7) : path;
+  String _getVideoPath(String path) {
+    if (!path.startsWith("video::")) return path;
+
+    final parts = path.split("::");
+    if (parts.length >= 3) {
+      return parts[1];
+    }
+    return path.substring(7);
+  }
+
+  String _getThumbnailPath(String path) {
+    if (!path.startsWith("video::")) return path;
+
+    final parts = path.split("::");
+    if (parts.length >= 3) {
+      return parts[2];
+    }
+    return path.substring(7);
   }
 
   @override
@@ -333,100 +349,134 @@ class _FolderThumbnailState extends State<FolderThumbnail> {
       return Center(
         child: Icon(
           EvaIcons.folderOutline,
-          size: widget.size * 0.6,
+          size: widget.size * 0.7,
           color: Colors.amber[700],
         ),
       );
     }
 
     final bool isVideo = _isVideoPath(_thumbnailPath);
-    final String actualPath = _getActualPath(_thumbnailPath!);
+    final String videoPath = _getVideoPath(_thumbnailPath!);
+    final String thumbnailPath = _getThumbnailPath(_thumbnailPath!);
 
     try {
-      final file = File(actualPath);
-      if (!file.existsSync()) {
-        debugPrint('Image file does not exist: $actualPath');
-        return Center(
-          child: Icon(
-            EvaIcons.folderOutline,
-            size: widget.size * 0.6,
-            color: Colors.amber[700],
+      if (isVideo) {
+        if (!File(videoPath).existsSync()) {
+          debugPrint('Video file does not exist: $videoPath');
+          return Center(
+            child: Icon(
+              EvaIcons.folderOutline,
+              size: widget.size * 0.7,
+              color: Colors.amber[700],
+            ),
+          );
+        }
+
+        return Container(
+          width: double.infinity,
+          height: double.infinity,
+          margin: const EdgeInsets.all(1),
+          decoration: BoxDecoration(
+            border: Border.all(
+              color: Colors.amber[600]!,
+              width: 1.5,
+            ),
+          ),
+          // Use AspectRatio to maintain proper video aspect ratio
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              AspectRatio(
+                aspectRatio: 16 / 9, // Standard video aspect ratio
+                child: LazyVideoThumbnail(
+                  videoPath: videoPath,
+                  width: double.infinity,
+                  height: double.infinity,
+                  keepAlive: true,
+                  fallbackBuilder: () => Container(
+                    color: Colors.blueGrey[900],
+                    child: Center(
+                      child: Icon(
+                        EvaIcons.videoOutline,
+                        size: widget.size * 0.4,
+                        color: Colors.white70,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                right: 4,
+                bottom: 4,
+                child: Container(
+                  padding: const EdgeInsets.all(2),
+                  decoration: BoxDecoration(
+                    color: Colors.black87,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Icon(
+                    Icons.play_arrow,
+                    color: Colors.white,
+                    size: widget.size * 0.25 < 16 ? widget.size * 0.25 : 16,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      } else {
+        final file = File(thumbnailPath);
+        if (!file.existsSync()) {
+          debugPrint('Image file does not exist: $thumbnailPath');
+          return Center(
+            child: Icon(
+              EvaIcons.folderOutline,
+              size: widget.size * 0.7,
+              color: Colors.amber[700],
+            ),
+          );
+        }
+
+        return Container(
+          width: double.infinity,
+          height: double.infinity,
+          margin: const EdgeInsets.all(1),
+          decoration: BoxDecoration(
+            border: Border.all(
+              color: Colors.amber[600]!,
+              width: 1.5,
+            ),
+          ),
+          child: AspectRatio(
+            aspectRatio: 1, // Square aspect ratio for images
+            child: Image.file(
+              file,
+              fit: BoxFit.contain, // Use contain to respect aspect ratio
+              width: double.infinity,
+              height: double.infinity,
+              filterQuality: FilterQuality.medium,
+              cacheWidth: (widget.size * 3).toInt(),
+              cacheHeight: (widget.size * 3).toInt(),
+              errorBuilder: (context, error, stackTrace) {
+                debugPrint('Image loading error: $error');
+                return Center(
+                  child: Icon(
+                    EvaIcons.folderOutline,
+                    size: widget.size * 0.7,
+                    color: Colors.amber[700],
+                  ),
+                );
+              },
+            ),
           ),
         );
       }
-
-      // Container with a yellow border for thumbnails
-      return Container(
-        decoration: BoxDecoration(
-          border: Border.all(
-            color: Colors.amber[600]!,
-            width: 2.0,
-          ),
-        ),
-        child: isVideo
-            ? Stack(
-                fit: StackFit.expand,
-                children: [
-                  Image.file(
-                    file,
-                    fit: BoxFit.cover,
-                    width: widget.size,
-                    height: widget.size,
-                    errorBuilder: (context, error, stackTrace) {
-                      debugPrint('Video thumbnail loading error: $error');
-                      return Container(
-                        color: Colors.blueGrey[900],
-                        child: Center(
-                          child: Icon(
-                            Icons.movie_outlined,
-                            size: widget.size * 0.4,
-                            color: Colors.white70,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                  Positioned(
-                    right: 4,
-                    bottom: 4,
-                    child: Container(
-                      padding: const EdgeInsets.all(2),
-                      decoration: BoxDecoration(
-                        color: Colors.black54,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Icon(
-                        Icons.play_arrow,
-                        color: Colors.white,
-                        size: widget.size * 0.25 < 16 ? widget.size * 0.25 : 16,
-                      ),
-                    ),
-                  ),
-                ],
-              )
-            : Image.file(
-                file,
-                fit: BoxFit.cover,
-                width: widget.size,
-                height: widget.size,
-                errorBuilder: (context, error, stackTrace) {
-                  debugPrint('Image loading error: $error');
-                  return Center(
-                    child: Icon(
-                      EvaIcons.folderOutline,
-                      size: widget.size * 0.6,
-                      color: Colors.amber[700],
-                    ),
-                  );
-                },
-              ),
-      );
     } catch (e) {
       debugPrint('Error creating image widget: $e');
       return Center(
         child: Icon(
           EvaIcons.folderOutline,
-          size: widget.size * 0.6,
+          size: widget.size * 0.7,
           color: Colors.amber[700],
         ),
       );
@@ -493,10 +543,60 @@ class _FolderContextMenuState extends State<FolderContextMenu> {
     return path != null && path.startsWith("video::");
   }
 
+  // Extract the original video path from the combined path
+  String _getVideoPath(String path) {
+    if (!path.startsWith("video::")) return path;
+
+    // New format: video::originalVideoPath::thumbnailPath
+    final parts = path.split("::");
+    if (parts.length >= 3) {
+      return parts[1]; // Return the original video path
+    }
+    // Old format fallback: video::path
+    return path.substring(7);
+  }
+
+  // Extract the thumbnail path from the combined path
+  String _getThumbnailPath(String path) {
+    if (!path.startsWith("video::")) return path;
+
+    // New format: video::originalVideoPath::thumbnailPath
+    final parts = path.split("::");
+    if (parts.length >= 3) {
+      return parts[2]; // Return the thumbnail path
+    }
+    // Old format fallback: video::path
+    return path.substring(7);
+  }
+
   // Helper function to get actual path without video:: prefix
   String _getActualPath(String? path) {
     if (path == null) return "";
-    return _isVideoThumbnail(path) ? path.substring(7) : path;
+    if (!path.startsWith("video::")) return path;
+
+    // New format: video::originalVideoPath::thumbnailPath
+    final parts = path.split("::");
+    if (parts.length >= 3) {
+      return parts[2]; // Return the thumbnail path for display
+    }
+    // Old format fallback: video::path
+    return path.substring(7);
+  }
+
+  // Helper to check if a file should be highlighted as the current thumbnail
+  bool _isCurrentThumbnail(File file, bool isVideo) {
+    if (_currentThumbnailPath == null) return false;
+
+    if (_isVideoThumbnail(_currentThumbnailPath)) {
+      if (!isVideo) return false; // Not a match if comparing video with image
+
+      // For video thumbnails, compare the original video path
+      final currentVideoPath = _getVideoPath(_currentThumbnailPath!);
+      return file.path == currentVideoPath;
+    } else {
+      // For regular images, direct comparison
+      return _currentThumbnailPath == file.path;
+    }
   }
 
   Future<void> _setCustomThumbnail(String filePath) async {
@@ -793,29 +893,8 @@ class _FolderContextMenuState extends State<FolderContextMenu> {
                           ].contains(extension);
 
                           // Check if this file matches the current thumbnail (handling video:: prefix)
-                          bool isCurrentThumbnail = false;
-                          if (_currentThumbnailPath != null) {
-                            if (_isVideoThumbnail(_currentThumbnailPath)) {
-                              // For video thumbnails, we need to match the original video path
-                              // This might be complex as the actual path in _currentThumbnailPath
-                              // is the generated thumbnail, not the original video
-                              final videoPrefix = "video::";
-                              if (_currentThumbnailPath!
-                                      .startsWith(videoPrefix) &&
-                                  isVideo) {
-                                // Compare based on name similarity since direct path comparison won't work
-                                final videoFileName = path.basename(file.path);
-                                final thumbnailFileName = path.basename(
-                                    _getActualPath(_currentThumbnailPath!));
-                                isCurrentThumbnail = thumbnailFileName.contains(
-                                    videoFileName.hashCode.toString());
-                              }
-                            } else {
-                              // For image thumbnails, direct comparison
-                              isCurrentThumbnail =
-                                  _currentThumbnailPath == file.path;
-                            }
-                          }
+                          final bool isCurrentThumbnail =
+                              _isCurrentThumbnail(file, isVideo);
 
                           return GestureDetector(
                             onTap: () => _setCustomThumbnail(
@@ -837,94 +916,21 @@ class _FolderContextMenuState extends State<FolderContextMenu> {
                                   child: ClipRRect(
                                     borderRadius: BorderRadius.circular(3),
                                     child: isVideo
-                                        ? FutureBuilder<String?>(
-                                            future: VideoThumbnailHelper
-                                                .generateThumbnail(file.path),
-                                            builder: (context, snapshot) {
-                                              if (snapshot.connectionState ==
-                                                      ConnectionState.done &&
-                                                  snapshot.hasData &&
-                                                  snapshot.data != null) {
-                                                // Show actual video thumbnail
-                                                return Stack(
-                                                  fit: StackFit.expand,
-                                                  children: [
-                                                    Image.file(
-                                                      File(snapshot.data!),
-                                                      fit: BoxFit.cover,
-                                                      errorBuilder: (context,
-                                                          error, stackTrace) {
-                                                        return Container(
-                                                          color: Colors
-                                                              .blueGrey[800],
-                                                          child: const Center(
-                                                            child: Icon(
-                                                              Icons
-                                                                  .movie_outlined,
-                                                              size: 30,
-                                                              color: Colors
-                                                                  .white70,
-                                                            ),
-                                                          ),
-                                                        );
-                                                      },
-                                                    ),
-                                                    // Play button indicator
-                                                    Positioned(
-                                                      right: 4,
-                                                      bottom: 4,
-                                                      child: Container(
-                                                        padding:
-                                                            const EdgeInsets
-                                                                .all(2),
-                                                        decoration:
-                                                            BoxDecoration(
-                                                          color: Colors.black54,
-                                                          borderRadius:
-                                                              BorderRadius
-                                                                  .circular(4),
-                                                        ),
-                                                        child: const Icon(
-                                                          Icons.play_arrow,
-                                                          color: Colors.white,
-                                                          size: 16,
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ],
-                                                );
-                                              } else if (snapshot
-                                                      .connectionState ==
-                                                  ConnectionState.waiting) {
-                                                // Loading indicator
-                                                return Container(
-                                                  color: Colors.blueGrey[800],
-                                                  child: const Center(
-                                                    child: SizedBox(
-                                                      width: 20,
-                                                      height: 20,
-                                                      child:
-                                                          CircularProgressIndicator(
-                                                        strokeWidth: 2,
-                                                        color: Colors.white70,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                );
-                                              } else {
-                                                // Fallback placeholder
-                                                return Container(
-                                                  color: Colors.blueGrey[800],
-                                                  child: const Center(
-                                                    child: Icon(
-                                                      Icons.movie_outlined,
-                                                      size: 30,
-                                                      color: Colors.white70,
-                                                    ),
-                                                  ),
-                                                );
-                                              }
-                                            },
+                                        ? LazyVideoThumbnail(
+                                            videoPath: file.path,
+                                            width: 80,
+                                            height: 80,
+                                            keepAlive: true,
+                                            fallbackBuilder: () => Container(
+                                              color: Colors.blueGrey[800],
+                                              child: const Center(
+                                                child: Icon(
+                                                  Icons.movie_outlined,
+                                                  size: 30,
+                                                  color: Colors.white70,
+                                                ),
+                                              ),
+                                            ),
                                           )
                                         : Image.file(
                                             file,

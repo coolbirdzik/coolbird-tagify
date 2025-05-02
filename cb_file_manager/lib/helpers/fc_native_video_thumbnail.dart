@@ -16,6 +16,15 @@ class FcNativeVideoThumbnail {
   /// Flag to track initialization status
   static bool _initialized = false;
 
+  /// Prevents multiple concurrent native operations
+  static bool _operationInProgress = false;
+
+  /// Semaphore to control access to native operations
+  static final _operationSemaphore = Completer<void>()..complete();
+
+  /// Maximum time to wait for a native operation
+  static const Duration _operationTimeout = Duration(seconds: 5);
+
   /// Initialize the plugin
   /// This is automatically called by [generateThumbnail]
   static Future<bool> initialize() async {
@@ -67,8 +76,10 @@ class FcNativeVideoThumbnail {
       if (!initResult) return null;
     }
 
-    // Validate paths
-    if (!File(videoPath).existsSync()) {
+    // Validate paths (async)
+    final videoFile = File(videoPath);
+    if (!await videoFile.exists()) {
+      // Use async exists()
       debugPrint(
           'FcNativeVideoThumbnail: Video file does not exist: $videoPath');
       return null;
@@ -78,39 +89,79 @@ class FcNativeVideoThumbnail {
     final directory = path.dirname(outputPath);
     await Directory(directory).create(recursive: true);
 
+    // Check if another operation is already in progress
+    if (_operationInProgress) {
+      debugPrint(
+          'FcNativeVideoThumbnail: Another operation in progress, waiting...');
+      // Create a new semaphore if the current one is completed
+      if (_operationSemaphore.isCompleted) {
+        var oldSemaphore = _operationSemaphore;
+        await oldSemaphore.future;
+      } else {
+        // Wait for the current operation to complete
+        try {
+          await _operationSemaphore.future.timeout(_operationTimeout);
+        } catch (e) {
+          debugPrint(
+              'FcNativeVideoThumbnail: Timed out waiting for previous operation');
+          return null;
+        }
+      }
+    }
+
+    // Create a new semaphore for the current operation
+    var currentSemaphore = Completer<void>();
+
     try {
-      // Call the native method
+      _operationInProgress = true;
+
+      // Call the native method with a timeout
       final result = await _channel.invokeMethod<bool>('getVideoThumbnail', {
         'srcFile': videoPath,
         'destFile': outputPath,
         'width': width,
         'format': format.toLowerCase() == 'png' ? 'png' : 'jpg',
         'timeSeconds': timeSeconds, // Pass the timestamp to native code
+      }).timeout(_operationTimeout, onTimeout: () {
+        debugPrint(
+            'FcNativeVideoThumbnail: Native operation timed out for $videoPath');
+        return false;
       });
 
       if (result == true) {
-        // Verify the thumbnail was created
-        if (File(outputPath).existsSync()) {
+        // Verify the thumbnail was created (async)
+        final outputFile = File(outputPath);
+        if (await outputFile.exists() && await outputFile.length() > 0) {
+          // Use async exists() and length()
           debugPrint(
               'FcNativeVideoThumbnail: Successfully generated thumbnail at $outputPath');
           return outputPath;
         } else {
           debugPrint(
-              'FcNativeVideoThumbnail: File reported as created but doesn\'t exist at $outputPath');
+              'FcNativeVideoThumbnail: File reported as created but doesn\'t exist or is empty at $outputPath');
+          // Attempt to delete potentially corrupt file
+          try {
+            if (await outputFile.exists()) await outputFile.delete();
+          } catch (_) {}
           return null;
         }
       } else {
         // Failed extraction but not an error - common with some video files
         debugPrint(
-            'FcNativeVideoThumbnail: Could not extract thumbnail from video');
+            'FcNativeVideoThumbnail: Could not extract thumbnail from video $videoPath (native call returned false)');
         return null;
       }
     } on PlatformException catch (e) {
-      debugPrint('FcNativeVideoThumbnail: Platform error: ${e.message}');
+      debugPrint(
+          'FcNativeVideoThumbnail: Platform error for $videoPath: ${e.message}');
       return null;
     } catch (e) {
-      debugPrint('FcNativeVideoThumbnail: Error generating thumbnail: $e');
+      debugPrint(
+          'FcNativeVideoThumbnail: Error generating thumbnail for $videoPath: $e');
       return null;
+    } finally {
+      _operationInProgress = false;
+      currentSemaphore.complete();
     }
   }
 

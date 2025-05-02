@@ -216,7 +216,7 @@ List<Directory> splitPathToDirectories(String path) {
   List<Directory> splittedPath = []; // Use list literal
   Directory pathDir = Directory(path);
   splittedPath.add(pathDir);
-  for (var item in pathlib.split(path)) {
+  for (int i = 0; i < pathlib.split(path).length; i++) {
     splittedPath.add(pathDir.parent);
     pathDir = pathDir.parent;
   }

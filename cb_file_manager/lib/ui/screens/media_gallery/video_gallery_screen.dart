@@ -11,7 +11,11 @@ import 'package:cb_file_manager/helpers/user_preferences.dart';
 import 'package:cb_file_manager/ui/utils/base_screen.dart';
 import 'package:cb_file_manager/ui/screens/folder_list/folder_list_state.dart';
 import 'package:cb_file_manager/ui/components/shared_action_bar.dart';
-import 'package:cb_file_manager/ui/components/video_player/custom_video_player.dart'; // Import the new video player component
+import 'package:cb_file_manager/ui/components/video_player/custom_video_player.dart';
+import 'package:cb_file_manager/widgets/lazy_video_thumbnail.dart'; // Thêm import cho LazyVideoThumbnail
+import 'package:cb_file_manager/helpers/video_thumbnail_helper.dart'; // Thêm import cho VideoThumbnailHelper
+import 'package:cb_file_manager/helpers/thumbnail_isolate_manager.dart'; // Thêm import cho ThumbnailIsolateManager
+import 'package:cb_file_manager/helpers/frame_timing_optimizer.dart'; // Import FrameTimingOptimizer
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/services.dart';
@@ -49,7 +53,7 @@ class VideoGalleryScreen extends StatefulWidget {
   }) : super(key: key);
 
   @override
-  _VideoGalleryScreenState createState() => _VideoGalleryScreenState();
+  State<VideoGalleryScreen> createState() => _VideoGalleryScreenState();
 }
 
 class _VideoGalleryScreenState extends State<VideoGalleryScreen>
@@ -57,7 +61,12 @@ class _VideoGalleryScreenState extends State<VideoGalleryScreen>
   late Future<List<File>> _videoFilesFuture;
   late UserPreferences _preferences;
   late double _thumbnailSize;
-  ScrollController _scrollController = ScrollController();
+
+  // Cải thiện ScrollController với cơ chế throttle & smooth
+  final ScrollController _scrollController = ScrollController();
+  Timer? _scrollEndTimer;
+  bool _isScrolling = false;
+
   bool _isLoadingThumbnails = false;
   bool _isMounted = false;
 
@@ -81,11 +90,34 @@ class _VideoGalleryScreenState extends State<VideoGalleryScreen>
     _loadPreferences();
     _loadVideos();
     _isMounted = true;
+
+    // Lắng nghe sự kiện scroll để tối ưu hóa việc tải hình ảnh
+    _scrollController.addListener(() {
+      // Đánh dấu là đang cuộn
+      if (!_isScrolling) {
+        setState(() {
+          _isScrolling = true;
+        });
+      }
+
+      // Hủy timer hiện tại nếu có
+      _scrollEndTimer?.cancel();
+
+      // Tạo timer mới để biết khi nào cuộn kết thúc
+      _scrollEndTimer = Timer(const Duration(milliseconds: 200), () {
+        if (mounted) {
+          setState(() {
+            _isScrolling = false;
+          });
+        }
+      });
+    });
   }
 
   @override
   void dispose() {
     _scrollController.dispose();
+    _scrollEndTimer?.cancel();
     _isMounted = false;
     super.dispose();
   }
@@ -116,19 +148,31 @@ class _VideoGalleryScreenState extends State<VideoGalleryScreen>
         });
 
         if (videos.isNotEmpty) {
+          // Sử dụng ThumbnailIsolateManager thay vì VideoThumbnailHelper
           final videoPaths = videos.map((file) => file.path).toList();
 
-          ThumbnailTaskManager.preloadFirstBatch(videoPaths, count: 20)
-              .then((_) {
-            if (_isMounted) {
-              setState(() {
-                _isLoadingThumbnails = false;
-              });
-            }
+          // Khởi chạy ThumbnailIsolateManager nếu chưa được khởi tạo
+          _initializeIsolateManager().then((_) {
+            // Tải trước thumbnail với Isolate Manager
+            ThumbnailIsolateManager.instance
+                .prefetchThumbnails(videoPaths)
+                .then((_) {
+              if (_isMounted) {
+                setState(() {
+                  _isLoadingThumbnails = false;
+                });
+              }
+            });
           });
         }
       }
     });
+  }
+
+  Future<void> _initializeIsolateManager() async {
+    if (!ThumbnailIsolateManager.instance.isInitialized) {
+      await ThumbnailIsolateManager.instance.initialize();
+    }
   }
 
   void _sortVideoFiles() {
@@ -414,6 +458,12 @@ class _VideoGalleryScreenState extends State<VideoGalleryScreen>
     return GridView.builder(
       controller: _scrollController,
       padding: const EdgeInsets.all(8.0),
+      // Tối ưu scroll physics để cuộn mượt hơn
+      physics: const BouncingScrollPhysics(
+        parent: AlwaysScrollableScrollPhysics(),
+      ),
+      // Sử dụng caching cho các mục để tránh rebuild khi cuộn
+      cacheExtent: 500, // Cache nhiều hơn để giảm loading khi cuộn nhanh
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: columns,
         crossAxisSpacing: 8,
@@ -424,6 +474,8 @@ class _VideoGalleryScreenState extends State<VideoGalleryScreen>
       itemBuilder: (context, index) {
         final file = _videoFiles[index];
         final isSelected = _selectedFilePaths.contains(file.path);
+        // Dùng placeholderOnly khi đang cuộn để giảm tải cho main thread
+        final bool usePlaceholder = _isScrolling;
 
         return Stack(
           children: [
@@ -431,6 +483,7 @@ class _VideoGalleryScreenState extends State<VideoGalleryScreen>
               file: file,
               width: thumbnailSize,
               height: thumbnailSize * 12 / 16,
+              usePlaceholder: usePlaceholder, // Thêm flag này
               onTap: _isSelectionMode
                   ? () {
                       setState(() {
@@ -1112,6 +1165,7 @@ class OptimizedVideoThumbnailItem extends StatelessWidget {
   final VoidCallback onTap;
   final double width;
   final double height;
+  final bool usePlaceholder;
 
   const OptimizedVideoThumbnailItem({
     Key? key,
@@ -1119,58 +1173,68 @@ class OptimizedVideoThumbnailItem extends StatelessWidget {
     required this.onTap,
     this.width = 120,
     this.height = 90,
+    this.usePlaceholder = false,
   }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     final String ext = pathlib.extension(file.path).toLowerCase();
 
+    // Optimize frame timing before rendering thumbnails
+    FrameTimingOptimizer().optimizeImageRendering();
+
     return GestureDetector(
       onTap: onTap,
       child: Card(
         clipBehavior: Clip.antiAlias,
         elevation: 2,
-        child: Stack(
-          fit: StackFit.expand,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            ThumbnailHelper.buildVideoThumbnail(
-              videoPath: file.path,
-              width: width,
-              height: height,
-              isVisible: true,
-              onThumbnailGenerated: (_) {},
-              fallbackBuilder: () => _buildFallbackThumbnail(ext),
-            ),
-            Center(
-              child: Container(
-                padding: EdgeInsets.all(width > 100 ? 8 : 6),
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.5),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  Icons.play_arrow,
-                  color: Colors.white,
-                  size: width > 100 ? 32 : 24,
-                ),
+            Expanded(
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  // Sử dụng LazyVideoThumbnail để hiển thị thumbnail
+                  LazyVideoThumbnail(
+                    videoPath: file.path,
+                    width: width,
+                    height: height,
+                    placeholderOnly: usePlaceholder,
+                    fallbackBuilder: () => _buildFallbackThumbnail(ext),
+                  ),
+
+                  // Play button overlay
+                  Center(
+                    child: Container(
+                      padding: EdgeInsets.all(width > 100 ? 8 : 6),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.5),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.play_arrow,
+                        color: Colors.white,
+                        size: width > 100 ? 32 : 24,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-            Positioned(
-              bottom: 0,
-              left: 0,
-              right: 0,
-              child: Container(
-                color: Colors.black.withOpacity(0.7),
-                padding: EdgeInsets.all(width > 100 ? 8 : 4),
-                child: Text(
-                  pathlib.basename(file.path),
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: width > 100 ? 12 : 10,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+
+            // Filename overlay ở dưới
+            Container(
+              color: Colors.grey[100],
+              padding: EdgeInsets.all(width > 100 ? 8 : 4),
+              child: Text(
+                pathlib.basename(file.path),
+                style: TextStyle(
+                  color: Colors.black87,
+                  fontSize: width > 100 ? 12 : 10,
                 ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
           ],

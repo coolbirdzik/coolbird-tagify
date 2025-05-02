@@ -1,12 +1,13 @@
 import 'dart:io';
 
-import 'package:cb_file_manager/helpers/thumbnail_helper.dart';
-import 'package:cb_file_manager/helpers/video_thumbnail_helper.dart';
 import 'package:cb_file_manager/ui/screens/folder_list/file_details_screen.dart';
 import 'package:cb_file_manager/ui/screens/folder_list/folder_list_state.dart';
 import 'package:cb_file_manager/ui/screens/media_gallery/video_gallery_screen.dart';
+import 'package:cb_file_manager/helpers/frame_timing_optimizer.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
+import 'package:cb_file_manager/widgets/lazy_video_thumbnail.dart';
 
 class FileGridItem extends StatelessWidget {
   final File file;
@@ -15,7 +16,7 @@ class FileGridItem extends StatelessWidget {
   final bool isSelected;
   final Function(String) toggleFileSelection;
   final Function() toggleSelectionMode;
-  final Function(File, bool)? onFileTap; // Callback cho file click
+  final Function(File, bool)? onFileTap;
 
   const FileGridItem({
     Key? key,
@@ -25,18 +26,20 @@ class FileGridItem extends StatelessWidget {
     required this.isSelected,
     required this.toggleFileSelection,
     required this.toggleSelectionMode,
-    this.onFileTap, // Thêm parameter mới
+    this.onFileTap,
   }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
+    // Optimize image rendering before building
+    FrameTimingOptimizer().optimizeImageRendering();
+
     final extension = _getFileExtension(file);
     IconData icon;
     Color? iconColor;
     bool isPreviewable = false;
     bool isVideo = false;
 
-    // Determine file type and icon
     if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].contains(extension)) {
       icon = EvaIcons.imageOutline;
       iconColor = Colors.blue;
@@ -58,10 +61,8 @@ class FileGridItem extends StatelessWidget {
       iconColor = Colors.grey;
     }
 
-    // Get tags for this file
     final List<String> fileTags = state.getTagsForFile(file.path);
 
-    // Use a Container with border instead of Card with elevation for flat design
     return Container(
       decoration: BoxDecoration(
         color: isSelected ? Colors.blue.shade50 : Theme.of(context).cardColor,
@@ -74,10 +75,8 @@ class FileGridItem extends StatelessWidget {
           if (isSelectionMode) {
             toggleFileSelection(file.path);
           } else if (onFileTap != null) {
-            // Sử dụng callback thay vì điều hướng trực tiếp
             onFileTap!(file, isVideo);
           } else if (isVideo) {
-            // Fallback cho các component không truyền callback
             Navigator.push(
               context,
               MaterialPageRoute(
@@ -85,7 +84,6 @@ class FileGridItem extends StatelessWidget {
               ),
             );
           } else {
-            // Fallback cho các component không truyền callback
             Navigator.push(
               context,
               MaterialPageRoute(
@@ -103,13 +101,11 @@ class FileGridItem extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // File preview or icon - give it most of the space
             Expanded(
               flex: 3,
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  // Show image preview or appropriate icon for video files
                   isPreviewable || isVideo
                       ? _buildThumbnail(file)
                       : Center(
@@ -119,7 +115,6 @@ class FileGridItem extends StatelessWidget {
                             color: iconColor,
                           ),
                         ),
-                  // Selection indicator overlay
                   if (isSelectionMode)
                     Positioned(
                       right: 6,
@@ -143,14 +138,12 @@ class FileGridItem extends StatelessWidget {
                 ],
               ),
             ),
-
-            // File name and tags - wrap in a Flexible to prevent overflow
             Flexible(
               flex: 2,
               child: Container(
                 padding: const EdgeInsets.all(8.0),
                 child: Column(
-                  mainAxisSize: MainAxisSize.min, // Use minimum vertical space
+                  mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
@@ -176,7 +169,6 @@ class FileGridItem extends StatelessWidget {
                             style: TextStyle(fontSize: 10));
                       },
                     ),
-                    // Tag indicators - only show if we have space and tags
                     if (fileTags.isNotEmpty)
                       Flexible(
                         child: Row(
@@ -209,67 +201,75 @@ class FileGridItem extends StatelessWidget {
   }
 
   Widget _buildThumbnail(File file) {
+    // Apply frame timing optimization before building a thumbnail
+    FrameTimingOptimizer().optimizeImageRendering();
+
     final String extension = _getFileExtension(file);
     final bool isVideo =
         ['mp4', 'mov', 'avi', 'mkv', 'flv', 'wmv'].contains(extension);
 
     if (isVideo) {
-      // Use the new VideoThumbnailHelper instead of ThumbnailHelper
-      return Hero(
-        tag: file.path,
-        child: VideoThumbnailHelper.buildVideoThumbnail(
-          videoPath: file.path,
-          width: double.infinity,
-          height: double.infinity,
-          isPriority: true, // Set high priority for visible thumbnails
-          forceRegenerate:
-              false, // This will be controlled by the refresh action
-          fallbackBuilder: () => Container(
-            color: Colors.black12,
-            child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    EvaIcons.videoOutline,
-                    size: 36,
-                    color: Colors.red[400],
-                  ),
-                  const SizedBox(height: 4),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.5),
-                      borderRadius: BorderRadius.circular(4),
+      return RepaintBoundary(
+        child: Hero(
+          tag: file.path,
+          child: LazyVideoThumbnail(
+            videoPath: file.path,
+            width: double.infinity,
+            height: double.infinity,
+            keepAlive: true,
+            fallbackBuilder: () => Container(
+              color: Colors.black12,
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      EvaIcons.videoOutline,
+                      size: 36,
+                      color: Colors.red[400],
                     ),
-                    child: const Text(
-                      'Video',
-                      style: TextStyle(fontSize: 10, color: Colors.white),
+                    const SizedBox(height: 4),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.5),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Text(
+                        'Video',
+                        style: TextStyle(fontSize: 10, color: Colors.white),
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
         ),
       );
     } else {
-      // For image files, use the existing Image.file approach
-      return Hero(
-        tag: file.path,
-        child: Image.file(
-          file,
-          fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) {
-            return Center(
-              child: Icon(
-                EvaIcons.alertTriangleOutline,
-                size: 48,
-                color: Colors.grey[400],
-              ),
-            );
-          },
+      return RepaintBoundary(
+        child: Hero(
+          tag: file.path,
+          child: Image.file(
+            file,
+            fit: BoxFit.cover,
+            // Add caching parameters to improve performance
+            cacheWidth: 300,
+            cacheHeight: 300,
+            // Lower quality for better performance
+            filterQuality: FilterQuality.medium,
+            errorBuilder: (context, error, stackTrace) {
+              return Center(
+                child: Icon(
+                  EvaIcons.alertTriangleOutline,
+                  size: 48,
+                  color: Colors.grey[400],
+                ),
+              );
+            },
+          ),
         ),
       );
     }
