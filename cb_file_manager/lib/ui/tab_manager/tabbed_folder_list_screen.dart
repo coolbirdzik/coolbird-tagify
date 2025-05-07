@@ -134,7 +134,7 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
     try {
       final directory = Directory(_currentPath);
       if (await directory.exists()) {
-        final UserPreferences prefs = UserPreferences();
+        final UserPreferences prefs = UserPreferences.instance;
         await prefs.init();
         await prefs.setLastAccessedFolder(_currentPath);
       }
@@ -145,30 +145,32 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
 
   Future<void> _loadPreferences() async {
     try {
-      final UserPreferences prefs = UserPreferences();
+      final UserPreferences prefs = UserPreferences.instance;
       await prefs.init();
 
-      setState(() {
-        _viewMode = prefs.getViewMode();
-        _sortOption = prefs.getSortOption();
-        _gridZoomLevel = prefs.getGridZoomLevel();
-      });
+      final viewMode = await prefs.getViewMode();
+      final sortOption = await prefs.getSortOption();
+      final gridZoomLevel = await prefs.getGridZoomLevel();
 
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          _folderListBloc.add(SetViewMode(_viewMode));
-          _folderListBloc.add(SetSortOption(_sortOption));
-          _folderListBloc.add(SetGridZoom(_gridZoomLevel));
-        }
-      });
+      if (mounted) {
+        setState(() {
+          _viewMode = viewMode;
+          _sortOption = sortOption;
+          _gridZoomLevel = gridZoomLevel;
+        });
+
+        _folderListBloc.add(SetViewMode(viewMode));
+        _folderListBloc.add(SetSortOption(sortOption));
+        _folderListBloc.add(SetGridZoom(gridZoomLevel));
+      }
     } catch (e) {
-      print('Error loading preferences: $e');
+      debugPrint('Error loading preferences: $e');
     }
   }
 
   Future<void> _saveViewModeSetting(ViewMode mode) async {
     try {
-      final UserPreferences prefs = UserPreferences();
+      final UserPreferences prefs = UserPreferences.instance;
       await prefs.init();
       await prefs.setViewMode(mode);
     } catch (e) {
@@ -178,7 +180,7 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
 
   Future<void> _saveSortSetting(SortOption option) async {
     try {
-      final UserPreferences prefs = UserPreferences();
+      final UserPreferences prefs = UserPreferences.instance;
       await prefs.init();
       await prefs.setSortOption(option);
     } catch (e) {
@@ -188,7 +190,7 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
 
   Future<void> _saveGridZoomSetting(int zoomLevel) async {
     try {
-      final UserPreferences prefs = UserPreferences();
+      final UserPreferences prefs = UserPreferences.instance;
       await prefs.init();
       await prefs.setGridZoomLevel(zoomLevel);
       setState(() {
@@ -311,7 +313,7 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
 
   // Hiển thị tooltip hướng dẫn sử dụng tìm kiếm tag khi người dùng nhấn vào icon tìm kiếm lần đầu
   void _showSearchTip(BuildContext context) {
-    final UserPreferences prefs = UserPreferences();
+    final UserPreferences prefs = UserPreferences.instance;
     prefs.init().then((_) {
       prefs.getSearchTipShown().then((shown) {
         if (!shown) {

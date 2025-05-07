@@ -102,6 +102,8 @@ class _TagSearchDialogState extends State<TagSearchDialog> {
             },
             onSelected: (String selection) {
               _tagController.text = selection;
+              // Tự động thực hiện tìm kiếm khi người dùng chọn một tag từ auto-complete
+              _performSearch();
             },
             fieldViewBuilder:
                 (context, controller, focusNode, onFieldSubmitted) {
@@ -141,6 +143,8 @@ class _TagSearchDialogState extends State<TagSearchDialog> {
                           setState(() {
                             _tagController.text = tag;
                           });
+                          // Tự động thực hiện tìm kiếm khi người dùng chọn một tag
+                          _performSearch();
                         },
                       ))
                   .toList(),

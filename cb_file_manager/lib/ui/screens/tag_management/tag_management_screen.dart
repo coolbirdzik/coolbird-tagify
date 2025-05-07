@@ -1,6 +1,8 @@
 import 'dart:io';
 
 import 'package:cb_file_manager/helpers/tag_manager.dart';
+import 'package:cb_file_manager/models/database/database_manager.dart';
+import 'package:cb_file_manager/helpers/user_preferences.dart';
 import 'package:cb_file_manager/ui/screens/folder_list/file_details_screen.dart';
 import 'package:cb_file_manager/ui/utils/base_screen.dart';
 import 'package:flutter/material.dart';
@@ -17,22 +19,85 @@ class TagManagementScreen extends StatefulWidget {
 }
 
 class _TagManagementScreenState extends State<TagManagementScreen> {
-  late Future<Set<String>> _tagsFuture;
+  // Initialize with empty set to prevent LateInitializationError
+  late Future<Set<String>> _tagsFuture = Future.value({});
   String? _selectedTag;
-  late Future<List<FileSystemEntity>> _filesByTagFuture;
+  // Initialize with empty list to prevent LateInitializationError
+  late Future<List<FileSystemEntity>> _filesByTagFuture = Future.value([]);
   bool _isSearching = false;
   bool _isGlobalSearch = true; // Default to global search
+
+  // Database manager for ObjectBox storage
+  late DatabaseManager _databaseManager;
+  // User preferences singleton instance
+  final UserPreferences _preferences = UserPreferences.instance;
+
+  bool _isInitializing = true;
 
   @override
   void initState() {
     super.initState();
-    _refreshTags();
-    _filesByTagFuture = Future.value([]);
+    // Initialize database and preferences
+    _initializeDatabase();
+  }
+
+  @override
+  void dispose() {
+    // No need to dispose the database manager as it's a singleton
+    super.dispose();
+  }
+
+  Future<void> _initializeDatabase() async {
+    try {
+      setState(() {
+        _isInitializing = true;
+      });
+
+      // Initialize user preferences
+      if (!_preferences.isInitialized()) {
+        await _preferences.init();
+      }
+
+      // Ensure ObjectBox is enabled
+      if (!_preferences.isUsingObjectBox()) {
+        await _preferences.setUsingObjectBox(true);
+      }
+
+      // Get the database manager instance
+      _databaseManager = DatabaseManager.getInstance();
+
+      // Only initialize if not already initialized
+      if (!_databaseManager.isInitialized()) {
+        await _databaseManager.initialize();
+      }
+
+      // Initialize tags list with an empty set to avoid LateInitializationError
+      _refreshTags();
+
+      setState(() {
+        _isInitializing = false;
+      });
+
+      print('Tag management screen: Database initialized successfully');
+    } catch (e) {
+      print('Error initializing database in tag management screen: $e');
+      // Set default empty data in case of error
+      setState(() {
+        _tagsFuture = Future.value({});
+        _filesByTagFuture = Future.value([]);
+        _isInitializing = false;
+      });
+    }
   }
 
   void _refreshTags() {
     setState(() {
-      _tagsFuture = TagManager.getAllUniqueTags(widget.startingDirectory);
+      // Only try to get tags if database is initialized
+      if (_databaseManager.isInitialized()) {
+        _tagsFuture = _databaseManager.getAllUniqueTags();
+      } else {
+        _tagsFuture = Future.value({});
+      }
     });
   }
 
@@ -40,14 +105,71 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
     setState(() {
       _selectedTag = tag;
       _isSearching = true;
-      // Use global search if enabled, otherwise search in starting directory
+      // Use database manager to find files
       if (_isGlobalSearch) {
-        _filesByTagFuture = TagManager.findFilesByTagGlobally(tag);
+        _filesByTagFuture = _findFilesByTagGlobally(tag);
       } else {
         _filesByTagFuture =
-            TagManager.findFilesByTag(widget.startingDirectory, tag);
+            _findFilesByTagInDirectory(widget.startingDirectory, tag);
       }
     });
+  }
+
+  // Find files with a specific tag in a directory
+  Future<List<FileSystemEntity>> _findFilesByTagInDirectory(
+      String directoryPath, String tag) async {
+    final List<FileSystemEntity> results = [];
+    final filePaths =
+        await _databaseManager.findFilesByTag(tag.toLowerCase().trim());
+
+    // Filter paths by directory
+    final filteredPaths =
+        filePaths.where((path) => path.startsWith(directoryPath)).toList();
+
+    // Convert paths to FileSystemEntity objects
+    for (final path in filteredPaths) {
+      try {
+        final directory = Directory(path);
+        if (await directory.exists()) {
+          results.add(directory);
+        } else {
+          final file = File(path);
+          if (await file.exists()) {
+            results.add(file);
+          }
+        }
+      } catch (e) {
+        print('Error converting path to FileSystemEntity: $e');
+      }
+    }
+
+    return results;
+  }
+
+  // Find files with a specific tag globally
+  Future<List<FileSystemEntity>> _findFilesByTagGlobally(String tag) async {
+    final List<FileSystemEntity> results = [];
+    final filePaths =
+        await _databaseManager.findFilesByTag(tag.toLowerCase().trim());
+
+    // Convert paths to FileSystemEntity objects
+    for (final path in filePaths) {
+      try {
+        final directory = Directory(path);
+        if (await directory.exists()) {
+          results.add(directory);
+        } else {
+          final file = File(path);
+          if (await file.exists()) {
+            results.add(file);
+          }
+        }
+      } catch (e) {
+        print('Error converting path to FileSystemEntity: $e');
+      }
+    }
+
+    return results;
   }
 
   void _clearTagSelection() {
@@ -116,16 +238,16 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
     );
 
     try {
-      // First find all files with this tag
-      final files =
-          await TagManager.findFilesByTag(widget.startingDirectory, tag);
-      int totalFiles = files.length;
+      // Use database manager to find files with this tag
+      final filePaths =
+          await _databaseManager.findFilesByTag(tag.toLowerCase().trim());
+      int totalFiles = filePaths.length;
       int processedFiles = 0;
 
-      // Remove the tag from each file
-      for (final file in files) {
-        if (file is File) {
-          await TagManager.removeTag(file.path, tag);
+      // Remove tag from each file
+      for (final path in filePaths) {
+        final success = await _databaseManager.removeTagFromFile(path, tag);
+        if (success) {
           processedFiles++;
         }
       }
@@ -204,9 +326,9 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
                   if (_selectedTag != null) {
                     if (_isGlobalSearch) {
                       _filesByTagFuture =
-                          TagManager.findFilesByTagGlobally(_selectedTag!);
+                          _findFilesByTagGlobally(_selectedTag!);
                     } else {
-                      _filesByTagFuture = TagManager.findFilesByTag(
+                      _filesByTagFuture = _findFilesByTagInDirectory(
                           widget.startingDirectory, _selectedTag!);
                     }
                   }
@@ -427,13 +549,13 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
           tooltip: 'Remove this tag from the file',
           onPressed: () async {
             // Remove the tag from this file
-            final success =
-                await TagManager.removeTag(file.path, _selectedTag!);
+            final success = await _databaseManager.removeTagFromFile(
+                file.path, _selectedTag!);
 
             if (success) {
               // Refresh the file list
               setState(() {
-                _filesByTagFuture = TagManager.findFilesByTag(
+                _filesByTagFuture = _findFilesByTagInDirectory(
                     widget.startingDirectory, _selectedTag!);
               });
             } else {

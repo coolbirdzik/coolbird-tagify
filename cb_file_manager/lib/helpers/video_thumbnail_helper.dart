@@ -247,7 +247,7 @@ class VideoThumbnailHelper {
 
   static bool _cacheInitialized = false;
 
-  static final UserPreferences _userPrefs = UserPreferences();
+  static final UserPreferences _userPrefs = UserPreferences.instance;
   static bool _userPrefsInitialized = false;
   static double _thumbnailPercentage = 10.0;
 
@@ -298,8 +298,8 @@ class VideoThumbnailHelper {
       if (!_userPrefsInitialized) {
         try {
           await _userPrefs.init();
-          _thumbnailPercentage =
-              _userPrefs.getVideoThumbnailPercentage().toDouble();
+          final percentage = await _userPrefs.getVideoThumbnailPercentage();
+          _thumbnailPercentage = percentage.toDouble();
           _userPrefsInitialized = true;
           _log(
               'VideoThumbnail: UserPreferences initialized. Thumbnail percentage: $_thumbnailPercentage%');

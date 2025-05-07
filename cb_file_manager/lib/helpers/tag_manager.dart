@@ -2,10 +2,14 @@ import 'dart:io';
 import 'dart:convert';
 import 'package:path/path.dart' as pathlib;
 import 'package:path_provider/path_provider.dart';
+import 'package:cb_file_manager/models/database/database_manager.dart';
+import 'package:cb_file_manager/helpers/user_preferences.dart';
+import 'package:cb_file_manager/models/objectbox/file_tag.dart';
 
 /// A utility class for managing file tags globally
 ///
 /// Tags are stored in a central global tags file instead of per directory
+/// or in ObjectBox database if enabled
 class TagManager {
   // Singleton instance
   static TagManager? _instance;
@@ -18,6 +22,15 @@ class TagManager {
 
   // Path to the global tags file (initialized lazily)
   static String? _globalTagsPath;
+
+  // Database manager for ObjectBox storage
+  static DatabaseManager? _databaseManager;
+
+  // Flag to determine if we're using ObjectBox
+  static bool _useObjectBox = false;
+
+  // User preferences for checking if ObjectBox is enabled
+  static final UserPreferences _preferences = UserPreferences.instance;
 
   // Private singleton constructor
   TagManager._();
@@ -50,13 +63,26 @@ class TagManager {
     await initialize();
 
     final Map<String, int> tagFrequency = {};
-    final tagsData = await _loadGlobalTags();
 
-    // Count frequency of each tag
-    for (final List<dynamic> tagList in tagsData.values) {
-      for (final tag in tagList) {
-        if (tag is String) {
-          tagFrequency[tag] = (tagFrequency[tag] ?? 0) + 1;
+    if (_useObjectBox && _databaseManager != null) {
+      // Get all unique tags from ObjectBox
+      final allUniqueTags = await _databaseManager!.getAllUniqueTags();
+
+      // Count how many files each tag appears in
+      for (final tag in allUniqueTags) {
+        final files = await _databaseManager!.findFilesByTag(tag);
+        tagFrequency[tag] = files.length;
+      }
+    } else {
+      // Use original implementation for JSON file
+      final tagsData = await _loadGlobalTags();
+
+      // Count frequency of each tag
+      for (final List<dynamic> tagList in tagsData.values) {
+        for (final tag in tagList) {
+          if (tag is String) {
+            tagFrequency[tag] = (tagFrequency[tag] ?? 0) + 1;
+          }
         }
       }
     }
@@ -85,21 +111,37 @@ class TagManager {
 
   /// Initialize the global tags system by determining the storage path
   static Future<void> initialize() async {
-    if (_globalTagsPath != null) return; // Already initialized
-
     try {
-      final appDir = await getApplicationDocumentsDirectory();
-      final coolbirdDir = Directory('${appDir.path}/coolbird');
+      // Check if ObjectBox is enabled from user preferences
+      await _preferences.init();
+      _useObjectBox = _preferences.isUsingObjectBox();
 
-      // Create the directory if it doesn't exist
-      if (!await coolbirdDir.exists()) {
-        await coolbirdDir.create(recursive: true);
+      if (_useObjectBox) {
+        // Initialize database manager - get instance but check if it's already initialized
+        _databaseManager = DatabaseManager.getInstance();
+        if (!_databaseManager!.isInitialized()) {
+          await _databaseManager!.initialize();
+        }
+        print('TagManager initialized with ObjectBox database');
+      } else {
+        if (_globalTagsPath != null) return; // Already initialized
+
+        // Initialize JSON storage
+        final appDir = await getApplicationDocumentsDirectory();
+        final coolbirdDir = Directory('${appDir.path}/coolbird');
+
+        // Create the directory if it doesn't exist
+        if (!await coolbirdDir.exists()) {
+          await coolbirdDir.create(recursive: true);
+        }
+
+        _globalTagsPath = '${coolbirdDir.path}/$GLOBAL_TAGS_FILENAME';
+        print('Global tags path: $_globalTagsPath (JSON storage)');
       }
-
-      _globalTagsPath = '${coolbirdDir.path}/$GLOBAL_TAGS_FILENAME';
-      print('Global tags path: $_globalTagsPath');
     } catch (e) {
       print('Error initializing TagManager: $e');
+      _useObjectBox = false;
+
       // Fallback to a location in the user's home directory
       final home =
           Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'];
@@ -154,107 +196,125 @@ class TagManager {
       return List.from(_tagsCache[filePath]!);
     }
 
-    try {
-      final tagsData = await _loadGlobalTags();
+    await initialize();
 
-      // Use the absolute file path as the key in the global tags file
-      if (tagsData.containsKey(filePath)) {
-        final tags = List<String>.from(tagsData[filePath]);
+    try {
+      if (_useObjectBox && _databaseManager != null) {
+        // Use ObjectBox to get tags
+        final tags = await _databaseManager!.getTagsForFile(filePath);
         _tagsCache[filePath] = tags;
         return tags;
-      }
+      } else {
+        // Use original implementation for JSON file
+        final tagsData = await _loadGlobalTags();
 
-      _tagsCache[filePath] = [];
-      return [];
+        // Use the absolute file path as the key in the global tags file
+        if (tagsData.containsKey(filePath)) {
+          final tags = List<String>.from(tagsData[filePath]);
+          _tagsCache[filePath] = tags;
+          return tags;
+        }
+
+        _tagsCache[filePath] = [];
+        return [];
+      }
     } catch (e) {
       print('Error reading tags for $filePath: $e');
       return [];
     }
   }
 
-  /// Adds a tag to a file
-  ///
-  /// Returns true if successful, false otherwise
+  /// Static wrapper for instance method
   static Future<bool> addTag(String filePath, String tag) async {
-    if (tag.trim().isEmpty) {
-      return false;
-    }
-
     try {
       await initialize();
 
-      Map<String, dynamic> tagsData = await _loadGlobalTags();
+      if (_useObjectBox && _databaseManager != null) {
+        return await _databaseManager!.addTagToFile(filePath, tag);
+      } else {
+        Map<String, dynamic> tagsData = await _loadGlobalTags();
 
-      if (!tagsData.containsKey(filePath)) {
-        tagsData[filePath] = [];
-      }
+        // Get existing tags or create new list
+        final tags = List<String>.from(tagsData[filePath] ?? []);
+        if (!tags.contains(tag)) {
+          tags.add(tag);
+          tagsData[filePath] = tags;
+          final success = await _saveGlobalTags(tagsData);
 
-      final tags = List<String>.from(tagsData[filePath]);
-      if (!tags.contains(tag)) {
-        tags.add(tag);
-        tagsData[filePath] = tags;
+          if (success) {
+            _tagsCache[filePath] = tags;
+          }
 
-        final success = await _saveGlobalTags(tagsData);
-
-        if (success) {
-          // Update cache
-          _tagsCache[filePath] = tags;
+          return success;
         }
-
-        return success;
+        return true;
       }
-
-      // Tag already exists
-      return true;
     } catch (e) {
       print('Error adding tag to $filePath: $e');
       return false;
     }
   }
 
-  /// Removes a tag from a file
-  ///
-  /// Returns true if successful, false otherwise
+  /// Static wrapper for instance method
   static Future<bool> removeTag(String filePath, String tag) async {
     try {
       await initialize();
 
-      Map<String, dynamic> tagsData = await _loadGlobalTags();
+      if (_useObjectBox && _databaseManager != null) {
+        return await _databaseManager!.removeTagFromFile(filePath, tag);
+      } else {
+        Map<String, dynamic> tagsData = await _loadGlobalTags();
+        if (!tagsData.containsKey(filePath)) return true;
 
-      if (!tagsData.containsKey(filePath)) {
-        return true; // No tags for this file
-      }
+        final tags = List<String>.from(tagsData[filePath]);
+        if (tags.contains(tag)) {
+          tags.remove(tag);
 
-      final tags = List<String>.from(tagsData[filePath]);
-      if (tags.contains(tag)) {
-        tags.remove(tag);
-
-        if (tags.isEmpty) {
-          // Remove the file entry entirely if no tags left
-          tagsData.remove(filePath);
-        } else {
-          tagsData[filePath] = tags;
-        }
-
-        final success = await _saveGlobalTags(tagsData);
-
-        if (success) {
-          // Update cache
           if (tags.isEmpty) {
-            _tagsCache.remove(filePath);
+            tagsData.remove(filePath);
           } else {
-            _tagsCache[filePath] = tags;
+            tagsData[filePath] = tags;
           }
+
+          final success = await _saveGlobalTags(tagsData);
+          if (success) {
+            if (tags.isEmpty) {
+              _tagsCache.remove(filePath);
+            } else {
+              _tagsCache[filePath] = tags;
+            }
+          }
+          return success;
         }
-
-        return success;
+        return true;
       }
-
-      return true;
     } catch (e) {
       print('Error removing tag from $filePath: $e');
       return false;
     }
+  }
+
+  /// Add tags to multiple files using static method
+  static Future<bool> addTagToFiles(List<String> filePaths, String tag) async {
+    bool success = true;
+    for (final path in filePaths) {
+      if (!await TagManager.addTag(path, tag)) {
+        success = false;
+      }
+    }
+    return success;
+  }
+
+  /// Remove tags from multiple files using static method
+  static Future<bool> removeTagFromFiles(
+      List<String> filePaths, String tag) async {
+    bool success = true;
+    for (final path in filePaths) {
+      if (!await TagManager.removeTag(path, tag)) {
+        success = false;
+      }
+    }
+    return success;
   }
 
   /// Set the full set of tags for a file (replaces existing tags)
@@ -267,29 +327,47 @@ class TagManager {
       // First validate tags (remove empty ones)
       final validTags = tags.where((tag) => tag.trim().isNotEmpty).toList();
 
-      Map<String, dynamic> tagsData = await _loadGlobalTags();
+      if (_useObjectBox && _databaseManager != null) {
+        // Use ObjectBox to set tags
+        final success =
+            await _databaseManager!.setTagsForFile(filePath, validTags);
 
-      if (validTags.isEmpty) {
-        // Remove entry if no tags
-        if (tagsData.containsKey(filePath)) {
-          tagsData.remove(filePath);
+        if (success) {
+          // Update cache
+          if (validTags.isEmpty) {
+            _tagsCache.remove(filePath);
+          } else {
+            _tagsCache[filePath] = validTags;
+          }
         }
+
+        return success;
       } else {
-        tagsData[filePath] = validTags;
-      }
+        // Use original implementation for JSON file
+        Map<String, dynamic> tagsData = await _loadGlobalTags();
 
-      final success = await _saveGlobalTags(tagsData);
-
-      if (success) {
-        // Update cache
         if (validTags.isEmpty) {
-          _tagsCache.remove(filePath);
+          // Remove entry if no tags
+          if (tagsData.containsKey(filePath)) {
+            tagsData.remove(filePath);
+          }
         } else {
-          _tagsCache[filePath] = validTags;
+          tagsData[filePath] = validTags;
         }
-      }
 
-      return success;
+        final success = await _saveGlobalTags(tagsData);
+
+        if (success) {
+          // Update cache
+          if (validTags.isEmpty) {
+            _tagsCache.remove(filePath);
+          } else {
+            _tagsCache[filePath] = validTags;
+          }
+        }
+
+        return success;
+      }
     } catch (e) {
       print('Error setting tags for $filePath: $e');
       return false;
@@ -308,13 +386,19 @@ class TagManager {
     try {
       await initialize();
 
-      final tagsData = await _loadGlobalTags();
+      if (_useObjectBox && _databaseManager != null) {
+        // Use ObjectBox to get all unique tags
+        allTags.addAll(await _databaseManager!.getAllUniqueTags());
+      } else {
+        // Use original implementation for JSON file
+        final tagsData = await _loadGlobalTags();
 
-      for (final tags in tagsData.values) {
-        if (tags is List) {
-          for (final tag in tags) {
-            if (tag is String) {
-              allTags.add(tag);
+        for (final tags in tagsData.values) {
+          if (tags is List) {
+            for (final tag in tags) {
+              if (tag is String) {
+                allTags.add(tag);
+              }
             }
           }
         }
@@ -335,26 +419,184 @@ class TagManager {
     final List<FileSystemEntity> results = [];
     final String normalizedTag = tag.toLowerCase().trim();
 
+    if (normalizedTag.isEmpty) {
+      print('Tag is empty, returning empty results');
+      return results;
+    }
+
     try {
       await initialize();
       print(
           'Finding files and folders with tag: "$normalizedTag" in directory: "$directoryPath"');
 
-      final tagsData = await _loadGlobalTags();
-      print('Loaded ${tagsData.length} entries with tags');
+      // Chuẩn hóa đường dẫn thư mục
+      String normalizedDirPath = directoryPath;
+      if (!normalizedDirPath.endsWith(Platform.pathSeparator)) {
+        normalizedDirPath += Platform.pathSeparator;
+      }
 
-      // For each path in the global tags data
-      for (final entityPath in tagsData.keys) {
-        final tags = List<String>.from(tagsData[entityPath]);
+      print('Normalized directory path: $normalizedDirPath');
 
-        // Check if this entity has the requested tag (using flexible matching)
-        final hasMatchingTag = tags.any((fileTag) =>
-            fileTag.toLowerCase().contains(normalizedTag) ||
-            normalizedTag.contains(fileTag.toLowerCase()));
+      if (_useObjectBox && _databaseManager != null) {
+        // Use ObjectBox to find files by tag - chỉ lấy kết quả chính xác với tag
+        final filePaths = await _databaseManager!.findFilesByTag(normalizedTag);
+        print(
+            'Found ${filePaths.length} file paths with tag: "$normalizedTag"');
 
-        if (hasMatchingTag) {
-          // Check if it's within or under the specified directory
-          if (entityPath.startsWith(directoryPath)) {
+        // Chỉ lấy các đường dẫn thuộc thư mục hiện tại
+        for (final path in filePaths) {
+          if (path.startsWith(normalizedDirPath) ||
+              path.startsWith(directoryPath)) {
+            try {
+              // First check if this is a directory
+              final directory = Directory(path);
+              final isDirectory = await directory.exists();
+
+              if (isDirectory) {
+                // It's a directory
+                results.add(directory);
+                print('Added directory to results: $path');
+              } else {
+                // Check if it's a file
+                final file = File(path);
+                final isFile = await file.exists();
+
+                if (isFile) {
+                  // It's a file
+                  results.add(file);
+                  print('Added file to results: $path');
+                }
+              }
+            } catch (e) {
+              print('Error checking entity type for $path: $e');
+            }
+          }
+        }
+      } else {
+        // Use original implementation for JSON file
+        final tagsData = await _loadGlobalTags();
+        print('Loaded ${tagsData.length} entries with tags');
+
+        // For each path in the global tags data
+        for (final entityPath in tagsData.keys) {
+          final tags = List<String>.from(tagsData[entityPath]);
+
+          // Kiểm tra xem file có tag phù hợp không
+          final hasMatchingTag = tags.any((fileTag) {
+            return fileTag.toLowerCase() == normalizedTag ||
+                fileTag.toLowerCase().contains(normalizedTag);
+          });
+
+          // Chỉ xử lý nếu file có tag phù hợp
+          if (hasMatchingTag) {
+            // Thay đổi cách kiểm tra thư mục - kiểm tra cả 2 định dạng đường dẫn
+            if (entityPath.startsWith(normalizedDirPath) ||
+                entityPath.startsWith(directoryPath)) {
+              try {
+                // First check if this is a directory
+                final directory = Directory(entityPath);
+                final isDirectory = await directory.exists();
+
+                if (isDirectory) {
+                  // It's a directory
+                  results.add(directory);
+                  print('Added directory to results: $entityPath');
+                } else {
+                  // Check if it's a file
+                  final file = File(entityPath);
+                  final isFile = await file.exists();
+
+                  if (isFile) {
+                    // It's a file
+                    results.add(file);
+                    print('Added file to results: $entityPath');
+                  }
+                }
+              } catch (e) {
+                print('Error checking entity type for $entityPath: $e');
+              }
+            }
+          }
+        }
+      }
+
+      print('Found ${results.length} entities with tag: "$normalizedTag"');
+      return results;
+    } catch (e) {
+      print('Error finding entities by tag: $e');
+      return results;
+    }
+  }
+
+  /// Find files and folders with a specific tag anywhere in the file system
+  ///
+  /// Returns a list of files and folders with the tag
+  static Future<List<FileSystemEntity>> findFilesByTagGlobally(
+      String tag) async {
+    final List<FileSystemEntity> results = [];
+    final String normalizedTag = tag.toLowerCase().trim();
+
+    if (normalizedTag.isEmpty) {
+      print('Tag is empty, returning empty results');
+      return results;
+    }
+
+    try {
+      await initialize();
+      print('Finding files and folders with tag: "$normalizedTag" globally');
+
+      // Xóa cache để đảm bảo dữ liệu mới nhất
+      clearCache();
+
+      if (_useObjectBox && _databaseManager != null) {
+        // Use ObjectBox to find files by tag - QUAN TRỌNG: Tìm kiếm chính xác dựa trên tag
+        final filePaths = await _databaseManager!.findFilesByTag(normalizedTag);
+        print(
+            'Found ${filePaths.length} file paths with tag: "$normalizedTag"');
+
+        // Convert paths to FileSystemEntity objects
+        for (final path in filePaths) {
+          try {
+            // First check if this is a directory
+            final directory = Directory(path);
+            final isDirectory = await directory.exists();
+
+            if (isDirectory) {
+              // It's a directory
+              results.add(directory);
+              print('Added directory to results: $path');
+            } else {
+              // Check if it's a file
+              final file = File(path);
+              final isFile = await file.exists();
+
+              if (isFile) {
+                // It's a file
+                results.add(file);
+                print('Added file to results: $path');
+              }
+            }
+          } catch (e) {
+            print('Error checking entity type for $path: $e');
+          }
+        }
+      } else {
+        // Use original implementation for JSON file
+        final tagsData = await _loadGlobalTags();
+        print('Loaded ${tagsData.length} entries with tags');
+
+        // For each path in the global tags data
+        for (final entityPath in tagsData.keys) {
+          final tags = List<String>.from(tagsData[entityPath]);
+
+          // Cải thiện cách so khớp tag - QUAN TRỌNG: Chỉ tìm kiếm tag chính xác
+          final hasMatchingTag = tags.any((fileTag) {
+            // Chỉ so khớp chuỗi chính xác hoặc bao gồm
+            return fileTag.toLowerCase() == normalizedTag ||
+                fileTag.toLowerCase().contains(normalizedTag);
+          });
+
+          if (hasMatchingTag) {
             try {
               // First check if this is a directory
               final directory = Directory(entityPath);
@@ -378,65 +620,6 @@ class TagManager {
             } catch (e) {
               print('Error checking entity type for $entityPath: $e');
             }
-          }
-        }
-      }
-
-      print('Found ${results.length} entities with tag: "$normalizedTag"');
-      return results;
-    } catch (e) {
-      print('Error finding entities by tag: $e');
-      return results;
-    }
-  }
-
-  /// Find files and folders with a specific tag anywhere in the file system
-  ///
-  /// Returns a list of files and folders with the tag
-  static Future<List<FileSystemEntity>> findFilesByTagGlobally(
-      String tag) async {
-    final List<FileSystemEntity> results = [];
-    final String normalizedTag = tag.toLowerCase().trim();
-
-    try {
-      await initialize();
-      print('Finding files and folders with tag: "$normalizedTag" globally');
-
-      final tagsData = await _loadGlobalTags();
-      print('Loaded ${tagsData.length} entries with tags');
-
-      // For each path in the global tags data
-      for (final entityPath in tagsData.keys) {
-        final tags = List<String>.from(tagsData[entityPath]);
-
-        // Check if this entity has the requested tag (using flexible matching)
-        final hasMatchingTag = tags.any((fileTag) =>
-            fileTag.toLowerCase().contains(normalizedTag) ||
-            normalizedTag.contains(fileTag.toLowerCase()));
-
-        if (hasMatchingTag) {
-          try {
-            // First check if this is a directory
-            final directory = Directory(entityPath);
-            final isDirectory = await directory.exists();
-
-            if (isDirectory) {
-              // It's a directory
-              results.add(directory);
-              print('Added directory to results: $entityPath');
-            } else {
-              // Check if it's a file
-              final file = File(entityPath);
-              final isFile = await file.exists();
-
-              if (isFile) {
-                // It's a file
-                results.add(file);
-                print('Added file to results: $entityPath');
-              }
-            }
-          } catch (e) {
-            print('Error checking entity type for $entityPath: $e');
           }
         }
       }
@@ -491,7 +674,13 @@ class TagManager {
 
                   // Only migrate if the file exists
                   if (await file.exists()) {
-                    globalTags[filePath] = tags;
+                    if (_useObjectBox && _databaseManager != null) {
+                      // Save to ObjectBox
+                      await _databaseManager!.setTagsForFile(filePath, tags);
+                    } else {
+                      // Save to JSON file
+                      globalTags[filePath] = tags;
+                    }
                     migratedFileCount++;
                   }
                 }
@@ -506,12 +695,51 @@ class TagManager {
         }
       }
 
-      // Save the updated global tags
-      await _saveGlobalTags(globalTags);
+      // Save the updated global tags if using JSON storage
+      if (!_useObjectBox) {
+        await _saveGlobalTags(globalTags);
+      }
 
       return migratedFileCount;
     } catch (e) {
       print('Error during tags migration: $e');
+      return migratedFileCount;
+    }
+  }
+
+  /// Migrate from JSON file storage to ObjectBox database
+  ///
+  /// This function loads all tags from the global JSON file
+  /// and migrates them to the ObjectBox database.
+  static Future<int> migrateFromJsonToObjectBox() async {
+    int migratedFileCount = 0;
+
+    try {
+      await initialize();
+
+      if (!_useObjectBox || _databaseManager == null) {
+        throw Exception('ObjectBox is not enabled');
+      }
+
+      // Load all tags from the JSON file
+      final tagsData = await _loadGlobalTags();
+
+      // Migrate each file's tags to ObjectBox
+      for (final filePath in tagsData.keys) {
+        final tags = List<String>.from(tagsData[filePath]);
+        if (tags.isNotEmpty) {
+          final success =
+              await _databaseManager!.setTagsForFile(filePath, tags);
+          if (success) {
+            migratedFileCount++;
+          }
+        }
+      }
+
+      print('Migrated $migratedFileCount files to ObjectBox database');
+      return migratedFileCount;
+    } catch (e) {
+      print('Error migrating from JSON to ObjectBox: $e');
       return migratedFileCount;
     }
   }

@@ -19,21 +19,29 @@ class MyHomePage extends StatefulWidget {
 // Changed from private (_MyHomePageState) to public (MyHomePageState)
 // so it can be accessed with a global key
 class MyHomePageState extends State<MyHomePage> {
+  String? _lastAccessedFolder;
+
   @override
   void initState() {
     super.initState();
-    // Check for last opened folder after the widget is built
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _checkLastFolderAndNavigate();
+    _loadLastFolder();
+  }
+
+  Future<void> _loadLastFolder() async {
+    final prefs = UserPreferences.instance;
+    await prefs.init();
+    final lastFolder = await prefs.getLastAccessedFolder();
+    setState(() {
+      _lastAccessedFolder = lastFolder;
     });
   }
 
   // Check if there's a saved folder and navigate to it safely
   Future<void> _checkLastFolderAndNavigate() async {
     try {
-      final UserPreferences prefs = UserPreferences();
+      final UserPreferences prefs = UserPreferences.instance;
       await prefs.init();
-      final String? lastFolder = prefs.getLastAccessedFolder();
+      final String? lastFolder = await prefs.getLastAccessedFolder();
 
       if (lastFolder != null && mounted) {
         // Verify directory exists and is accessible before navigating

@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // Thêm import để xử lý sự kiện bàn phím
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
 import 'package:cb_file_manager/helpers/tag_manager.dart';
@@ -28,8 +29,15 @@ class _SearchBarState extends State<SearchBar> {
   List<String> _suggestedTags = [];
   bool _isGlobalSearch = false;
 
-  // Overlay entry for tag suggestions
+  // Biến để lưu trữ overlay entry
   OverlayEntry? _overlayEntry;
+
+  // Biến để theo dõi tag đang được chọn trong danh sách gợi ý
+  int _selectedTagIndex = -1;
+  List<String> _currentTags = [];
+
+  // Key để bọc KeyboardListener
+  final _keyListenerKey = GlobalKey();
 
   @override
   void initState() {
@@ -40,11 +48,6 @@ class _SearchBarState extends State<SearchBar> {
     });
 
     _searchController.addListener(_onSearchChanged);
-    _searchFocusNode.addListener(() {
-      if (!_searchFocusNode.hasFocus) {
-        _removeOverlay();
-      }
-    });
 
     // Tải các tag phổ biến
     _loadPopularTags();
@@ -63,10 +66,17 @@ class _SearchBarState extends State<SearchBar> {
 
   @override
   void dispose() {
+    // Đảm bảo xóa overlay khi widget bị hủy
     _removeOverlay();
     _searchController.dispose();
     _searchFocusNode.dispose();
     super.dispose();
+  }
+
+  // Xóa overlay khi không cần thiết nữa
+  void _removeOverlay() {
+    _overlayEntry?.remove();
+    _overlayEntry = null;
   }
 
   void _onSearchChanged() {
@@ -77,164 +87,226 @@ class _SearchBarState extends State<SearchBar> {
       final int hashPosition = query.lastIndexOf('#');
       final String tagQuery = query.substring(hashPosition + 1).trim();
 
-      if (_searchFocusNode.hasFocus) {
-        // Hiển thị gợi ý tag nếu đang sau ký tự #
-        _updateTagSuggestions(tagQuery);
+      // Chỉ hiển thị gợi ý khi người dùng nhấn phím # và khoảng trắng
+      // Thay vì tự động hiển thị khi người dùng gõ
+      // Không tự động hiện dialog mỗi khi người dùng gõ
+      if (_searchFocusNode.hasFocus &&
+          tagQuery.isEmpty &&
+          query.endsWith('#')) {
+        _showTagSuggestionsDialog(tagQuery);
       }
 
       setState(() {
         _isSearchingTags = true;
       });
     } else {
-      // Đóng overlay gợi ý tag nếu không tìm kiếm theo tag
-      _removeOverlay();
       setState(() {
         _isSearchingTags = false;
       });
     }
   }
 
-  Future<void> _updateTagSuggestions(String tagQuery) async {
-    if (tagQuery.isEmpty) {
-      // Hiển thị các tag phổ biến
-      _showOverlay(_suggestedTags);
-    } else {
-      // Tìm kiếm tag phù hợp với query
-      final matchingTags = await TagManager.instance.searchTags(tagQuery);
-      _showOverlay(matchingTags);
-    }
-  }
-
-  void _showOverlay(List<String> tags) {
-    if (tags.isEmpty) {
-      _removeOverlay();
-      return;
-    }
-
+  // Hiển thị gợi ý tag bằng Overlay (thay vì Dialog) để không block input
+  void _showTagSuggestionsDialog(String tagQuery) async {
+    // Đảm bảo xóa overlay cũ nếu có
     _removeOverlay();
 
-    // Lấy vị trí của trường tìm kiếm để định vị overlay
+    // Tìm kiếm tag phù hợp
+    List<String> tags = [];
+    if (tagQuery.isEmpty) {
+      tags = _suggestedTags;
+    } else {
+      tags = await TagManager.instance.searchTags(tagQuery);
+    }
+
+    if (tags.isEmpty || !mounted) return;
+
+    // Reset chỉ mục tag được chọn
+    _selectedTagIndex = -1;
+    _currentTags = List.from(tags);
+
+    // Lấy vị trí của textfield để định vị overlay
     final RenderBox renderBox = context.findRenderObject() as RenderBox;
-    final Size size = renderBox.size;
-    final Offset position = renderBox.localToGlobal(Offset.zero);
+    final offset = renderBox.localToGlobal(Offset.zero);
+    final size = renderBox.size;
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    // Tạo và chèn overlay
+    // Tạo overlay entry mới
     _overlayEntry = OverlayEntry(
-      builder: (context) => Positioned(
-        top: position.dy + size.height - 8,
-        left: position.dx + 8,
-        width: size.width - 16,
-        child: Material(
-          elevation: 8.0,
-          borderRadius: BorderRadius.circular(16),
-          clipBehavior: Clip.antiAlias,
-          color: isDark ? Colors.grey[850] : theme.colorScheme.surface,
-          child: Container(
-            decoration: BoxDecoration(
-              border: Border.all(
-                color: theme.colorScheme.outline.withOpacity(0.2),
-                width: 1,
-              ),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            constraints: const BoxConstraints(maxHeight: 250),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-                  child: Text(
-                    'Tags gợi ý',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
-                      color: theme.colorScheme.onSurface,
-                    ),
+      builder: (context) {
+        return Positioned(
+          top: offset.dy + size.height + 4, // Hiển thị ngay dưới text field
+          left: offset.dx + 12,
+          width: size.width - 24,
+          child: Material(
+            elevation: 8,
+            borderRadius: BorderRadius.circular(16),
+            color: Colors.transparent,
+            child: Container(
+              decoration: BoxDecoration(
+                color: isDark ? Colors.grey[850] : theme.colorScheme.surface,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
                   ),
+                ],
+                border: Border.all(
+                  color: theme.colorScheme.outline.withOpacity(0.2),
+                  width: 1,
                 ),
-                const Divider(height: 1, thickness: 1),
-                Flexible(
-                  child: ListView.builder(
-                    padding: EdgeInsets.zero,
-                    shrinkWrap: true,
-                    itemCount: tags.length,
-                    itemBuilder: (context, index) {
-                      return Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          onTap: () {
-                            // Chèn tag vào truy vấn tìm kiếm
-                            final text = _searchController.text;
-                            final hashIndex = text.lastIndexOf('#');
-                            final newText =
-                                text.substring(0, hashIndex + 1) + tags[index];
-                            _searchController.value = TextEditingValue(
-                              text: newText,
-                              selection: TextSelection.collapsed(
-                                  offset: newText.length),
-                            );
-                            _removeOverlay();
-                          },
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 8),
-                            child: ListTile(
-                              dense: true,
-                              visualDensity: VisualDensity.compact,
-                              leading: Icon(
-                                EvaIcons.shoppingBag,
-                                size: 16,
-                                color: theme.colorScheme.primary,
-                              ),
-                              title: Text(
-                                tags[index],
-                                style: TextStyle(
-                                  color: theme.colorScheme.onSurface,
-                                ),
-                              ),
-                              trailing: Icon(
-                                EvaIcons.plusCircleOutline,
-                                size: 16,
-                                color:
-                                    theme.colorScheme.primary.withOpacity(0.7),
-                              ),
+              ),
+              constraints: BoxConstraints(
+                maxHeight: 300,
+                minWidth: size.width - 24,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Tags gợi ý (${_currentTags.length} kết quả)',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                              color: theme.colorScheme.onSurface,
                             ),
                           ),
                         ),
-                      );
-                    },
+                        // Nút đóng overlay
+                        InkWell(
+                          onTap: _removeOverlay,
+                          borderRadius: BorderRadius.circular(12),
+                          child: Padding(
+                            padding: const EdgeInsets.all(4.0),
+                            child: Icon(
+                              EvaIcons.close,
+                              size: 16,
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                if (tags.length > 5) ...[
                   const Divider(height: 1, thickness: 1),
-                  Padding(
-                    padding:
-                        const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-                    child: Text(
-                      '${tags.length} kết quả',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontStyle: FontStyle.italic,
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
+                  Flexible(
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      padding: EdgeInsets.zero,
+                      itemCount: _currentTags.length,
+                      itemBuilder: (context, index) {
+                        final bool isSelected = index == _selectedTagIndex;
+                        return InkWell(
+                          onTap: () {
+                            // Xử lý khi chọn tag
+                            _applySelectedTag(_currentTags[index]);
+                            _removeOverlay();
+                          },
+                          child: Container(
+                            color: isSelected
+                                ? theme.colorScheme.primaryContainer
+                                    .withOpacity(0.5)
+                                : Colors.transparent,
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 8.0, horizontal: 16.0),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  EvaIcons.shoppingBag,
+                                  size: 16,
+                                  color: isSelected
+                                      ? theme.colorScheme.primary
+                                      : theme.colorScheme.primary
+                                          .withOpacity(0.7),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    _currentTags[index],
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: isSelected
+                                          ? theme.colorScheme.onPrimaryContainer
+                                          : theme.colorScheme.onSurface,
+                                      fontWeight: isSelected
+                                          ? FontWeight.bold
+                                          : FontWeight.normal,
+                                    ),
+                                  ),
+                                ),
+                                if (isSelected)
+                                  Icon(
+                                    EvaIcons.arrowRight,
+                                    size: 14,
+                                    color: theme.colorScheme.primary,
+                                  ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
                     ),
                   ),
                 ],
-              ],
+              ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
 
+    // Hiển thị overlay
     Overlay.of(context).insert(_overlayEntry!);
+
+    // Đảm bảo focus vẫn ở text field và keyboard listener cũng được focus
+    _searchFocusNode.requestFocus();
+
+    // Thiết lập chỉ mục mặc định sau khi hiển thị overlay
+    if (_currentTags.isNotEmpty) {
+      setState(() {
+        _selectedTagIndex = 0; // Chọn mục đầu tiên mặc định
+      });
+      _updateOverlay();
+    }
   }
 
-  void _removeOverlay() {
-    _overlayEntry?.remove();
-    _overlayEntry = null;
+  // Áp dụng tag đã chọn vào text input
+  void _applySelectedTag(String tag) {
+    if (!mounted) return;
+
+    print('Applying selected tag: $tag');
+
+    // Cập nhật text input với tag đã chọn
+    final text = _searchController.text;
+    final hashIndex = text.lastIndexOf('#');
+    final newText = text.substring(0, hashIndex + 1) + tag;
+
+    // Cập nhật văn bản và vị trí con trỏ
+    setState(() {
+      _searchController.text = newText;
+      _searchController.selection = TextSelection.fromPosition(
+        TextPosition(offset: newText.length),
+      );
+    });
+
+    // Đảm bảo cập nhật UI
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _searchFocusNode.requestFocus();
+
+      // Tự động thực hiện tìm kiếm sau khi chọn tag
+      _performSearch();
+    });
+
+    print('Applied tag. New text: $newText - Performing search automatically');
   }
 
   void _performSearch() {
@@ -280,6 +352,56 @@ class _SearchBarState extends State<SearchBar> {
       // Tìm kiếm theo tên file
       print('Searching by filename: "$query"');
       folderListBloc.add(SearchByFileName(query));
+    }
+  }
+
+  // Phương thức xử lý phím mũi tên để điều hướng trong danh sách gợi ý
+  void _handleKeyEvent(RawKeyEvent event) {
+    // Chỉ xử lý phím khi overlay đang hiển thị
+    if (_overlayEntry == null || _currentTags.isEmpty) return;
+
+    if (event is RawKeyDownEvent) {
+      if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+        // Di chuyển xuống trong danh sách
+        setState(() {
+          if (_selectedTagIndex < _currentTags.length - 1) {
+            _selectedTagIndex++;
+          } else {
+            _selectedTagIndex = 0; // Quay lại đầu danh sách
+          }
+        });
+        // Cập nhật overlay với lựa chọn mới
+        _updateOverlay();
+      } else if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+        // Di chuyển lên trong danh sách
+        setState(() {
+          if (_selectedTagIndex > 0) {
+            _selectedTagIndex--;
+          } else {
+            _selectedTagIndex =
+                _currentTags.length - 1; // Chuyển đến cuối danh sách
+          }
+        });
+        // Cập nhật overlay với lựa chọn mới
+        _updateOverlay();
+      } else if (event.logicalKey == LogicalKeyboardKey.enter ||
+          event.logicalKey == LogicalKeyboardKey.tab) {
+        // Chọn tag hiện tại nếu có tag được chọn
+        if (_selectedTagIndex >= 0 && _selectedTagIndex < _currentTags.length) {
+          _applySelectedTag(_currentTags[_selectedTagIndex]);
+          _removeOverlay();
+        }
+      } else if (event.logicalKey == LogicalKeyboardKey.escape) {
+        // Đóng overlay khi nhấn ESC
+        _removeOverlay();
+      }
+    }
+  }
+
+  // Cập nhật overlay khi thay đổi lựa chọn
+  void _updateOverlay() {
+    if (_overlayEntry != null) {
+      _overlayEntry!.markNeedsBuild();
     }
   }
 
@@ -332,29 +454,103 @@ class _SearchBarState extends State<SearchBar> {
                   ),
           ),
           Expanded(
-            child: TextField(
-              controller: _searchController,
-              focusNode: _searchFocusNode,
-              style: TextStyle(
-                fontSize: 15,
-                color: theme.colorScheme.onSurface,
-              ),
-              decoration: InputDecoration(
-                hintText: _isSearchingTags
-                    ? 'Tìm theo tag... (ví dụ: #important)'
-                    : 'Tìm kiếm tệp hoặc dùng # để tìm theo tag',
-                hintStyle: TextStyle(
-                  color: theme.colorScheme.onSurfaceVariant.withOpacity(0.7),
-                  fontSize: 14,
+            child: Focus(
+              // Bắt sự kiện phím mũi tên và ngăn chặn nó lan truyền
+              onKeyEvent: (FocusNode node, KeyEvent event) {
+                if (_overlayEntry != null &&
+                    _currentTags.isNotEmpty &&
+                    _isSearchingTags) {
+                  if (event is KeyDownEvent) {
+                    if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                      setState(() {
+                        if (_selectedTagIndex < _currentTags.length - 1) {
+                          _selectedTagIndex++;
+                        } else {
+                          _selectedTagIndex = 0; // Quay lại đầu danh sách
+                        }
+                      });
+                      _updateOverlay();
+                      return KeyEventResult.handled; // Chặn sự kiện này
+                    } else if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                      setState(() {
+                        if (_selectedTagIndex > 0) {
+                          _selectedTagIndex--;
+                        } else {
+                          _selectedTagIndex = _currentTags.length -
+                              1; // Chuyển đến cuối danh sách
+                        }
+                      });
+                      _updateOverlay();
+                      return KeyEventResult.handled; // Chặn sự kiện này
+                    } else if ((event.logicalKey == LogicalKeyboardKey.enter ||
+                            event.logicalKey == LogicalKeyboardKey.tab) &&
+                        _selectedTagIndex >= 0) {
+                      // Chọn tag hiện tại khi nhấn Enter hoặc Tab
+                      _applySelectedTag(_currentTags[_selectedTagIndex]);
+                      _removeOverlay();
+                      return KeyEventResult.handled;
+                    } else if (event.logicalKey == LogicalKeyboardKey.escape) {
+                      // Đóng overlay khi nhấn ESC
+                      _removeOverlay();
+                      return KeyEventResult.handled;
+                    }
+                  }
+                }
+                return KeyEventResult
+                    .ignored; // Cho phép các phím khác hoạt động bình thường
+              },
+              child: TextField(
+                controller: _searchController,
+                focusNode: _searchFocusNode,
+                style: TextStyle(
+                  fontSize: 15,
+                  color: theme.colorScheme.onSurface,
                 ),
-                border: InputBorder.none,
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                isDense: true,
+                decoration: InputDecoration(
+                  hintText: _isSearchingTags
+                      ? 'Tìm theo tag... (ví dụ: #important)'
+                      : 'Tìm kiếm tệp hoặc dùng # để tìm theo tag',
+                  hintStyle: TextStyle(
+                    color: theme.colorScheme.onSurfaceVariant.withOpacity(0.7),
+                    fontSize: 14,
+                  ),
+                  border: InputBorder.none,
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                  isDense: true,
+                ),
+                onSubmitted: (_) => _performSearch(),
               ),
-              onSubmitted: (_) => _performSearch(),
             ),
           ),
+          // Tag suggestion button - Only show when in tag search mode
+          if (_isSearchingTags)
+            Material(
+              color: Colors.transparent,
+              borderRadius: BorderRadius.circular(20),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(20),
+                onTap: () {
+                  final query = _searchController.text;
+                  if (query.contains('#')) {
+                    final hashPosition = query.lastIndexOf('#');
+                    final tagQuery = query.substring(hashPosition + 1).trim();
+                    _showTagSuggestionsDialog(tagQuery);
+                  }
+                },
+                child: Tooltip(
+                  message: 'Xem gợi ý tag',
+                  child: Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: Icon(
+                      EvaIcons.listOutline,
+                      color: theme.colorScheme.primary,
+                      size: 20,
+                    ),
+                  ),
+                ),
+              ),
+            ),
           // Global search toggle button
           Material(
             color: Colors.transparent,

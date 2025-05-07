@@ -76,14 +76,17 @@ class _BaseScreenState extends State<BaseScreen> {
   // Load drawer preferences from storage
   Future<void> _loadDrawerPreferences() async {
     try {
-      final UserPreferences prefs = UserPreferences();
+      final UserPreferences prefs = UserPreferences.instance;
       await prefs.init();
+      final drawerPinned = await prefs.getDrawerPinned();
 
-      setState(() {
-        // Only set drawer to pinned if not on a small screen
-        final bool isSmallScreen = MediaQuery.of(context).size.width < 600;
-        _isDrawerPinned = isSmallScreen ? false : prefs.getDrawerPinned();
-      });
+      if (mounted) {
+        setState(() {
+          // Only set drawer to pinned if not on a small screen
+          final bool isSmallScreen = MediaQuery.of(context).size.width < 600;
+          _isDrawerPinned = isSmallScreen ? false : drawerPinned;
+        });
+      }
     } catch (e) {
       print('Error loading drawer preferences: $e');
     }
@@ -92,7 +95,7 @@ class _BaseScreenState extends State<BaseScreen> {
   // Save drawer pinned state
   Future<void> _saveDrawerPinned(bool isPinned) async {
     try {
-      final UserPreferences prefs = UserPreferences();
+      final UserPreferences prefs = UserPreferences.instance;
       await prefs.init();
       await prefs.setDrawerPinned(isPinned);
     } catch (e) {

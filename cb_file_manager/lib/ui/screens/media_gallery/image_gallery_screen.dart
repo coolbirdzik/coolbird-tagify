@@ -28,7 +28,7 @@ class ImageGalleryScreen extends StatefulWidget {
 class _ImageGalleryScreenState extends State<ImageGalleryScreen> {
   late Future<List<File>> _imageFilesFuture;
   late UserPreferences _preferences;
-  late double _thumbnailSize;
+  late double _thumbnailSize = 150.0; // Default size
 
   List<File> _imageFiles = [];
   bool _isSelectionMode = false;
@@ -40,18 +40,24 @@ class _ImageGalleryScreenState extends State<ImageGalleryScreen> {
   @override
   void initState() {
     super.initState();
-    _preferences = UserPreferences();
+    _preferences = UserPreferences.instance;
     _loadPreferences();
     _loadImages();
   }
 
   Future<void> _loadPreferences() async {
     await _preferences.init();
-    setState(() {
-      _thumbnailSize = _preferences.getImageGalleryThumbnailSize();
-      _currentSortOption = _preferences.getSortOption();
-      _viewMode = _preferences.getViewMode();
-    });
+    if (mounted) {
+      final thumbnailSize = await _preferences.getImageGalleryThumbnailSize();
+      final sortOption = await _preferences.getSortOption();
+      final viewMode = await _preferences.getViewMode();
+
+      setState(() {
+        _thumbnailSize = thumbnailSize;
+        _currentSortOption = sortOption;
+        _viewMode = viewMode;
+      });
+    }
   }
 
   void _loadImages() {
@@ -146,7 +152,7 @@ class _ImageGalleryScreenState extends State<ImageGalleryScreen> {
 
   Future<void> _saveViewModeSetting(ViewMode mode) async {
     try {
-      final UserPreferences prefs = UserPreferences();
+      final UserPreferences prefs = UserPreferences.instance;
       await prefs.init();
       await prefs.setViewMode(mode);
     } catch (e) {

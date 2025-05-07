@@ -70,7 +70,7 @@ class _TabScreenState extends State<TabScreen> with TickerProviderStateMixin {
     // Initialize với 0 tab vì chúng ta sẽ tạo tab động
     _tabController = TabController(length: 0, vsync: this);
 
-    // Only load drawer preferences, don't open a default tab
+    // Load drawer preferences
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadDrawerPreferences();
     });
@@ -121,14 +121,17 @@ class _TabScreenState extends State<TabScreen> with TickerProviderStateMixin {
   // Load drawer preferences from storage
   Future<void> _loadDrawerPreferences() async {
     try {
-      final UserPreferences prefs = UserPreferences();
-      await prefs.init();
+      // Get the UserPreferences singleton instance without reinitializing
+      final UserPreferences prefs = UserPreferences.instance;
+      final drawerPinned = await prefs.getDrawerPinned();
 
-      setState(() {
-        // Only set drawer to pinned if not on a small screen
-        final bool isSmallScreen = MediaQuery.of(context).size.width < 600;
-        _isDrawerPinned = isSmallScreen ? false : prefs.getDrawerPinned();
-      });
+      if (mounted) {
+        setState(() {
+          // Only set drawer to pinned if not on a small screen
+          final bool isSmallScreen = MediaQuery.of(context).size.width < 600;
+          _isDrawerPinned = isSmallScreen ? false : drawerPinned;
+        });
+      }
     } catch (e) {
       print('Error loading drawer preferences: $e');
     }
@@ -137,8 +140,8 @@ class _TabScreenState extends State<TabScreen> with TickerProviderStateMixin {
   // Save drawer pinned state
   Future<void> _saveDrawerPinned(bool isPinned) async {
     try {
-      final UserPreferences prefs = UserPreferences();
-      await prefs.init();
+      // Get the UserPreferences singleton instance without reinitializing
+      final UserPreferences prefs = UserPreferences.instance;
       await prefs.setDrawerPinned(isPinned);
     } catch (e) {
       print('Error saving drawer pinned state: $e');
@@ -532,30 +535,58 @@ class _TabScreenState extends State<TabScreen> with TickerProviderStateMixin {
   }
 
   Future<void> _handleAddNewTab() async {
-    // Nếu là Windows, tạo tab với path rỗng để hiển thị drive picker trong view
-    if (Platform.isWindows) {
-      context.read<TabManagerBloc>().add(AddTab(path: '', name: 'Drives'));
-      return;
-    }
-    // Xử lý cho các hệ điều hành khác
     try {
-      final directory = await getApplicationDocumentsDirectory();
-      if (mounted) {
-        context
-            .read<TabManagerBloc>()
-            .add(AddTab(path: directory.path, name: 'Documents'));
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) {
-            setState(() {
-              _initialTabAdded = true;
-            });
-          }
-        });
+      print("Attempting to add new tab...");
+      // Nếu là Windows, tạo tab với path rỗng để hiển thị drive picker trong view
+      if (Platform.isWindows) {
+        print("Adding Drives tab for Windows");
+        context.read<TabManagerBloc>().add(AddTab(path: '', name: 'Drives'));
+        return;
+      }
+
+      // Xử lý cho các hệ điều hành khác
+      try {
+        print("Getting documents directory...");
+        final directory = await getApplicationDocumentsDirectory();
+        print("Got directory: ${directory.path}");
+
+        if (mounted) {
+          print("Adding tab with Documents path");
+          final bloc = context.read<TabManagerBloc>();
+          bloc.add(AddTab(path: directory.path, name: 'Documents'));
+
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              setState(() {
+                _initialTabAdded = true;
+                print("Tab added successfully");
+              });
+            }
+          });
+        } else {
+          print("Context is not mounted");
+        }
+      } catch (e) {
+        print("Error accessing directory: $e");
+
+        // Fallback - try to use current directory
+        if (mounted) {
+          final fallbackPath = Directory.current.path;
+          print("Using fallback path: $fallbackPath");
+          context
+              .read<TabManagerBloc>()
+              .add(AddTab(path: fallbackPath, name: 'Home'));
+        }
       }
     } catch (e) {
+      print("Critical error in _handleAddNewTab: $e");
+      // Last resort - try to display something
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error accessing directory: $e')));
+        try {
+          context.read<TabManagerBloc>().add(AddTab(path: '', name: 'Browse'));
+        } catch (e) {
+          print("Failed to create fallback tab: $e");
+        }
       }
     }
   }

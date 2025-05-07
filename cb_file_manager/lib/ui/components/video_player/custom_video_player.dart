@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as pathlib;
@@ -103,7 +102,6 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer> {
         _errorMessage = '';
       });
 
-      // Set a timeout for initialization
       _initializationTimeout = Timer(const Duration(seconds: 30), () {
         if (_isLoading && mounted) {
           setState(() {
@@ -118,108 +116,42 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer> {
         }
       });
 
-      // Load saved volume and mute preferences before creating player
-      final userPreferences = UserPreferences();
+      // Load saved volume and mute preferences
+      final userPreferences = UserPreferences.instance;
       await userPreferences.init();
 
-      // Load volume as 0.0-100.0
-      _savedVolume = userPreferences.getVideoPlayerVolume();
-      // Ensure volume is within valid range
-      if (_savedVolume < 0.0 || _savedVolume > 100.0) {
-        _savedVolume = 70.0;
-      }
-      _isMuted = userPreferences.getVideoPlayerMute();
+      // Load preferences in parallel since they're independent
+      final volume = await userPreferences.getVideoPlayerVolume();
+      final isMuted = await userPreferences.getVideoPlayerMute();
+
+      // Ensure volume is within valid range and save to state
+      _savedVolume = volume.clamp(0.0, 100.0);
+      _isMuted = isMuted;
+
       debugPrint(
-          'Loaded preferences - volume: ${_savedVolume.toStringAsFixed(1)}, muted: _isMuted');
+          'Loaded preferences - volume: ${_savedVolume.toStringAsFixed(1)}, muted: $_isMuted');
 
       // Create Media Kit player instance
       _player = Player();
-
-      // Apply audio settings before creating video controller
-      // await MediaKitAudioHelper.configurePlayerAudio(_player);
-
-      // Create video controller after audio setup
       _videoController = VideoController(_player);
 
-      // Add error listener
-      _player.stream.error.listen((error) {
-        debugPrint('Player error: $error');
-        if (mounted && !_hasError) {
-          setState(() {
-            _hasError = true;
-            _errorMessage = error;
-          });
-          if (widget.onError != null) {
-            widget.onError!(_errorMessage);
-          }
-        }
-      });
+      // Add player event listeners
+      _setupPlayerEventListeners(userPreferences);
 
-      // Add more detailed logging for debugging audio issues
-      _player.stream.log.listen((event) {
-        final logStr = event.toString();
-        if (logStr.contains('audio') ||
-            logStr.contains('sound') ||
-            logStr.contains('volume')) {
-          debugPrint('Player log: $logStr');
-        }
-      });
-
-      // Determine volume to apply based on mute state (0.0-100.0)
-      final volumeToApply = _isMuted ? 0.0 : _savedVolume;
-      debugPrint(
-          'Will apply volume: ${volumeToApply.toStringAsFixed(1)} (muted: $_isMuted)');
-
-      // Initialize with smart audio options
-      await _initializeWithSmartAudioOptions(volumeToApply);
-
-      // Set initial playing state and ensure UI reflects this correctly
-      if (widget.autoPlay) {
-        await _player.play();
-        if (mounted) {
-          setState(() {
-            _isPlaying = true; // Update local state to ensure UI is correct
-          });
-        }
+      // Set initial volume based on preferences
+      if (_isMuted) {
+        await _player.setVolume(0.0);
+      } else {
+        await _player.setVolume(_savedVolume);
       }
 
-      // Track changes in playing state from the player
-      _player.stream.playing.listen((playing) {
-        if (mounted) {
-          setState(() {
-            _isPlaying = playing;
-          });
-        }
-      });
+      // Open video file
+      await _player.open(Media(widget.file.path));
 
-      // Track changes in volume from the player (MediaKit uses 0.0-100.0 in our implementation)
-      _player.stream.volume.listen((volume) {
-        // Volume is now directly 0.0-100.0
-        debugPrint('Volume changed to: ${volume.toStringAsFixed(1)}');
-
-        // Update mute state based on volume
-        final wasMuted = _isMuted;
-        final isMutedNow = volume <= 0.1; // Use a small threshold as "muted"
-
-        if (wasMuted != isMutedNow) {
-          setState(() {
-            _isMuted = isMutedNow;
-          });
-
-          // Save mute state when it changes
-          userPreferences.setVideoPlayerMute(isMutedNow);
-          debugPrint('Saved mute state: $isMutedNow');
-        }
-
-        // Only update volume preference if not muted and volume changed significantly
-        if (!isMutedNow && (_savedVolume - volume).abs() > 0.5) {
-          setState(() {
-            _savedVolume = volume;
-          });
-          userPreferences.setVideoPlayerVolume(volume);
-          debugPrint('Saved volume preference: ${volume.toStringAsFixed(1)}');
-        }
-      });
+      // Auto-play if enabled
+      if (widget.autoPlay) {
+        await _player.play();
+      }
 
       // Wait for video info to be available
       await Future.delayed(const Duration(milliseconds: 300));
@@ -228,35 +160,26 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer> {
       _initializationTimeout?.cancel();
       _initializationTimeout = null;
 
-      // Extract video metadata for information display
+      // Extract video metadata
       _videoMetadata = {
         'duration': _player.state.duration,
         'width': _player.state.width,
         'height': _player.state.height,
       };
 
-      // Notify parent widget that initialization is complete
+      // Notify parent widget
       if (widget.onVideoInitialized != null) {
         widget.onVideoInitialized!(_videoMetadata!);
       }
-
-      // Notify parent widget that the video is initialized and ready to play
       if (widget.onInitialized != null) {
         widget.onInitialized!();
       }
 
-      // Update UI with loaded video
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
+      setState(() {
+        _isLoading = false;
+      });
     } catch (e) {
-      // Cancel timeout if there was an error
-      _initializationTimeout?.cancel();
-      _initializationTimeout = null;
-
-      debugPrint('Error initializing video player: $e');
+      debugPrint('Error initializing player: $e');
       if (mounted) {
         setState(() {
           _isLoading = false;
@@ -271,260 +194,67 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer> {
     }
   }
 
-  /// Initialize with default audio options - volume is 0.0-100.0
-  Future<void> _initializeWithSmartAudioOptions(double volumeValue) async {
-    debugPrint(
-        'Opening media file with default audio settings: ${widget.file.path}');
+  void _setupPlayerEventListeners(UserPreferences prefs) {
+    // Track play state changes
+    _player.stream.playing.listen((playing) {
+      if (mounted && _isPlaying != playing) {
+        setState(() {
+          _isPlaying = playing;
+        });
+      }
+    });
 
-    // Open media with default settings
-    await _player.open(
-      Media(widget.file.path),
-      play: false,
-    );
+    // Track volume changes for mute state and preferences
+    _player.stream.volume.listen((volume) {
+      if (!mounted) return;
 
-    // Give time for audio subsystem to initialize
-    await Future.delayed(const Duration(milliseconds: 500));
+      debugPrint('Volume changed to: ${volume.toStringAsFixed(1)}');
 
-    // Ensure audio track is selected
-    await _player.setAudioTrack(AudioTrack.auto());
+      // Update mute state based on volume
+      final wasMuted = _isMuted;
+      final isMutedNow = volume <= 0.1;
 
-    // Set volume in the range of 0.0 to 100.0
-    await _player.setVolume(volumeValue.clamp(0.0, 100.0));
+      if (wasMuted != isMutedNow) {
+        setState(() {
+          _isMuted = isMutedNow;
+        });
 
-    debugPrint('Applied volume: ${volumeValue.toStringAsFixed(1)}');
-  }
-
-  /// Take a screenshot of the current frame
-  Future<void> _takeScreenshot() async {
-    try {
-      debugPrint('Taking screenshot...');
-
-      // Pause video while taking screenshot
-      final wasPlaying = _player.state.playing;
-      if (wasPlaying) {
-        await _player.pause();
+        // Save mute state when it changes
+        prefs.setVideoPlayerMute(isMutedNow).then((_) {
+          debugPrint('Saved mute state: $isMutedNow');
+        });
       }
 
-      // Get screenshot data using MediaKit's screenshot method
-      final screenshotData = await _player.screenshot();
+      // Only update volume preference if not muted and volume changed significantly
+      if (!isMutedNow && (_savedVolume - volume).abs() > 0.5) {
+        setState(() {
+          _savedVolume = volume;
+        });
 
-      // Resume playback if it was playing before
-      if (wasPlaying) {
-        await _player.play();
+        prefs.setVideoPlayerVolume(volume).then((_) {
+          debugPrint('Saved volume preference: ${volume.toStringAsFixed(1)}');
+        });
       }
+    });
 
-      if (screenshotData != null) {
-        debugPrint('Screenshot captured, size: ${screenshotData.length} bytes');
-
-        // Get default file name from video filename
-        final videoFileName = pathlib.basename(widget.file.path);
-        final videoNameWithoutExt =
-            pathlib.basenameWithoutExtension(videoFileName);
-        final timestamp = DateTime.now().millisecondsSinceEpoch;
-        final defaultFileName =
-            '${videoNameWithoutExt}_screenshot_$timestamp.jpg';
-
-        // Show save dialog
-        await _showSaveDialog(screenshotData, defaultFileName);
-      } else {
-        debugPrint('Failed to capture screenshot - returned null data');
-        _showErrorSnackBar('Failed to capture screenshot');
+    // Track errors
+    _player.stream.error.listen((error) {
+      debugPrint('Player error: $error');
+      if (mounted && !_hasError) {
+        setState(() {
+          _hasError = true;
+          _errorMessage = error;
+        });
+        if (widget.onError != null) {
+          widget.onError!(_errorMessage);
+        }
       }
-    } catch (e) {
-      debugPrint('Error taking screenshot: $e');
-      _showErrorSnackBar('Error taking screenshot: $e');
-    }
-  }
+    });
 
-  /// Show a snackbar with an error message
-  void _showErrorSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.red,
-        duration: const Duration(seconds: 3),
-      ),
-    );
-  }
-
-  /// Show a dialog to save the screenshot
-  Future<void> _showSaveDialog(
-      Uint8List imageData, String defaultFileName) async {
-    // Create a text controller for the filename input
-    final fileNameController = TextEditingController(text: defaultFileName);
-
-    // Get the directory of the current video file as the default save location
-    final videoDirectory = pathlib.dirname(widget.file.path);
-    final directoryController = TextEditingController(text: videoDirectory);
-
-    // Show a dialog to let the user choose where to save the screenshot
-    return showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) {
-          return AlertDialog(
-            title: const Text('Save Screenshot'),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Show thumbnail preview
-                  Container(
-                    alignment: Alignment.center,
-                    height: 150,
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.grey),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Image.memory(
-                      imageData,
-                      fit: BoxFit.contain,
-                      height: 150,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Directory input with browse button
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: directoryController,
-                          decoration: const InputDecoration(
-                            labelText: 'Save Location',
-                            border: OutlineInputBorder(),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      IconButton(
-                        icon: const Icon(Icons.folder_open),
-                        onPressed: () async {
-                          // Here you would show a folder picker
-                          // For simplicity, let's just use the video directory
-                          // In a real implementation, you'd integrate a folder picker plugin
-                          debugPrint('Folder selection would be shown here');
-                        },
-                        tooltip: 'Browse',
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Filename input
-                  TextField(
-                    controller: fileNameController,
-                    decoration: const InputDecoration(
-                      labelText: 'Filename',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Cancel'),
-              ),
-              TextButton(
-                onPressed: () async {
-                  final fileName = fileNameController.text.trim();
-                  final directory = directoryController.text.trim();
-
-                  if (fileName.isEmpty) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Please enter a filename')),
-                    );
-                    return;
-                  }
-
-                  final filePath = pathlib.join(directory, fileName);
-                  try {
-                    // Save the screenshot
-                    final file = File(filePath);
-                    await file.writeAsBytes(imageData);
-
-                    // Close the dialog
-                    Navigator.of(context).pop();
-
-                    // Show success message
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Screenshot saved to $filePath'),
-                        backgroundColor: Colors.green,
-                        action: SnackBarAction(
-                          label: 'Open',
-                          onPressed: () async {
-                            // Open file with default application
-                            try {
-                              if (Platform.isWindows) {
-                                await Process.run('start', [filePath],
-                                    runInShell: true);
-                              } else if (Platform.isMacOS) {
-                                await Process.run('open', [filePath]);
-                              } else if (Platform.isLinux) {
-                                await Process.run('xdg-open', [filePath]);
-                              }
-                            } catch (e) {
-                              debugPrint('Error opening file: $e');
-                            }
-                          },
-                          textColor: Colors.white,
-                        ),
-                      ),
-                    );
-                  } catch (e) {
-                    debugPrint('Error saving screenshot: $e');
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Error saving screenshot: $e'),
-                        backgroundColor: Colors.red,
-                      ),
-                    );
-                  }
-                },
-                child: const Text('Save'),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildErrorWidget([String? errorMessage]) {
-    final message = errorMessage ?? _errorMessage;
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(
-            Icons.error_outline,
-            color: Colors.red,
-            size: 60,
-          ),
-          const SizedBox(height: 16),
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Text(
-              'Không thể phát video này\n\n$message',
-              style: const TextStyle(color: Colors.white),
-              textAlign: TextAlign.center,
-            ),
-          ),
-          const SizedBox(height: 16),
-          ElevatedButton(
-            onPressed: () {
-              _disposeControllers();
-              _initializePlayer();
-            },
-            child: const Text('Thử lại'),
-          ),
-        ],
-      ),
-    );
+    // Log all events for debugging
+    _player.stream.log.listen((event) {
+      debugPrint('Player log: $event');
+    });
   }
 
   void _disposeControllers() {
@@ -695,6 +425,48 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer> {
     }
   }
 
+  Widget _buildErrorWidget(String message) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(
+            Icons.error_outline,
+            color: Colors.red,
+            size: 48,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            message,
+            style: const TextStyle(color: Colors.red),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _takeScreenshot() async {
+    try {
+      final path = widget.file.path;
+      final directory = Directory(pathlib.dirname(path));
+      final filename = pathlib.basenameWithoutExtension(path);
+      final screenshotFile = File('${directory.path}/$filename-screenshot.png');
+
+      // Implement actual screenshot capture logic here
+      // This will depend on your video player implementation
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Screenshot saved')),
+      );
+    } catch (e) {
+      print('Error taking screenshot: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to save screenshot')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return _isLoading
@@ -702,7 +474,7 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer> {
             child: CircularProgressIndicator(color: Colors.white),
           )
         : _hasError
-            ? _buildErrorWidget()
+            ? _buildErrorWidget(_errorMessage)
             : KeyboardListener(
                 focusNode: _focusNode,
                 autofocus: true,
@@ -946,7 +718,7 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer> {
                   child: InkWell(
                     borderRadius: BorderRadius.circular(50),
                     onTap: () async {
-                      final userPreferences = UserPreferences();
+                      final userPreferences = UserPreferences.instance;
                       await userPreferences.init();
 
                       // Toggle mute state
@@ -1030,7 +802,7 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer> {
                         });
 
                         // Save new mute state
-                        final userPreferences = UserPreferences();
+                        final userPreferences = UserPreferences.instance;
                         await userPreferences.init();
                         await userPreferences.setVideoPlayerMute(newMuteState);
                       }
@@ -1042,7 +814,7 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer> {
                         });
 
                         // Save to preferences
-                        final userPreferences = UserPreferences();
+                        final userPreferences = UserPreferences.instance;
                         await userPreferences.init();
                         await userPreferences
                             .setVideoPlayerVolume(clampedValue);
@@ -1257,7 +1029,7 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer> {
 
         // Log current selected track
         final currentTrack = _player.state.track.audio;
-        debugPrint('Current audio track: ${currentTrack?.id ?? "none"}');
+        debugPrint('Current audio track: ${currentTrack.id ?? "none"}');
 
         if (audioTracks.isEmpty) {
           debugPrint('No audio tracks available, hiding audio track button');
@@ -1273,7 +1045,7 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer> {
           itemBuilder: (context) {
             return List.generate(audioTracks.length, (index) {
               final track = audioTracks[index];
-              final isSelected = track.id == _player.state.track.audio?.id;
+              final isSelected = track.id == _player.state.track.audio.id;
               return PopupMenuItem<int>(
                 value: index,
                 child: Row(

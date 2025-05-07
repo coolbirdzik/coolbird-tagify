@@ -52,12 +52,25 @@ void showAddTagToFileDialog(BuildContext context, String filePath) {
 
               if (context.mounted) {
                 Navigator.of(context).pop();
-                // Refresh the file list to show updated tags
-                final bloc = BlocProvider.of<FolderListBloc>(context);
-                final String path = (bloc.state.currentPath is Directory)
-                    ? (bloc.state.currentPath as Directory).path
-                    : bloc.state.currentPath.toString();
-                bloc.add(FolderListLoad(path));
+
+                // Show success message
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Đã thêm ${tags.length} thẻ'),
+                  ),
+                );
+
+                // Try to refresh the file list to show updated tags - safely check for FolderListBloc
+                try {
+                  final bloc = BlocProvider.of<FolderListBloc>(context);
+                  final String path = (bloc.state.currentPath is Directory)
+                      ? (bloc.state.currentPath as Directory).path
+                      : bloc.state.currentPath.toString();
+                  bloc.add(FolderListLoad(path));
+                } catch (e) {
+                  // Bloc not available, ignore the error
+                  print('FolderListBloc not available in this context: $e');
+                }
               }
             },
             child: const Text('LƯU'),
@@ -134,13 +147,20 @@ void showDeleteTagDialog(
                             content: Text('Đã xóa ${selectedTags.length} thẻ'),
                           ),
                         );
-                        // Refresh to show updated tags
-                        final bloc = BlocProvider.of<FolderListBloc>(context);
-                        final String path =
-                            (bloc.state.currentPath is Directory)
-                                ? (bloc.state.currentPath as Directory).path
-                                : bloc.state.currentPath.toString();
-                        bloc.add(FolderListLoad(path));
+
+                        // Try to refresh the file list - safely check for FolderListBloc
+                        try {
+                          final bloc = BlocProvider.of<FolderListBloc>(context);
+                          final String path =
+                              (bloc.state.currentPath is Directory)
+                                  ? (bloc.state.currentPath as Directory).path
+                                  : bloc.state.currentPath.toString();
+                          bloc.add(FolderListLoad(path));
+                        } catch (e) {
+                          // Bloc not available, ignore the error
+                          print(
+                              'FolderListBloc not available in this context: $e');
+                        }
                       }
                     },
               child: const Text('XÓA'),
@@ -188,7 +208,10 @@ void showBatchAddTagDialog(BuildContext context, List<String> filePaths) {
                 .toList();
 
             if (tags.isNotEmpty) {
-              await BatchTagManager.addTagsToFiles(filePaths, tags);
+              // Apply each tag individually
+              for (String tag in tags) {
+                await BatchTagManager.addTagsToFiles(filePaths, tag);
+              }
 
               if (context.mounted) {
                 Navigator.of(context).pop();
@@ -198,12 +221,18 @@ void showBatchAddTagDialog(BuildContext context, List<String> filePaths) {
                         'Đã thêm ${tags.length} thẻ vào ${filePaths.length} tệp'),
                   ),
                 );
-                // Refresh to show updated tags
-                final bloc = BlocProvider.of<FolderListBloc>(context);
-                final String path = (bloc.state.currentPath is Directory)
-                    ? (bloc.state.currentPath as Directory).path
-                    : bloc.state.currentPath.toString();
-                bloc.add(FolderListLoad(path));
+
+                // Try to refresh the file list - safely check for FolderListBloc
+                try {
+                  final bloc = BlocProvider.of<FolderListBloc>(context);
+                  final String path = (bloc.state.currentPath is Directory)
+                      ? (bloc.state.currentPath as Directory).path
+                      : bloc.state.currentPath.toString();
+                  bloc.add(FolderListLoad(path));
+                } catch (e) {
+                  // Bloc not available, ignore the error
+                  print('FolderListBloc not available in this context: $e');
+                }
               }
             }
           },
@@ -253,10 +282,20 @@ void showManageTagsDialog(BuildContext context, List<String> allTags) {
 
 /// Shows confirmation dialog for deleting a tag from all files
 void showDeleteTagConfirmationDialog(BuildContext context, String tag) {
-  final folderListBloc = BlocProvider.of<FolderListBloc>(context);
-  final String currentPath = (folderListBloc.state.currentPath is Directory)
-      ? (folderListBloc.state.currentPath as Directory).path
-      : folderListBloc.state.currentPath.toString();
+  String currentPath = "";
+
+  // Safely get the FolderListBloc and current path
+  try {
+    final folderListBloc = BlocProvider.of<FolderListBloc>(context);
+    currentPath = (folderListBloc.state.currentPath is Directory)
+        ? (folderListBloc.state.currentPath as Directory).path
+        : folderListBloc.state.currentPath.toString();
+  } catch (e) {
+    // Fallback to a default path if no bloc is available
+    print('FolderListBloc not available in this context: $e');
+    // Try to use the app documents directory as fallback
+    currentPath = Directory.current.path;
+  }
 
   showDialog(
     context: context,
@@ -280,7 +319,7 @@ void showDeleteTagConfirmationDialog(BuildContext context, String tag) {
               // Remove tag from all files
               if (files.isNotEmpty) {
                 final filePaths = files.map((file) => file.path).toList();
-                await BatchTagManager.removeTagFromFiles(filePaths, tag);
+                await BatchTagManager.removeTagFromFilesStatic(filePaths, tag);
               }
 
               if (context.mounted) {
@@ -293,8 +332,15 @@ void showDeleteTagConfirmationDialog(BuildContext context, String tag) {
                   ),
                 );
 
-                // Refresh the file list
-                folderListBloc.add(FolderListLoad(currentPath));
+                // Refresh the file list - safely check for FolderListBloc
+                try {
+                  final folderListBloc =
+                      BlocProvider.of<FolderListBloc>(context);
+                  folderListBloc.add(FolderListLoad(currentPath));
+                } catch (e) {
+                  // Bloc not available, ignore the error
+                  print('FolderListBloc not available for refresh: $e');
+                }
               }
             },
             child: const Text('XÓA', style: TextStyle(color: Colors.red)),
@@ -400,7 +446,7 @@ void showRemoveTagsDialog(BuildContext context, List<String> filePaths) {
                     : () async {
                         // Remove selected tags from files
                         for (final tag in selectedTags) {
-                          await BatchTagManager.removeTagFromFiles(
+                          await BatchTagManager.removeTagFromFilesStatic(
                               filePaths, tag);
                         }
 
@@ -414,13 +460,20 @@ void showRemoveTagsDialog(BuildContext context, List<String> filePaths) {
                             ),
                           );
 
-                          // Refresh file list using FolderListLoad instead of FolderListRefresh
-                          final bloc = BlocProvider.of<FolderListBloc>(context);
-                          final String currentPath =
-                              (bloc.state.currentPath is Directory)
-                                  ? (bloc.state.currentPath as Directory).path
-                                  : bloc.state.currentPath.toString();
-                          bloc.add(FolderListLoad(currentPath));
+                          // Try to refresh file list - safely check for FolderListBloc
+                          try {
+                            final bloc =
+                                BlocProvider.of<FolderListBloc>(context);
+                            final String currentPath =
+                                (bloc.state.currentPath is Directory)
+                                    ? (bloc.state.currentPath as Directory).path
+                                    : bloc.state.currentPath.toString();
+                            bloc.add(FolderListLoad(currentPath));
+                          } catch (e) {
+                            // Bloc not available, ignore the error
+                            print(
+                                'FolderListBloc not available in this context: $e');
+                          }
                         }
                       },
                 child: const Text('XÓA THẺ'),

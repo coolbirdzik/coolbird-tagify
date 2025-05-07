@@ -213,6 +213,9 @@ class _SearchDialogState extends State<SearchDialog> {
                           TextSelection.collapsed(offset: newText.length),
                     );
                     _removeOverlay();
+
+                    // Automatically trigger tag search when a tag is selected
+                    _performTagSearch(tags[index]);
                   },
                 );
               },
@@ -228,6 +231,76 @@ class _SearchDialogState extends State<SearchDialog> {
   void _removeOverlay() {
     _overlayEntry?.remove();
     _overlayEntry = null;
+  }
+
+  // Phương thức để thực hiện tìm kiếm tag toàn cục
+  Future<void> _performTagSearch(String tag) async {
+    setState(() {
+      _filteredFiles = [];
+      _filteredFolders = [];
+      _isSearchingTags = true;
+    });
+
+    try {
+      // Hiển thị loading indicator
+      final loadingOverlay = OverlayEntry(
+        builder: (context) => Positioned.fill(
+          child: Container(
+            color: Colors.black.withOpacity(0.3),
+            child: const Center(
+              child: CircularProgressIndicator(),
+            ),
+          ),
+        ),
+      );
+      Overlay.of(context)?.insert(loadingOverlay);
+
+      // Clear TagManager cache trước khi tìm kiếm
+      TagManager.clearCache();
+
+      // Thực hiện tìm kiếm toàn cục
+      final results = await TagManager.findFilesByTagGlobally(tag);
+
+      // Loại bỏ loading indicator
+      loadingOverlay.remove();
+
+      if (mounted) {
+        // Phân loại kết quả thành files và folders
+        final List<File> files = [];
+        final List<Directory> folders = [];
+
+        for (var entity in results) {
+          if (entity is File) {
+            files.add(entity);
+          } else if (entity is Directory) {
+            folders.add(entity);
+          }
+        }
+
+        // Cập nhật state để hiển thị kết quả
+        setState(() {
+          _filteredFiles = files;
+          _filteredFolders = folders;
+        });
+
+        // Hiển thị thông báo kết quả
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content:
+                Text('Đã tìm thấy ${results.length} kết quả với tag "$tag"'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      print('Lỗi khi tìm kiếm tag: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Lỗi khi tìm kiếm: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   @override
@@ -276,6 +349,8 @@ class _SearchDialogState extends State<SearchDialog> {
                         label: Text('#$tag'),
                         onPressed: () {
                           _searchController.text = '#$tag';
+                          // Tự động thực hiện tìm kiếm khi chọn tag từ phần gợi ý
+                          _performTagSearch(tag);
                         },
                       ))),
                 ],

@@ -77,7 +77,7 @@ class _FolderListScreenState extends State<FolderListScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       try {
         if (!mounted) {
-          final prefs = UserPreferences();
+          final prefs = UserPreferences.instance;
           await prefs.init();
           final lastFolder = prefs.getLastAccessedFolder();
 
@@ -105,7 +105,7 @@ class _FolderListScreenState extends State<FolderListScreen> {
     try {
       final directory = Directory(widget.path);
       if (await directory.exists()) {
-        final UserPreferences prefs = UserPreferences();
+        final UserPreferences prefs = UserPreferences.instance;
         await prefs.init();
         await prefs.setLastAccessedFolder(widget.path);
       } else {
@@ -119,22 +119,28 @@ class _FolderListScreenState extends State<FolderListScreen> {
 
   Future<void> _loadPreferences() async {
     try {
-      final UserPreferences prefs = UserPreferences();
+      final UserPreferences prefs = UserPreferences.instance;
       await prefs.init();
 
-      setState(() {
-        _viewMode = prefs.getViewMode();
-        _sortOption = prefs.getSortOption();
-        _gridZoomLevel = prefs.getGridZoomLevel();
-      });
+      final viewMode = await prefs.getViewMode();
+      final sortOption = await prefs.getSortOption();
+      final gridZoomLevel = await prefs.getGridZoomLevel();
 
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          _folderListBloc.add(SetViewMode(_viewMode));
-          _folderListBloc.add(SetSortOption(_sortOption));
-          _folderListBloc.add(SetGridZoom(_gridZoomLevel));
-        }
-      });
+      if (mounted) {
+        setState(() {
+          _viewMode = viewMode;
+          _sortOption = sortOption;
+          _gridZoomLevel = gridZoomLevel;
+        });
+
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            _folderListBloc.add(SetViewMode(_viewMode));
+            _folderListBloc.add(SetSortOption(_sortOption));
+            _folderListBloc.add(SetGridZoom(_gridZoomLevel));
+          }
+        });
+      }
     } catch (e) {
       print('Error loading preferences: $e');
     }
@@ -142,7 +148,7 @@ class _FolderListScreenState extends State<FolderListScreen> {
 
   Future<void> _saveViewModeSetting(ViewMode mode) async {
     try {
-      final UserPreferences prefs = UserPreferences();
+      final UserPreferences prefs = UserPreferences.instance;
       await prefs.init();
       await prefs.setViewMode(mode);
     } catch (e) {
@@ -152,7 +158,7 @@ class _FolderListScreenState extends State<FolderListScreen> {
 
   Future<void> _saveSortSetting(SortOption option) async {
     try {
-      final UserPreferences prefs = UserPreferences();
+      final UserPreferences prefs = UserPreferences.instance;
       await prefs.init();
       await prefs.setSortOption(option);
     } catch (e) {
@@ -162,7 +168,7 @@ class _FolderListScreenState extends State<FolderListScreen> {
 
   Future<void> _saveGridZoomSetting(int zoomLevel) async {
     try {
-      final UserPreferences prefs = UserPreferences();
+      final UserPreferences prefs = UserPreferences.instance;
       await prefs.init();
       await prefs.setGridZoomLevel(zoomLevel);
       setState(() {
@@ -936,7 +942,7 @@ class _FolderListScreenState extends State<FolderListScreen> {
                       : () async {
                           // Remove selected tags from files
                           for (final tag in selectedTags) {
-                            await BatchTagManager.removeTagFromFiles(
+                            await BatchTagManager.removeTagFromFilesStatic(
                                 filePaths, tag);
                           }
                           Navigator.of(context).pop();
@@ -1058,7 +1064,8 @@ class _FolderListScreenState extends State<FolderListScreen> {
                 // Remove tag from all files - Convert FileSystemEntity list to String list
                 if (files.isNotEmpty) {
                   final filePaths = files.map((file) => file.path).toList();
-                  await BatchTagManager.removeTagFromFiles(filePaths, tag);
+                  await BatchTagManager.removeTagFromFilesStatic(
+                      filePaths, tag);
                 }
 
                 Navigator.of(context).pop();

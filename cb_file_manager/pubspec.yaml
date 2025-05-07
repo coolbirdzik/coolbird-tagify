@@ -43,6 +43,10 @@ dependencies:
   ffmpeg_helper: ^1.0.1 # Updated to available version
   visibility_detector: ^0.4.0+2 # Added for detecting visible thumbnails
 
+  # ObjectBox database dependencies
+  objectbox: ^4.2.0
+  objectbox_flutter_libs: ^4.2.0
+
   # Media Kit packages for cross-platform video playback (including Windows)
   media_kit: ^1.1.10 # Primary package
   media_kit_video: ^1.2.4 # Video widget
@@ -65,6 +69,8 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^2.0.0
+  build_runner: ^2.4.6
+  objectbox_generator: ^4.2.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

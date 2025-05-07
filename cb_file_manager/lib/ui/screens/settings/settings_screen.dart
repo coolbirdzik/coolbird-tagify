@@ -4,6 +4,7 @@ import 'package:cb_file_manager/ui/utils/base_screen.dart';
 import 'package:cb_file_manager/config/language_controller.dart';
 import 'package:cb_file_manager/config/translation_helper.dart';
 import 'package:cb_file_manager/helpers/video_thumbnail_helper.dart'; // Add import for VideoThumbnailHelper
+import 'package:cb_file_manager/ui/screens/settings/database_settings_screen.dart'; // Import for database settings screen
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({Key? key}) : super(key: key);
@@ -13,7 +14,7 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  final UserPreferences _preferences = UserPreferences();
+  final UserPreferences _preferences = UserPreferences.instance;
   final LanguageController _languageController = LanguageController();
   late ThemePreference _themePreference;
   late String _currentLanguageCode;
@@ -28,6 +29,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // Add a loading indicator state for cache clearing operation
   bool _isClearingCache = false;
 
+  // Add a state for ObjectBox usage preference
+  late bool _isUsingObjectBox;
+
   @override
   void initState() {
     super.initState();
@@ -35,14 +39,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _loadPreferences() async {
-    await _preferences.init();
-    setState(() {
-      _themePreference = _preferences.getThemePreference();
-      _currentLanguageCode = _languageController.currentLocale.languageCode;
-      _videoThumbnailTimestamp = _preferences.getVideoThumbnailTimestamp();
-      _videoThumbnailPercentage = _preferences.getVideoThumbnailPercentage();
-      _isLoading = false;
-    });
+    try {
+      await _preferences.init();
+      final theme = await _preferences.getThemePreference();
+      final timestamp = await _preferences.getVideoThumbnailTimestamp();
+      final percentage = await _preferences.getVideoThumbnailPercentage();
+      final useObjectBox = _preferences.isUsingObjectBox();
+
+      if (mounted) {
+        setState(() {
+          _themePreference = theme;
+          _currentLanguageCode = _languageController.currentLocale.languageCode;
+          _videoThumbnailTimestamp = timestamp;
+          _videoThumbnailPercentage = percentage;
+          _isUsingObjectBox = useObjectBox;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading preferences: $e');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error loading preferences: $e'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _updateThemePreference(ThemePreference preference) async {
@@ -129,16 +156,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
       await VideoThumbnailHelper.clearCache();
 
       // Get the current directory path from context or last opened folder
-      String currentDirectory = _preferences.getLastAccessedFolder() ?? '';
+      String? currentDirectory = await _preferences.getLastAccessedFolder();
+      String directoryPath = currentDirectory ?? '';
 
       // Only attempt to regenerate thumbnails if we're still mounted
       // This prevents crashes when users navigate back immediately
-      if (mounted && currentDirectory.isNotEmpty) {
+      if (mounted && directoryPath.isNotEmpty) {
         try {
           // Regenerate thumbnails for the current directory automatically
           // Add timeout to prevent hanging if the process takes too long
           await VideoThumbnailHelper.regenerateThumbnailsForDirectory(
-                  currentDirectory)
+                  directoryPath)
               .timeout(
             const Duration(seconds: 3),
             onTimeout: () {
@@ -217,6 +245,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 _buildThemeSection(context),
                 const Divider(),
                 _buildVideoThumbnailSection(context),
+                const Divider(),
+                _buildDatabaseSection(context), // Add database section
               ],
             ),
     );
@@ -444,6 +474,97 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ],
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDatabaseSection(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            child: Row(
+              children: [
+                const Icon(Icons.storage, size: 24),
+                const SizedBox(width: 16),
+                Text(
+                  'Database',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+            child: Text(
+              'Configure database and cloud sync settings',
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey,
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          ListTile(
+            title: const Text('Database Settings'),
+            subtitle: const Text('Configure tags and preferences storage'),
+            leading: const Icon(Icons.settings_applications),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const DatabaseSettingsScreen(),
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 8),
+          ListTile(
+            title: Text('Settings Data'),
+            subtitle: Text('View and manage settings data'),
+            leading: Icon(Icons.data_usage),
+            onTap: () {
+              final settingsData = _preferences.getAllSettings();
+              showDialog(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: Text('Settings Data'),
+                  content: Container(
+                    width: double.maxFinite,
+                    constraints: BoxConstraints(
+                      maxHeight: MediaQuery.of(context).size.height * 0.7,
+                    ),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: settingsData.keys.map((setting) {
+                          final String value = settingsData[setting].toString();
+                          return ListTile(
+                            title: Text(setting),
+                            subtitle: Text(value), // Convert Object to String
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: Text('Close'),
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
         ],
       ),

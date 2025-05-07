@@ -382,16 +382,32 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
     ));
 
     try {
-      // Use TagManager to search for files with the given tag within current directory
-      final matchingFiles =
-          await TagManager.findFilesByTag(state.currentPath.path, event.tag);
+      // Xóa cache TagManager trước khi tìm kiếm để đảm bảo kết quả mới nhất
+      TagManager.clearCache();
+      
+      // Dùng phương thức đã cải thiện để tìm kiếm file theo tag trong thư mục hiện tại
+      final matchingFiles = await TagManager.findFilesByTag(state.currentPath.path, event.tag);
 
-      emit(state.copyWith(
-        isLoading: false,
-        searchResults: matchingFiles,
-        currentSearchTag: event.tag,
-        currentSearchQuery: null,
-      ));
+      // Nếu không tìm thấy kết quả, thử tìm kiếm toàn cục
+      if (matchingFiles.isEmpty) {
+        print("Không tìm thấy kết quả trong thư mục hiện tại, thử tìm kiếm toàn cục");
+        final globalResults = await TagManager.findFilesByTagGlobally(event.tag);
+        
+        emit(state.copyWith(
+          isLoading: false,
+          searchResults: globalResults,
+          currentSearchTag: event.tag,
+          currentSearchQuery: null,
+          isGlobalSearch: true, // Đánh dấu là tìm kiếm toàn cục
+        ));
+      } else {
+        emit(state.copyWith(
+          isLoading: false,
+          searchResults: matchingFiles,
+          currentSearchTag: event.tag,
+          currentSearchQuery: null,
+        ));
+      }
     } catch (e) {
       emit(state.copyWith(
           isLoading: false, error: "Error searching by tag: ${e.toString()}"));
@@ -407,7 +423,10 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
     ));
 
     try {
-      // Use TagManager to search for files with the given tag across all directories
+      // Xóa cache TagManager trước khi tìm kiếm để đảm bảo kết quả mới nhất
+      TagManager.clearCache();
+      
+      // Dùng phương thức đã cải thiện để tìm kiếm file theo tag trên toàn hệ thống
       final matchingFiles = await TagManager.findFilesByTagGlobally(event.tag);
 
       emit(state.copyWith(

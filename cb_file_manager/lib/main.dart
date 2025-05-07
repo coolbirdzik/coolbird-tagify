@@ -15,6 +15,8 @@ import 'helpers/user_preferences.dart'; // Import user preferences
 import 'helpers/folder_thumbnail_service.dart'; // Import thumbnail service
 import 'helpers/video_thumbnail_helper.dart'; // Import our video thumbnail helper
 import 'helpers/frame_timing_optimizer.dart'; // Import our new frame timing optimizer
+import 'helpers/batch_tag_manager.dart'; // Import batch tag manager
+import 'models/database/database_manager.dart'; // Import database manager
 import 'config/app_theme.dart'; // Import global theme configuration
 import 'package:flutter_localizations/flutter_localizations.dart'; // Import for localization
 import 'config/language_controller.dart'; // Import our language controller
@@ -114,12 +116,32 @@ void main() async {
     // Request storage permissions at startup
     await _requestPermissions();
 
-    // Initialize the global tag system
-    await TagManager.initialize();
+    // Khởi tạo cơ sở dữ liệu và hệ thống tag một cách an toàn
+    try {
+      // Khởi tạo UserPreferences trước tiên
+      final preferences = UserPreferences.instance;
+      await preferences.init();
+      debugPrint('User preferences initialized successfully');
 
-    // Initialize user preferences
-    final preferences = UserPreferences();
-    await preferences.init();
+      // Sau đó khởi tạo DatabaseManager
+      final dbManager = DatabaseManager.getInstance();
+      if (!dbManager.isInitialized()) {
+        await dbManager.initialize();
+        debugPrint('Database manager initialized successfully');
+      } else {
+        debugPrint('Database manager already initialized');
+      }
+
+      // Khởi tạo các hệ thống phụ thuộc khác
+      await BatchTagManager.initialize();
+      await TagManager.initialize();
+
+      debugPrint('All initialization completed successfully');
+    } catch (e) {
+      // Ghi log lỗi nhưng vẫn cho phép ứng dụng tiếp tục chạy
+      debugPrint('Error during initialization: $e');
+      debugPrint('Application will continue with limited functionality');
+    }
 
     // Initialize folder thumbnail service
     await FolderThumbnailService().initialize();
@@ -197,7 +219,7 @@ class CBFileApp extends StatefulWidget {
 }
 
 class _CBFileAppState extends State<CBFileApp> with WidgetsBindingObserver {
-  final UserPreferences _preferences = UserPreferences();
+  final UserPreferences _preferences = UserPreferences.instance;
   // Change from late initialization to default value
   ThemeMode _themeMode = ThemeMode.system;
   StreamSubscription<ThemeMode>? _themeSubscription;
@@ -251,9 +273,12 @@ class _CBFileAppState extends State<CBFileApp> with WidgetsBindingObserver {
 
   Future<void> _loadThemePreference() async {
     await _preferences.init();
-    setState(() {
-      _themeMode = _preferences.getThemeMode();
-    });
+    if (mounted) {
+      final themeMode = await _preferences.getThemeMode();
+      setState(() {
+        _themeMode = themeMode;
+      });
+    }
   }
 
   @override
