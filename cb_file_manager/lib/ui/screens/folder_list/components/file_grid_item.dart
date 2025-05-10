@@ -463,20 +463,6 @@ class FileGridItem extends StatelessWidget {
                 showAddTagToFileDialog!(context, file.path);
               },
             ),
-          if (fileTags.isNotEmpty && showDeleteTagDialog != null)
-            ListTile(
-              leading: Icon(EvaIcons.minusCircleOutline,
-                  color: isDarkMode ? Colors.white70 : Colors.black87),
-              title: Text(
-                'Remove Tag',
-                style: TextStyle(
-                    color: isDarkMode ? Colors.white : Colors.black87),
-              ),
-              onTap: () {
-                Navigator.pop(context);
-                showDeleteTagDialog!(context, file.path, fileTags);
-              },
-            ),
           ListTile(
             leading: Icon(EvaIcons.trash2Outline, color: Colors.red),
             title: Text(

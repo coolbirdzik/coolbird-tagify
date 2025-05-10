@@ -2,20 +2,18 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
 import './utils/route.dart';
-import './home.dart';
 import './tab_manager/tab_main_screen.dart';
 import 'package:cb_file_manager/ui/screens/tag_management/tag_management_screen.dart';
 import 'package:cb_file_manager/ui/screens/settings/settings_screen.dart';
 import 'package:cb_file_manager/ui/screens/trash_bin/trash_bin_screen.dart'; // Import TrashBinScreen
 import 'package:path_provider/path_provider.dart';
 import 'package:cb_file_manager/helpers/tag_manager.dart';
-import 'package:cb_file_manager/ui/screens/folder_list/folder_list_screen.dart';
 import 'package:cb_file_manager/helpers/filesystem_utils.dart';
 import 'package:cb_file_manager/helpers/io_extensions.dart'; // Add import for DirectoryProperties extension
-import 'package:cb_file_manager/helpers/trash_manager.dart'; // Import TrashManager
+// Import TrashManager
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:cb_file_manager/ui/tab_manager/tab_manager.dart';
-import 'package:cb_file_manager/helpers/user_preferences.dart'; // Add UserPreferences import
+// Add UserPreferences import
 import 'package:cb_file_manager/config/app_theme.dart'; // Import theme configuration
 import 'package:cb_file_manager/config/translation_helper.dart'; // Import translation helper
 

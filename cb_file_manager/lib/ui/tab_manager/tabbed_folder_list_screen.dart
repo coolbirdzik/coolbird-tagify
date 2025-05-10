@@ -1,18 +1,14 @@
 import 'dart:io';
 import 'dart:async'; // Add this import for Completer
 
-import 'package:cb_file_manager/helpers/io_extensions.dart';
-import 'package:cb_file_manager/helpers/batch_tag_manager.dart';
-import 'package:cb_file_manager/helpers/tag_manager.dart';
 import 'package:cb_file_manager/helpers/frame_timing_optimizer.dart';
-import 'package:cb_file_manager/helpers/filesystem_utils.dart';
-import 'package:cb_file_manager/ui/screens/folder_list/file_details_screen.dart'; // Add this import
+// Add this import
 import 'package:cb_file_manager/ui/screens/media_gallery/image_gallery_screen.dart';
 import 'package:cb_file_manager/ui/screens/media_gallery/video_gallery_screen.dart';
 import 'package:cb_file_manager/ui/screens/media_gallery/image_viewer_screen.dart'; // Import the new ImageViewerScreen
 import 'package:cb_file_manager/ui/components/shared_action_bar.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart'; // Add for scheduler bindings
+// Add for scheduler bindings
 import 'package:flutter/gestures.dart'; // Import for mouse buttons
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:cb_file_manager/helpers/user_preferences.dart';
@@ -606,8 +602,8 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
                             : null,
                         onSelectionModeToggled: _toggleSelectionMode,
                         onManageTagsPressed: () {
-                          tab_components.showManageTagsDialog(
-                              context, state.allTags.toList());
+                          tab_components.showManageTagsDialog(context,
+                              state.allTags.toList(), state.currentPath.path);
                         },
                         onGallerySelected: (value) {
                           if (value == 'image_gallery') {
@@ -983,7 +979,7 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
 
   void _showManageAllTagsDialog(BuildContext context) {
     tab_components.showManageTagsDialog(
-        context, _folderListBloc.state.allTags.toList());
+        context, _folderListBloc.state.allTags.toList(), _currentPath);
   }
 
   void _handleGridZoomChange(int zoomLevel) {

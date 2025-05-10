@@ -53,87 +53,154 @@ class FolderListAppBar extends StatelessWidget implements PreferredSizeWidget {
   List<Widget> _buildAppBarActions(BuildContext context) {
     if (isSelectionMode) {
       return [
-        // Selection mode actions
+        PopupMenuButton<String>(
+          onSelected: (value) {
+            switch (value) {
+              case 'add_tag':
+                showBatchAddTagDialog(context, selectedFiles);
+                break;
+              case 'delete':
+                BlocProvider.of<FolderListBloc>(context)
+                    .add(FolderListDeleteFiles(selectedFiles));
+                toggleSelectionMode();
+                break;
+            }
+          },
+          itemBuilder: (context) => [
+            PopupMenuItem(
+              value: 'add_tag',
+              child: Row(
+                children: [
+                  Icon(Icons.local_offer,
+                      color: Theme.of(context).iconTheme.color),
+                  const SizedBox(width: 8),
+                  const Text('Add Tag'),
+                ],
+              ),
+            ),
+            PopupMenuItem(
+              value: 'delete',
+              child: Row(
+                children: [
+                  Icon(Icons.delete, color: Colors.red[400]),
+                  const SizedBox(width: 8),
+                  const Text('Delete', style: TextStyle(color: Colors.red)),
+                ],
+              ),
+            ),
+          ],
+        ),
         IconButton(
           icon: const Icon(Icons.close),
           tooltip: 'Cancel selection',
           onPressed: clearSelection,
         ),
-        if (selectedFiles.isNotEmpty) ...[
-          IconButton(
-            icon: const Icon(Icons.label),
-            tooltip: 'Add tags',
-            onPressed: () {
-              showBatchAddTagDialog(context, selectedFiles);
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.delete),
-            tooltip: 'Delete selected',
-            onPressed: () {
-              _showDeleteConfirmationDialog(context);
-            },
-          ),
-        ],
       ];
     } else {
-      // Normal mode actions
       return [
+        if (!isGridView)
+          IconButton(
+            icon: const Icon(Icons.grid_view),
+            tooltip: 'Switch to grid view',
+            onPressed: toggleViewMode,
+          )
+        else
+          IconButton(
+            icon: const Icon(Icons.view_list),
+            tooltip: 'Switch to list view',
+            onPressed: toggleViewMode,
+          ),
         IconButton(
           icon: const Icon(Icons.search),
           tooltip: 'Search',
           onPressed: showSearchScreen,
         ),
-        // Add grid size adjustment button only when in grid view
-        if (isGridView)
-          IconButton(
-            icon: const Icon(Icons.grid_view_outlined),
-            tooltip: 'Adjust grid size',
-            onPressed: () {
-              _showGridSizeDialog(context);
-            },
-          ),
-        IconButton(
-          icon: Icon(isGridView ? Icons.list : Icons.grid_view),
-          tooltip: isGridView ? 'List view' : 'Grid view',
-          onPressed: toggleViewMode,
-        ),
-        IconButton(
-          icon: const Icon(Icons.refresh),
-          tooltip: 'Refresh',
-          onPressed: refresh,
-        ),
-        SharedActionBar.buildMoreOptionsMenu(
-          onSelectionModeToggled: toggleSelectionMode,
-          onManageTagsPressed: () {
-            showManageTagsDialog(context, allTags);
-          },
-          onGallerySelected: (value) {
-            if (value == 'image_gallery') {
-              // Open image gallery
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => ImageGalleryScreen(
-                    path: currentPath,
-                    recursive: false,
+        PopupMenuButton<String>(
+          onSelected: (value) {
+            switch (value) {
+              case 'refresh':
+                refresh();
+                break;
+              case 'select_all':
+                toggleSelectionMode();
+                break;
+              case 'manage_tags':
+                showManageTagsDialog(context, allTags, currentPath);
+                break;
+              case 'photo_gallery':
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => ImageGalleryScreen(path: currentPath),
                   ),
-                ),
-              );
-            } else if (value == 'video_gallery') {
-              // Open video gallery
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => VideoGalleryScreen(
-                    path: currentPath,
-                    recursive: false,
+                );
+                break;
+              case 'video_gallery':
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => VideoGalleryScreen(path: currentPath),
                   ),
-                ),
-              );
+                );
+                break;
             }
           },
-          currentPath: currentPath,
+          itemBuilder: (context) => [
+            PopupMenuItem(
+              value: 'refresh',
+              child: Row(
+                children: [
+                  Icon(Icons.refresh, color: Theme.of(context).iconTheme.color),
+                  const SizedBox(width: 8),
+                  const Text('Refresh'),
+                ],
+              ),
+            ),
+            PopupMenuItem(
+              value: 'select_all',
+              child: Row(
+                children: [
+                  Icon(Icons.select_all,
+                      color: Theme.of(context).iconTheme.color),
+                  const SizedBox(width: 8),
+                  const Text('Select All'),
+                ],
+              ),
+            ),
+            PopupMenuItem(
+              value: 'manage_tags',
+              child: Row(
+                children: [
+                  Icon(Icons.local_offer,
+                      color: Theme.of(context).iconTheme.color),
+                  const SizedBox(width: 8),
+                  const Text('Manage Tags'),
+                ],
+              ),
+            ),
+            PopupMenuItem(
+              value: 'photo_gallery',
+              child: Row(
+                children: [
+                  Icon(Icons.photo_library,
+                      color: Theme.of(context).iconTheme.color),
+                  const SizedBox(width: 8),
+                  const Text('Photo Gallery'),
+                ],
+              ),
+            ),
+            PopupMenuItem(
+              value: 'video_gallery',
+              child: Row(
+                children: [
+                  Icon(Icons.video_library,
+                      color: Theme.of(context).iconTheme.color),
+                  const SizedBox(width: 8),
+                  const Text('Video Gallery'),
+                ],
+              ),
+            ),
+          ],
         ),
       ];
     }

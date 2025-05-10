@@ -41,8 +41,6 @@ class SelectionAppBar extends StatelessWidget implements PreferredSizeWidget {
             onSelected: (value) {
               if (value == 'add_tag') {
                 showBatchAddTagDialog(context, selectedFilePaths);
-              } else if (value == 'remove_tag') {
-                showRemoveTagsDialog(context, selectedFilePaths);
               } else if (value == 'manage_all_tags') {
                 showManageAllTagsDialog(context);
               }
@@ -55,16 +53,6 @@ class SelectionAppBar extends StatelessWidget implements PreferredSizeWidget {
                     Icon(EvaIcons.plusCircleOutline),
                     SizedBox(width: 8),
                     Text('Thêm thẻ'),
-                  ],
-                ),
-              ),
-              const PopupMenuItem<String>(
-                value: 'remove_tag',
-                child: Row(
-                  children: [
-                    Icon(EvaIcons.minusCircleOutline),
-                    SizedBox(width: 8),
-                    Text('Xóa thẻ'),
                   ],
                 ),
               ),

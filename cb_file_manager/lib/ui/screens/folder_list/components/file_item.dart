@@ -173,11 +173,6 @@ class FileItem extends StatelessWidget {
                           value: 'tag',
                           child: Text('Add Tag'),
                         ),
-                        if (fileTags.isNotEmpty)
-                          const PopupMenuItem(
-                            value: 'delete_tag',
-                            child: Text('Remove Tag'),
-                          ),
                         const PopupMenuItem(
                           value: 'details',
                           child: Text('Properties'),
@@ -348,31 +343,19 @@ class FileItem extends StatelessWidget {
               );
             },
           ),
-          ListTile(
-            leading: Icon(EvaIcons.bookmarkOutline,
-                color: isDarkMode ? Colors.white70 : Colors.black87),
-            title: Text(
-              'Add Tag',
-              style:
-                  TextStyle(color: isDarkMode ? Colors.white : Colors.black87),
-            ),
-            onTap: () {
-              Navigator.pop(context);
-              showAddTagToFileDialog(context, file.path);
-            },
-          ),
-          if (fileTags.isNotEmpty)
+          // Display tags option
+          if (showAddTagToFileDialog != null)
             ListTile(
-              leading: Icon(EvaIcons.minusCircleOutline,
+              leading: Icon(EvaIcons.bookmarkOutline,
                   color: isDarkMode ? Colors.white70 : Colors.black87),
               title: Text(
-                'Remove Tag',
+                'Add Tag',
                 style: TextStyle(
                     color: isDarkMode ? Colors.white : Colors.black87),
               ),
               onTap: () {
                 Navigator.pop(context);
-                showDeleteTagDialog(context, file.path, fileTags);
+                showAddTagToFileDialog(context, file.path);
               },
             ),
           ListTile(

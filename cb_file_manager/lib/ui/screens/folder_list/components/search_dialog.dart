@@ -1,13 +1,9 @@
 import 'dart:io';
 import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:cb_file_manager/helpers/io_extensions.dart';
 import 'package:cb_file_manager/helpers/tag_manager.dart';
 import 'package:cb_file_manager/ui/screens/folder_list/file_details_screen.dart';
-import 'package:cb_file_manager/ui/screens/folder_list/folder_list_screen.dart';
-import 'package:cb_file_manager/ui/screens/folder_list/folder_list_bloc.dart';
-import 'package:cb_file_manager/ui/screens/folder_list/folder_list_event.dart';
 
 class SearchDialog extends StatefulWidget {
   final String currentPath;
@@ -410,19 +406,8 @@ class _SearchDialogState extends State<SearchDialog> {
       title: Text(folder.basename()),
       onTap: () {
         Navigator.pop(context); // Close search dialog
-
-        if (widget.onFolderSelected != null) {
-          // Sử dụng callback để trả về path cho tab hiện tại
-          widget.onFolderSelected!(folder.path);
-        } else {
-          // Fallback cho màn hình cũ
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => FolderListScreen(path: folder.path),
-            ),
-          );
-        }
+        // Sử dụng callback để trả về path cho tab hiện tại
+        widget.onFolderSelected!(folder.path);
       },
     );
   }

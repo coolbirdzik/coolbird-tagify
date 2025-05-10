@@ -22,26 +22,56 @@ class FileDetailsScreen extends StatefulWidget {
 class _FileDetailsScreenState extends State<FileDetailsScreen> {
   late Future<FileStat> _fileStatFuture;
   late Future<List<String>> _tagsFuture;
+  late Future<Map<String, int>> _popularTagsFuture;
+  late Future<List<String>> _recentTagsFuture;
   late TextEditingController _tagController;
   bool _videoPlayerReady = false;
+  List<String> _tagSuggestions = [];
+  final FocusNode _tagFocusNode = FocusNode();
 
   @override
   void initState() {
     super.initState();
     _fileStatFuture = widget.file.stat();
     _tagsFuture = TagManager.getTags(widget.file.path);
+    _popularTagsFuture = TagManager.instance.getPopularTags(limit: 10);
+    _recentTagsFuture = TagManager.getRecentTags(limit: 10);
     _tagController = TextEditingController();
+
+    // Listen for changes in the tag text field to update suggestions
+    _tagController.addListener(_updateTagSuggestions);
   }
 
   @override
   void dispose() {
+    _tagController.removeListener(_updateTagSuggestions);
     _tagController.dispose();
+    _tagFocusNode.dispose();
     super.dispose();
+  }
+
+  Future<void> _updateTagSuggestions() async {
+    if (_tagController.text.isEmpty) {
+      setState(() {
+        _tagSuggestions = [];
+      });
+      return;
+    }
+
+    // Get tag suggestions based on current input
+    final suggestions =
+        await TagManager.instance.searchTags(_tagController.text);
+    setState(() {
+      _tagSuggestions = suggestions;
+    });
   }
 
   Future<void> _refreshTags() async {
     setState(() {
       _tagsFuture = TagManager.getTags(widget.file.path);
+      _popularTagsFuture = TagManager.instance.getPopularTags(limit: 10);
+      _recentTagsFuture = TagManager.getRecentTags(limit: 10);
+      _tagSuggestions = [];
     });
   }
 
@@ -509,10 +539,28 @@ class _FileDetailsScreenState extends State<FileDetailsScreen> {
         isDarkMode ? Colors.teal.shade900 : Colors.teal.shade50;
     final Color chipTextColor =
         isDarkMode ? Colors.white : Colors.teal.shade800;
+    final Color popularChipBgColor =
+        isDarkMode ? Colors.blue.shade900 : Colors.blue.shade50;
+    final Color popularChipTextColor =
+        isDarkMode ? Colors.white : Colors.blue.shade800;
+    final Color recentChipBgColor =
+        isDarkMode ? Colors.purple.shade900 : Colors.purple.shade50;
+    final Color recentChipTextColor =
+        isDarkMode ? Colors.white : Colors.purple.shade800;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Current file tags
+        Text(
+          'File Tags',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: textColor,
+          ),
+        ),
+        const SizedBox(height: 8),
         FutureBuilder<List<String>>(
           future: _tagsFuture,
           builder: (context, snapshot) {
@@ -560,28 +608,84 @@ class _FileDetailsScreenState extends State<FileDetailsScreen> {
             );
           },
         ),
+
+        // Add tag input with autocomplete
         const SizedBox(height: 16),
         Row(
           children: [
             Expanded(
-              child: TextField(
-                controller: _tagController,
-                style: TextStyle(color: textColor),
-                decoration: InputDecoration(
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Focus(
+                    focusNode: _tagFocusNode,
+                    child: TextField(
+                      controller: _tagController,
+                      style: TextStyle(color: textColor),
+                      decoration: InputDecoration(
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        hintText: 'Enter a new tag',
+                        isDense: true,
+                        hintStyle: TextStyle(
+                          color:
+                              isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                        ),
+                      ),
+                      onSubmitted: (value) {
+                        if (value.isNotEmpty) {
+                          _addTag(value);
+                        }
+                      },
+                    ),
                   ),
-                  hintText: 'Enter a new tag',
-                  isDense: true,
-                  hintStyle: TextStyle(
-                    color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
-                  ),
-                ),
-                onSubmitted: (value) {
-                  if (value.isNotEmpty) {
-                    _addTag(value);
-                  }
-                },
+
+                  // Tag suggestions
+                  if (_tagSuggestions.isNotEmpty)
+                    Container(
+                      margin: const EdgeInsets.only(top: 4),
+                      decoration: BoxDecoration(
+                        color: isDarkMode ? Colors.grey[800] : Colors.grey[100],
+                        borderRadius: BorderRadius.circular(8),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.1),
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: _tagSuggestions.length > 5
+                            ? 5
+                            : _tagSuggestions.length,
+                        itemBuilder: (context, index) {
+                          final suggestion = _tagSuggestions[index];
+                          return ListTile(
+                            dense: true,
+                            title: Text(
+                              suggestion,
+                              style: TextStyle(color: textColor),
+                            ),
+                            onTap: () {
+                              _tagController.text = suggestion;
+                              _tagController.selection =
+                                  TextSelection.fromPosition(
+                                TextPosition(offset: suggestion.length),
+                              );
+                              setState(() {
+                                _tagSuggestions = [];
+                              });
+                              _tagFocusNode.requestFocus();
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                ],
               ),
             ),
             const SizedBox(width: 8),
@@ -601,6 +705,154 @@ class _FileDetailsScreenState extends State<FileDetailsScreen> {
               child: const Text('Add Tag'),
             ),
           ],
+        ),
+
+        // Popular tags section
+        const SizedBox(height: 24),
+        Row(
+          children: [
+            Icon(
+              EvaIcons.trendingUpOutline,
+              color: textColor,
+              size: 18,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              'Popular Tags',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: textColor,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        FutureBuilder<Map<String, int>>(
+          future: _popularTagsFuture,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(16.0),
+                  child: CircularProgressIndicator(),
+                ),
+              );
+            }
+
+            final popularTags = snapshot.data ?? {};
+
+            if (popularTags.isEmpty) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8.0),
+                child: Text(
+                  'No popular tags available',
+                  style: TextStyle(
+                    fontStyle: FontStyle.italic,
+                    color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                  ),
+                ),
+              );
+            }
+
+            return Wrap(
+              spacing: 8.0,
+              runSpacing: 8.0,
+              children: popularTags.entries.map((entry) {
+                return ActionChip(
+                  label: Text(
+                    "${entry.key} (${entry.value})",
+                    style: TextStyle(color: popularChipTextColor),
+                  ),
+                  backgroundColor: popularChipBgColor,
+                  onPressed: () {
+                    _tagController.text = entry.key;
+                    _tagController.selection = TextSelection.fromPosition(
+                      TextPosition(offset: entry.key.length),
+                    );
+                    _tagFocusNode.requestFocus();
+                  },
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                );
+              }).toList(),
+            );
+          },
+        ),
+
+        // Recent tags section
+        const SizedBox(height: 24),
+        Row(
+          children: [
+            Icon(
+              EvaIcons.clockOutline,
+              color: textColor,
+              size: 18,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              'Recent Tags',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: textColor,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        FutureBuilder<List<String>>(
+          future: _recentTagsFuture,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(16.0),
+                  child: CircularProgressIndicator(),
+                ),
+              );
+            }
+
+            final recentTags = snapshot.data ?? [];
+
+            if (recentTags.isEmpty) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8.0),
+                child: Text(
+                  'No recent tags available',
+                  style: TextStyle(
+                    fontStyle: FontStyle.italic,
+                    color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                  ),
+                ),
+              );
+            }
+
+            return Wrap(
+              spacing: 8.0,
+              runSpacing: 8.0,
+              children: recentTags.map((tag) {
+                return ActionChip(
+                  label: Text(
+                    tag,
+                    style: TextStyle(color: recentChipTextColor),
+                  ),
+                  backgroundColor: recentChipBgColor,
+                  onPressed: () {
+                    _tagController.text = tag;
+                    _tagController.selection = TextSelection.fromPosition(
+                      TextPosition(offset: tag.length),
+                    );
+                    _tagFocusNode.requestFocus();
+                  },
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                );
+              }).toList(),
+            );
+          },
         ),
       ],
     );

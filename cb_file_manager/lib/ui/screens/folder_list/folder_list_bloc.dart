@@ -183,16 +183,23 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
           }
         }
 
+        // Important: Clear the tag cache to ensure fresh data
+        TagManager.clearCache();
+
         // Load tags for all files
         Map<String, List<String>> fileTags = {};
         for (var file in files) {
           if (file is File) {
+            // Always fetch fresh data from storage
             final tags = await TagManager.getTags(file.path);
             if (tags.isNotEmpty) {
               fileTags[file.path] = tags;
             }
           }
         }
+
+        // Get all unique tags for this directory
+        final allUniqueTags = await TagManager.getAllUniqueTags(event.path);
 
         // IMPORTANT: Update UI state IMMEDIATELY to show content, even before thumbnails are ready
         // This prevents UI blocking while thumbnails are generated
@@ -201,6 +208,7 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
           folders: folders,
           files: files,
           fileTags: fileTags,
+          allUniqueTags: allUniqueTags,
           error: null,
           currentPath: Directory(event.path),
         ));
@@ -229,9 +237,6 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
           // Don't await here - process in background
           _generateThumbnailsInBackground(videoFiles);
         }
-
-        // Load all unique tags in this directory (async)
-        add(LoadAllTags(event.path));
       } else {
         emit(state.copyWith(
           isLoading: false,

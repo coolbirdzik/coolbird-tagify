@@ -4,7 +4,7 @@ import 'package:flutter/foundation.dart'; // For kDebugMode
 import 'package:flutter/scheduler.dart'; // For frame scheduling
 import 'dart:async';
 import 'dart:io';
-import 'ui/home.dart';
+
 import 'ui/tab_manager/tab_main_screen.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'helpers/tag_manager.dart';
@@ -21,9 +21,6 @@ import 'config/app_theme.dart'; // Import global theme configuration
 import 'package:flutter_localizations/flutter_localizations.dart'; // Import for localization
 import 'config/language_controller.dart'; // Import our language controller
 import 'config/languages/app_localizations_delegate.dart'; // Import our localization delegate
-
-// Global key for app state access
-final GlobalKey<MyHomePageState> homeKey = GlobalKey<MyHomePageState>();
 
 // Global access to test the video thumbnail screen (for development)
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();

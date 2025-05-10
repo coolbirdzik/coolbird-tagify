@@ -743,4 +743,42 @@ class TagManager {
       return migratedFileCount;
     }
   }
+
+  /// Get recently added tags
+  /// Returns a list of the most recently added tags
+  static Future<List<String>> getRecentTags({int limit = 10}) async {
+    await initialize();
+
+    final List<String> recentTags = [];
+
+    if (_useObjectBox && _databaseManager != null) {
+      // If you have timestamp info in ObjectBox, use it
+      // For now, we'll get all tags and assume the most recent are at the end
+      final allTags = await _databaseManager!.getAllUniqueTags();
+
+      // Take the last 'limit' tags (most recently added)
+      final startIndex = allTags.length > limit ? allTags.length - limit : 0;
+      recentTags.addAll(allTags.skip(startIndex).take(limit));
+    } else {
+      // For JSON storage, get all tags and take the last 'limit' unique ones
+      final tagsData = await _loadGlobalTags();
+      final Set<String> uniqueTags = {};
+
+      // Process files in reverse order (assuming newer files are added later)
+      final files = tagsData.keys.toList();
+      for (int i = files.length - 1; i >= 0 && uniqueTags.length < limit; i--) {
+        final filePath = files[i];
+        final tagsList = List<String>.from(tagsData[filePath]);
+
+        for (final tag in tagsList) {
+          uniqueTags.add(tag);
+          if (uniqueTags.length >= limit) break;
+        }
+      }
+
+      recentTags.addAll(uniqueTags);
+    }
+
+    return recentTags;
+  }
 }
