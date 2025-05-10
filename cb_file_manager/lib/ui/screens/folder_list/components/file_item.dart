@@ -12,6 +12,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:cb_file_manager/ui/screens/folder_list/folder_list_bloc.dart';
 import 'package:cb_file_manager/ui/screens/folder_list/folder_list_event.dart';
 import 'package:path/path.dart' as pathlib;
+import 'package:cb_file_manager/ui/dialogs/open_with_dialog.dart';
 
 import 'tag_dialogs.dart';
 
@@ -209,7 +210,7 @@ class FileItem extends StatelessWidget {
 
     showModalBottomSheet(
       context: context,
-      backgroundColor: isDarkMode ? Colors.grey[850] : Colors.white,
+      backgroundColor: isDarkMode ? Colors.grey[900] : Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
@@ -303,6 +304,22 @@ class FileItem extends StatelessWidget {
                   ),
                 );
               }
+            },
+          ),
+          ListTile(
+            leading: Icon(EvaIcons.externalLinkOutline,
+                color: isDarkMode ? Colors.white70 : Colors.black87),
+            title: Text(
+              'Open With...',
+              style:
+                  TextStyle(color: isDarkMode ? Colors.white : Colors.black87),
+            ),
+            onTap: () {
+              Navigator.pop(context);
+              showDialog(
+                context: context,
+                builder: (context) => OpenWithDialog(filePath: file.path),
+              );
             },
           ),
           ListTile(

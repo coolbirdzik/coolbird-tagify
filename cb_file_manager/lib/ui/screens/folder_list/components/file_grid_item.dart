@@ -14,6 +14,7 @@ import 'package:path/path.dart' as pathlib;
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:cb_file_manager/ui/screens/folder_list/folder_list_bloc.dart';
 import 'package:cb_file_manager/ui/screens/folder_list/folder_list_event.dart';
+import 'package:cb_file_manager/ui/dialogs/open_with_dialog.dart';
 
 class FileGridItem extends StatelessWidget {
   final File file;
@@ -216,15 +217,19 @@ class FileGridItem extends StatelessWidget {
   }
 
   void _showFileContextMenu(BuildContext context, bool isVideo) {
+    bool isImage = file.path.toLowerCase().endsWith('.jpg') ||
+        file.path.toLowerCase().endsWith('.jpeg') ||
+        file.path.toLowerCase().endsWith('.png') ||
+        file.path.toLowerCase().endsWith('.gif') ||
+        file.path.toLowerCase().endsWith('.webp');
+
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     final List<String> fileTags = state.getTagsForFile(file.path);
     final extension = _getFileExtension(file);
-    final bool isImage =
-        ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].contains(extension);
 
     showModalBottomSheet(
       context: context,
-      backgroundColor: isDarkMode ? Colors.grey[850] : Colors.white,
+      backgroundColor: isDarkMode ? Colors.grey[900] : Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
@@ -318,6 +323,22 @@ class FileGridItem extends StatelessWidget {
                   ),
                 );
               }
+            },
+          ),
+          ListTile(
+            leading: Icon(EvaIcons.externalLinkOutline,
+                color: isDarkMode ? Colors.white70 : Colors.black87),
+            title: Text(
+              'Open With...',
+              style:
+                  TextStyle(color: isDarkMode ? Colors.white : Colors.black87),
+            ),
+            onTap: () {
+              Navigator.pop(context);
+              showDialog(
+                context: context,
+                builder: (context) => OpenWithDialog(filePath: file.path),
+              );
             },
           ),
           ListTile(

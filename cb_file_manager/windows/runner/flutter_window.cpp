@@ -4,6 +4,7 @@
 
 #include "flutter/generated_plugin_registrant.h"
 #include "fc_native_video_thumbnail_plugin.h"
+#include "app_icon_plugin.h"
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
     : project_(project) {}
@@ -32,6 +33,12 @@ if (!flutter_controller_->engine() || !flutter_controller_->view()) {
   fc_native_video_thumbnail::FcNativeVideoThumbnailPlugin::RegisterWithRegistrar(
       flutter::PluginRegistrarManager::GetInstance()
           ->GetRegistrar<flutter::PluginRegistrarWindows>(registrar));
+  
+  // Manually register App Icon plugin
+  auto icon_registrar = flutter_controller_->engine()->GetRegistrarForPlugin("AppIconPlugin");
+  AppIconPlugin::RegisterWithRegistrar(
+      flutter::PluginRegistrarManager::GetInstance()
+          ->GetRegistrar<flutter::PluginRegistrarWindows>(icon_registrar));
   
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 

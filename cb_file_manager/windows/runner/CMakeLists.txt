@@ -16,6 +16,8 @@ add_executable(${BINARY_NAME} WIN32
   "fc_native_video_thumbnail_plugin.h"
   "ffmpeg_thumbnail_helper.cpp"
   "ffmpeg_thumbnail_helper.h"
+  "app_icon_plugin.cpp"
+  "app_icon_plugin.h"
   "Runner.rc"
   "runner.exe.manifest"
 )

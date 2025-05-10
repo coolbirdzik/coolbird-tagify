@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:cb_file_manager/helpers/io_extensions.dart';
 import 'package:cb_file_manager/helpers/tag_manager.dart';
 import 'package:cb_file_manager/helpers/thumbnail_helper.dart'; // Added ThumbnailHelper import
+import 'package:cb_file_manager/ui/dialogs/open_with_dialog.dart';
 import 'package:cb_file_manager/ui/utils/base_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as pathlib;
@@ -81,6 +82,13 @@ class _FileDetailsScreenState extends State<FileDetailsScreen> {
     return BaseScreen(
       title: pathlib.basename(widget.file.path),
       actions: [
+        IconButton(
+          icon: const Icon(Icons.open_in_new),
+          tooltip: 'Open with...',
+          onPressed: () {
+            _showOpenWithDialog();
+          },
+        ),
         IconButton(
           icon: const Icon(Icons.share),
           onPressed: () {
@@ -411,6 +419,13 @@ class _FileDetailsScreenState extends State<FileDetailsScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  void _showOpenWithDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => OpenWithDialog(filePath: widget.file.path),
     );
   }
 
