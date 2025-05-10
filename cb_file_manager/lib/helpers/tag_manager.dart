@@ -5,6 +5,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:cb_file_manager/models/database/database_manager.dart';
 import 'package:cb_file_manager/helpers/user_preferences.dart';
 import 'package:cb_file_manager/models/objectbox/file_tag.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:async';
 
 /// A utility class for managing file tags globally
 ///
@@ -31,6 +33,28 @@ class TagManager {
 
   // User preferences for checking if ObjectBox is enabled
   static final UserPreferences _preferences = UserPreferences.instance;
+
+  // Thêm một StreamController để phát thông báo khi tags thay đổi
+  static final StreamController<String> _tagChangeController =
+      StreamController<String>.broadcast();
+
+  // Stream công khai để lắng nghe thay đổi tag
+  static Stream<String> get onTagChanged => _tagChangeController.stream;
+
+  // Cache for tags to avoid constantly reading from files
+  static Map<String, List<String>> _tagCache = {};
+  static bool _isCacheInitialized = false;
+
+  // Add a stream controller to notify tag changes globally
+  final _tagChangesController = StreamController<String>.broadcast();
+
+  // Stream for global tag changes that any widget can listen to
+  Stream<String> get onGlobalTagChanged => _tagChangesController.stream;
+
+  // Method to notify the app about tag changes
+  void notifyTagChanged(String filePath) {
+    _tagChangesController.add(filePath);
+  }
 
   // Private singleton constructor
   TagManager._();
@@ -224,10 +248,96 @@ class TagManager {
     }
   }
 
+  /// List to keep track of recently used tags with timestamps
+  static List<Map<String, dynamic>> _recentTags = [];
+  static const int MAX_RECENT_TAGS = 20;
+
+  /// Add a tag to recent tags list
+  static void addToRecentTags(String tag) {
+    // Remove tag if it already exists in recent tags
+    _recentTags.removeWhere((item) => item['tag'] == tag);
+
+    // Add tag to the beginning of the list with current timestamp
+    _recentTags.insert(
+        0, {'tag': tag, 'timestamp': DateTime.now().millisecondsSinceEpoch});
+
+    // Limit the list size
+    if (_recentTags.length > MAX_RECENT_TAGS) {
+      _recentTags = _recentTags.sublist(0, MAX_RECENT_TAGS);
+    }
+
+    // Save recent tags to shared preferences for persistence
+    _saveRecentTags();
+  }
+
+  /// Save recent tags to SharedPreferences
+  static Future<void> _saveRecentTags() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final jsonString = json.encode(_recentTags);
+      await prefs.setString('recent_tags', jsonString);
+    } catch (e) {
+      print('Error saving recent tags: $e');
+    }
+  }
+
+  /// Load recent tags from SharedPreferences
+  static Future<void> _loadRecentTags() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final jsonString = prefs.getString('recent_tags');
+
+      if (jsonString != null) {
+        final List<dynamic> decoded = json.decode(jsonString);
+        _recentTags =
+            decoded.map((item) => Map<String, dynamic>.from(item)).toList();
+      }
+    } catch (e) {
+      print('Error loading recent tags: $e');
+      _recentTags = [];
+    }
+  }
+
+  /// Get recently added tags
+  /// Returns a list of the most recently added tags
+  static Future<List<String>> getRecentTags({int limit = 10}) async {
+    await initialize();
+
+    // Load recent tags if not already loaded
+    if (_recentTags.isEmpty) {
+      await _loadRecentTags();
+    }
+
+    // Extract tag names from the list and limit by count
+    final List<String> recentTagNames =
+        _recentTags.take(limit).map((item) => item['tag'] as String).toList();
+
+    // If we don't have enough stored recent tags, supplement with popular tags
+    if (recentTagNames.length < limit) {
+      // Get popular tags excluding the ones we already have
+      final popularTags =
+          await TagManager.instance.getPopularTags(limit: limit * 2);
+
+      for (final entry in popularTags.entries) {
+        if (recentTagNames.length >= limit) break;
+        if (!recentTagNames.contains(entry.key)) {
+          recentTagNames.add(entry.key);
+        }
+      }
+    }
+
+    return recentTagNames;
+  }
+
   /// Static wrapper for instance method
   static Future<bool> addTag(String filePath, String tag) async {
     try {
       await initialize();
+
+      // Add to recent tags - use static method directly
+      if (tag.trim().isNotEmpty) {
+        addToRecentTags(tag.trim());
+      }
 
       if (_useObjectBox && _databaseManager != null) {
         return await _databaseManager!.addTagToFile(filePath, tag);
@@ -244,6 +354,9 @@ class TagManager {
           if (success) {
             _tagsCache[filePath] = tags;
           }
+
+          // Thông báo thay đổi qua Stream
+          _tagChangeController.add(filePath);
 
           return success;
         }
@@ -284,6 +397,10 @@ class TagManager {
               _tagsCache[filePath] = tags;
             }
           }
+
+          // Thông báo thay đổi qua Stream
+          _tagChangeController.add(filePath);
+
           return success;
         }
         return true;
@@ -341,6 +458,9 @@ class TagManager {
           }
         }
 
+        // Thông báo thay đổi qua Stream
+        _tagChangeController.add(filePath);
+
         return success;
       } else {
         // Use original implementation for JSON file
@@ -365,6 +485,9 @@ class TagManager {
             _tagsCache[filePath] = validTags;
           }
         }
+
+        // Thông báo thay đổi qua Stream
+        _tagChangeController.add(filePath);
 
         return success;
       }
@@ -635,7 +758,14 @@ class TagManager {
 
   /// Clears the tags cache to free memory
   static void clearCache() {
+    print("Clearing all tag caches...");
+    // Clear all caches - make sure to clear all possible caches
     _tagsCache.clear();
+    _tagCache.clear();
+    _isCacheInitialized = false;
+
+    // Debugging output
+    print("Tag caches cleared!");
   }
 
   /// Migrate from directory-based tags to global tags
@@ -744,41 +874,73 @@ class TagManager {
     }
   }
 
-  /// Get recently added tags
-  /// Returns a list of the most recently added tags
-  static Future<List<String>> getRecentTags({int limit = 10}) async {
-    await initialize();
+  /// Deletes a tag from all files in the system
+  static Future<void> deleteTagGlobally(String tag) async {
+    final instance = TagManager.instance;
 
-    final List<String> recentTags = [];
+    try {
+      // Find all files with this tag
+      final filePaths =
+          await instance._findFilesByTagInternal(tag.toLowerCase().trim());
 
-    if (_useObjectBox && _databaseManager != null) {
-      // If you have timestamp info in ObjectBox, use it
-      // For now, we'll get all tags and assume the most recent are at the end
-      final allTags = await _databaseManager!.getAllUniqueTags();
-
-      // Take the last 'limit' tags (most recently added)
-      final startIndex = allTags.length > limit ? allTags.length - limit : 0;
-      recentTags.addAll(allTags.skip(startIndex).take(limit));
-    } else {
-      // For JSON storage, get all tags and take the last 'limit' unique ones
-      final tagsData = await _loadGlobalTags();
-      final Set<String> uniqueTags = {};
-
-      // Process files in reverse order (assuming newer files are added later)
-      final files = tagsData.keys.toList();
-      for (int i = files.length - 1; i >= 0 && uniqueTags.length < limit; i--) {
-        final filePath = files[i];
-        final tagsList = List<String>.from(tagsData[filePath]);
-
-        for (final tag in tagsList) {
-          uniqueTags.add(tag);
-          if (uniqueTags.length >= limit) break;
-        }
+      // Remove tag from each file
+      for (final path in filePaths) {
+        await removeTag(path, tag);
       }
 
-      recentTags.addAll(uniqueTags);
+      // Clear cache to ensure fresh data
+      clearCache();
+
+      // Notify about the change through the global notification
+      instance.notifyTagChanged("global:tag_deleted");
+      // Also notify through the static stream if anyone is still using it
+      _tagChangeController.add("global:tag_deleted");
+    } catch (e) {
+      print('Error deleting tag globally: $e');
+      rethrow;
+    }
+  }
+
+  /// Find all files that have a specific tag (internal implementation)
+  Future<List<String>> _findFilesByTagInternal(String tag) async {
+    try {
+      // If using ObjectBox
+      if (_useObjectBox && _databaseManager != null) {
+        // Query the database for files with this tag
+        final tagLowercase = tag.toLowerCase().trim();
+        final results = await _databaseManager!.findFilesByTag(tagLowercase);
+        return results;
+      } else {
+        // Use the file search implementation without ObjectBox
+        return await _searchByTag(tag);
+      }
+    } catch (e) {
+      print('Error finding files by tag: $e');
+      return [];
+    }
+  }
+
+  /// Search files by tag without using ObjectBox
+  Future<List<String>> _searchByTag(String tag) async {
+    final List<String> results = [];
+
+    // This is a simple implementation to search all files in the system
+    // In a real app, you'd use a more efficient approach
+    try {
+      // Use the tags cache to find files with this tag
+      if (_tagCache.isNotEmpty) {
+        final normalizedTag = tag.toLowerCase().trim();
+
+        _tagCache.forEach((filePath, tags) {
+          if (tags.map((t) => t.toLowerCase().trim()).contains(normalizedTag)) {
+            results.add(filePath);
+          }
+        });
+      }
+    } catch (e) {
+      print('Error searching for tag: $e');
     }
 
-    return recentTags;
+    return results;
   }
 }

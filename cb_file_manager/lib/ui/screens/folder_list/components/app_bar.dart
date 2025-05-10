@@ -7,8 +7,7 @@ import 'package:cb_file_manager/ui/screens/media_gallery/image_gallery_screen.da
 import 'package:cb_file_manager/ui/screens/media_gallery/video_gallery_screen.dart';
 import 'package:cb_file_manager/helpers/user_preferences.dart';
 import 'package:cb_file_manager/ui/components/shared_action_bar.dart';
-
-import 'tag_dialogs.dart';
+import 'package:cb_file_manager/ui/tab_manager/components/tag_dialogs.dart';
 
 class FolderListAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String currentPath;

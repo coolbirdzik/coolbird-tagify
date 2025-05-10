@@ -7,4 +7,4 @@ export 'file_view.dart';
 export 'folder_grid_item.dart';
 export 'folder_item.dart';
 export 'search_dialog.dart';
-export 'tag_dialogs.dart';
+// tag_dialogs.dart has been moved to lib/ui/tab_manager/components/tag_dialogs.dart

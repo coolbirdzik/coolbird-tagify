@@ -6,22 +6,32 @@ import 'package:cb_file_manager/helpers/trash_manager.dart'; // Add import for T
 import 'package:cb_file_manager/helpers/filesystem_utils.dart'; // Import for FileOperations
 import 'package:path/path.dart' as pathlib;
 import 'package:cb_file_manager/helpers/video_thumbnail_helper.dart';
+import 'dart:async'; // Thêm import cho StreamSubscription
 
 import 'folder_list_event.dart';
 import 'folder_list_state.dart';
 
 class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
+  StreamSubscription? _tagChangeSubscription;
+  StreamSubscription? _globalTagChangeSubscription;
+
   FolderListBloc() : super(FolderListState("/")) {
     on<FolderListInit>(_onFolderListInit);
     on<FolderListLoad>(_onFolderListLoad);
     on<FolderListRefresh>(_onFolderListRefresh);
     on<FolderListFilter>(_onFolderListFilter);
-    on<AddTagToFile>(_onAddTagToFile);
-    on<RemoveTagFromFile>(_onRemoveTagFromFile);
-    on<SearchByTag>(_onSearchByTag);
-    on<SearchByTagGlobally>(_onSearchByTagGlobally);
-    on<SearchByFileName>(_onSearchByFileName);
-    on<SearchMediaFiles>(_onSearchMediaFiles);
+
+    // Register for local tag change events
+    _tagChangeSubscription = TagManager.onTagChanged.listen(_onTagsChanged);
+
+    // Register for global tag change notifications
+    _globalTagChangeSubscription =
+        TagManager.instance.onGlobalTagChanged.listen(_onGlobalTagChanged);
+
+    // Note: AddTagToFile, RemoveTagFromFile, SearchByTag, SearchByTagGlobally,
+    // SearchByFileName, and SearchMediaFiles events are now handled directly
+    // in the mapEventToState method for immediate UI updates with tag changes
+
     on<LoadTagsFromFile>(_onLoadTagsFromFile);
     on<LoadAllTags>(_onLoadAllTags);
     on<SetViewMode>(_onSetViewMode);
@@ -30,6 +40,8 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
     on<ClearSearchAndFilters>(_onClearSearchAndFilters);
     on<FolderListDeleteFiles>(_onFolderListDeleteFiles);
     on<SetTagSearchResults>(_onSetTagSearchResults);
+    on<FolderListReloadCurrentFolder>(_onFolderListReloadCurrentFolder);
+    on<FolderListDeleteTagGlobally>(_onFolderListDeleteTagGlobally);
 
     // Register file operation event handlers
     on<CopyFile>(_onCopyFile);
@@ -38,35 +50,127 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
     on<RenameFileOrFolder>(_onRenameFileOrFolder);
   }
 
-  @override
-  Stream<FolderListState> mapEventToState(FolderListEvent event) async* {
-    if (event is SetTagSearchResults) {
-      yield state.copyWith(
-        searchResults: event.results,
-        currentSearchTag: event.tagName,
-        isLoading: false,
-      );
+  // Xử lý khi tag thay đổi
+  void _onTagsChanged(String filePath) {
+    // Khi có sự kiện tag thay đổi, cập nhật lại danh sách tag
+    if (filePath == "global:tag_deleted") {
+      // Nếu là xóa tag toàn cục, tải lại tất cả tag
+      add(LoadAllTags(state.currentPath.path));
+    } else {
+      // Cập nhật tag của file cụ thể
+      add(LoadTagsFromFile(filePath));
     }
   }
 
+  // Handle global tag change notifications
+  void _onGlobalTagChanged(String filePath) {
+    // If this is a file that should affect the current view
+    if (state.currentPath.path.isNotEmpty) {
+      try {
+        // Special case for global tag deletion
+        if (filePath == "global:tag_deleted") {
+          // Just refresh file tags without reloading the entire list
+          _refreshTagsOnly(state.currentPath.path);
+          return;
+        }
+
+        // Check if this is a request to preserve scroll position
+        bool preserveScroll = false;
+        String actualPath = filePath;
+
+        if (filePath.startsWith("preserve_scroll:")) {
+          preserveScroll = true;
+          actualPath = filePath.substring("preserve_scroll:".length);
+        }
+
+        final parentPath = Directory(actualPath).parent.path;
+
+        // If the changed file is in the current directory
+        if (parentPath == state.currentPath.path) {
+          if (preserveScroll) {
+            // Use the optimized refresh that preserves scroll position
+            _refreshTagsOnly(state.currentPath.path);
+          } else {
+            // Full refresh if preserveScroll is false
+            add(FolderListRefresh(state.currentPath.path,
+                forceRegenerateThumbnails: true));
+          }
+        }
+      } catch (e) {
+        print('Error handling global tag change: $e');
+      }
+    }
+  }
+
+  // Refreshes only the tags without reloading the entire folder structure
+  // This preserves scroll position and selection
+  void _refreshTagsOnly(String dirPath) async {
+    try {
+      // Emit loading state to notify UI about ongoing operation
+      emit(state.copyWith(isLoading: true));
+
+      // Force clear all caches
+      TagManager.clearCache();
+
+      // Keep current files and folders as is
+      final currentFiles = List<FileSystemEntity>.from(state.files);
+
+      // Only refresh the tags for these files
+      Map<String, List<String>> updatedFileTags = {};
+      for (final file in currentFiles) {
+        if (file is File) {
+          // Get updated tags for this file - avoid using cache
+          final tags = await TagManager.getTags(file.path);
+          if (tags.isNotEmpty) {
+            updatedFileTags[file.path] = tags;
+          }
+        }
+      }
+
+      // Get updated unique tags for the directory
+      final allUniqueTags = await TagManager.getAllUniqueTags(dirPath);
+
+      // Update state with new tags but keep files/folders and scroll position
+      emit(state.copyWith(
+        isLoading: false,
+        fileTags: updatedFileTags,
+        allUniqueTags: allUniqueTags,
+      ));
+    } catch (e) {
+      print('Error refreshing tags only: $e');
+      // Make sure we're not stuck in loading state
+      emit(state.copyWith(isLoading: false));
+    }
+  }
+
+  @override
+  Future<void> close() {
+    // Cancel all subscriptions when bloc is closed
+    _tagChangeSubscription?.cancel();
+    _globalTagChangeSubscription?.cancel();
+    return super.close();
+  }
+
   void _onFolderListInit(
-      FolderListInit event, Emitter<FolderListState> emit) async {
+    FolderListInit event,
+    Emitter<FolderListState> emit,
+  ) async {
     // Initialize with empty folders list
     emit(state.copyWith(isLoading: true));
     emit(state.copyWith(isLoading: false));
   }
 
   void _onFolderListLoad(
-      FolderListLoad event, Emitter<FolderListState> emit) async {
-    emit(state.copyWith(
-      isLoading: true,
-      currentPath: Directory(event.path),
-    ));
+    FolderListLoad event,
+    Emitter<FolderListState> emit,
+  ) async {
+    emit(state.copyWith(isLoading: true, currentPath: Directory(event.path)));
 
     // Special case for empty path on Windows - this is used for the drive listing view
     if (event.path.isEmpty && Platform.isWindows) {
-      emit(state.copyWith(
-          isLoading: false, folders: [], files: [], error: null));
+      emit(
+        state.copyWith(isLoading: false, folders: [], files: [], error: null),
+      );
       return;
     }
 
@@ -102,13 +206,15 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
             }
           }
 
-          emit(state.copyWith(
-            isLoading: false,
-            folders: folders,
-            files: files,
-            fileTags: fileTags,
-            error: null, // Clear any previous errors
-          ));
+          emit(
+            state.copyWith(
+              isLoading: false,
+              folders: folders,
+              files: files,
+              fileTags: fileTags,
+              error: null, // Clear any previous errors
+            ),
+          );
 
           // Load all unique tags in this directory (async)
           add(LoadAllTags(event.path));
@@ -116,50 +222,61 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
           // Handle specific permission errors
           if (e.toString().toLowerCase().contains('permission denied') ||
               e.toString().toLowerCase().contains('access denied')) {
-            emit(state.copyWith(
-              isLoading: false,
-              error:
-                  "Access denied: Administrator privileges required to access ${event.path}",
-              folders: [],
-              files: [],
-            ));
+            emit(
+              state.copyWith(
+                isLoading: false,
+                error:
+                    "Access denied: Administrator privileges required to access ${event.path}",
+                folders: [],
+                files: [],
+              ),
+            );
           } else {
-            emit(state.copyWith(
-              isLoading: false,
-              error: "Error accessing directory: ${e.toString()}",
-              folders: [],
-              files: [],
-            ));
+            emit(
+              state.copyWith(
+                isLoading: false,
+                error: "Error accessing directory: ${e.toString()}",
+                folders: [],
+                files: [],
+              ),
+            );
           }
         }
       } else {
-        emit(state.copyWith(
-            isLoading: false, error: "Directory does not exist"));
+        emit(
+          state.copyWith(isLoading: false, error: "Directory does not exist"),
+        );
       }
     } catch (e) {
       // Improved error handling with user-friendly messages
       if (e.toString().toLowerCase().contains('permission denied') ||
           e.toString().toLowerCase().contains('access denied')) {
-        emit(state.copyWith(
-          isLoading: false,
-          error:
-              "Access denied: Administrator privileges required to access ${event.path}",
-          folders: [],
-          files: [],
-        ));
+        emit(
+          state.copyWith(
+            isLoading: false,
+            error:
+                "Access denied: Administrator privileges required to access ${event.path}",
+            folders: [],
+            files: [],
+          ),
+        );
       } else {
-        emit(state.copyWith(
-          isLoading: false,
-          error: "Error: ${e.toString()}",
-          folders: [],
-          files: [],
-        ));
+        emit(
+          state.copyWith(
+            isLoading: false,
+            error: "Error: ${e.toString()}",
+            folders: [],
+            files: [],
+          ),
+        );
       }
     }
   }
 
   void _onFolderListRefresh(
-      FolderListRefresh event, Emitter<FolderListState> emit) async {
+    FolderListRefresh event,
+    Emitter<FolderListState> emit,
+  ) async {
     emit(state.copyWith(isLoading: true));
 
     try {
@@ -203,15 +320,17 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
 
         // IMPORTANT: Update UI state IMMEDIATELY to show content, even before thumbnails are ready
         // This prevents UI blocking while thumbnails are generated
-        emit(state.copyWith(
-          isLoading: false, // Set to false right away so UI is not blocked
-          folders: folders,
-          files: files,
-          fileTags: fileTags,
-          allUniqueTags: allUniqueTags,
-          error: null,
-          currentPath: Directory(event.path),
-        ));
+        emit(
+          state.copyWith(
+            isLoading: false, // Set to false right away so UI is not blocked
+            folders: folders,
+            files: files,
+            fileTags: fileTags,
+            allUniqueTags: allUniqueTags,
+            error: null,
+            currentPath: Directory(event.path),
+          ),
+        );
 
         // Start thumbnail generation in background AFTER updating UI
         if (event.forceRegenerateThumbnails) {
@@ -228,7 +347,7 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
                 'wmv',
                 'webm',
                 '3gp',
-                'm4v'
+                'm4v',
               ].contains(extension);
             }
             return false;
@@ -238,16 +357,20 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
           _generateThumbnailsInBackground(videoFiles);
         }
       } else {
-        emit(state.copyWith(
-          isLoading: false,
-          error: 'Directory does not exist: ${event.path}',
-        ));
+        emit(
+          state.copyWith(
+            isLoading: false,
+            error: 'Directory does not exist: ${event.path}',
+          ),
+        );
       }
     } catch (e) {
-      emit(state.copyWith(
-        isLoading: false,
-        error: 'Error loading directory: ${e.toString()}',
-      ));
+      emit(
+        state.copyWith(
+          isLoading: false,
+          error: 'Error loading directory: ${e.toString()}',
+        ),
+      );
     } finally {
       // Extra safety: ensure loading indicator is gone
       if (state.isLoading) {
@@ -258,18 +381,23 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
 
   // New method to generate thumbnails without blocking UI
   Future<void> _generateThumbnailsInBackground(
-      List<FileSystemEntity> videoFiles) async {
+    List<FileSystemEntity> videoFiles,
+  ) async {
     if (videoFiles.isEmpty) return;
 
     try {
       for (var videoFile in videoFiles) {
         if (videoFile is File) {
           try {
-            await VideoThumbnailHelper.forceRegenerateThumbnail(videoFile.path)
-                .timeout(const Duration(seconds: 3), onTimeout: () {
-              print('Thumbnail generation timed out for: ${videoFile.path}');
-              return;
-            });
+            await VideoThumbnailHelper.forceRegenerateThumbnail(
+              videoFile.path,
+            ).timeout(
+              const Duration(seconds: 3),
+              onTimeout: () {
+                print('Thumbnail generation timed out for: ${videoFile.path}');
+                return;
+              },
+            );
           } catch (e) {
             print('Error generating thumbnail for ${videoFile.path}: $e');
             // Continue with next file, don't stop on error
@@ -282,17 +410,16 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
   }
 
   void _onFolderListFilter(
-      FolderListFilter event, Emitter<FolderListState> emit) async {
+    FolderListFilter event,
+    Emitter<FolderListState> emit,
+  ) async {
     // Filter files by type (videos, images, etc.)
     if (event.fileType == null) {
       emit(state.copyWith(currentFilter: null, filteredFiles: []));
       return;
     }
 
-    emit(state.copyWith(
-      isLoading: true,
-      currentFilter: event.fileType,
-    ));
+    emit(state.copyWith(isLoading: true, currentFilter: event.fileType));
 
     try {
       final List<FileSystemEntity> filteredFiles = state.files.where((file) {
@@ -300,17 +427,43 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
           String extension = file.path.split('.').last.toLowerCase();
           switch (event.fileType) {
             case 'image':
-              return ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp']
-                  .contains(extension);
+              return [
+                'jpg',
+                'jpeg',
+                'png',
+                'gif',
+                'webp',
+                'bmp',
+              ].contains(extension);
             case 'video':
-              return ['mp4', 'mov', 'avi', 'mkv', 'flv', 'wmv']
-                  .contains(extension);
+              return [
+                'mp4',
+                'mov',
+                'avi',
+                'mkv',
+                'flv',
+                'wmv',
+              ].contains(extension);
             case 'audio':
-              return ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac']
-                  .contains(extension);
+              return [
+                'mp3',
+                'wav',
+                'ogg',
+                'm4a',
+                'aac',
+                'flac',
+              ].contains(extension);
             case 'document':
-              return ['pdf', 'doc', 'docx', 'txt', 'xls', 'xlsx', 'ppt', 'pptx']
-                  .contains(extension);
+              return [
+                'pdf',
+                'doc',
+                'docx',
+                'txt',
+                'xls',
+                'xlsx',
+                'ppt',
+                'pptx',
+              ].contains(extension);
             default:
               return true;
           }
@@ -318,301 +471,16 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
         return false;
       }).toList();
 
-      emit(state.copyWith(
-        isLoading: false,
-        filteredFiles: filteredFiles,
-      ));
+      emit(state.copyWith(isLoading: false, filteredFiles: filteredFiles));
     } catch (e) {
       emit(state.copyWith(isLoading: false, error: e.toString()));
     }
   }
 
-  void _onAddTagToFile(
-      AddTagToFile event, Emitter<FolderListState> emit) async {
-    try {
-      // Use TagManager to add the tag
-      final success = await TagManager.addTag(event.filePath, event.tag);
-
-      if (success) {
-        // Update state with new tags
-        final tags = await TagManager.getTags(event.filePath);
-
-        // Create a copy of the current fileTags map
-        final Map<String, List<String>> updatedFileTags =
-            Map.from(state.fileTags);
-        updatedFileTags[event.filePath] = tags;
-
-        emit(state.copyWith(fileTags: updatedFileTags));
-
-        // Also update all unique tags
-        final currentDir = state.currentPath.path;
-        add(LoadAllTags(currentDir));
-      }
-    } catch (e) {
-      emit(state.copyWith(error: "Error adding tag: ${e.toString()}"));
-    }
-  }
-
-  void _onRemoveTagFromFile(
-      RemoveTagFromFile event, Emitter<FolderListState> emit) async {
-    try {
-      // Use TagManager to remove the tag
-      final success = await TagManager.removeTag(event.filePath, event.tag);
-
-      if (success) {
-        // Update state with new tags
-        final tags = await TagManager.getTags(event.filePath);
-
-        // Create a copy of the current fileTags map
-        final Map<String, List<String>> updatedFileTags =
-            Map.from(state.fileTags);
-
-        if (tags.isEmpty) {
-          updatedFileTags.remove(event.filePath);
-        } else {
-          updatedFileTags[event.filePath] = tags;
-        }
-
-        emit(state.copyWith(fileTags: updatedFileTags));
-
-        // Also update all unique tags
-        final currentDir = state.currentPath.path;
-        add(LoadAllTags(currentDir));
-      }
-    } catch (e) {
-      emit(state.copyWith(error: "Error removing tag: ${e.toString()}"));
-    }
-  }
-
-  void _onSearchByTag(SearchByTag event, Emitter<FolderListState> emit) async {
-    emit(state.copyWith(
-      isLoading: true,
-      isSearchByName: false,
-      isGlobalSearch: false,
-    ));
-
-    try {
-      // Xóa cache TagManager trước khi tìm kiếm để đảm bảo kết quả mới nhất
-      TagManager.clearCache();
-
-      // Dùng phương thức đã cải thiện để tìm kiếm file theo tag trong thư mục hiện tại
-      final matchingFiles =
-          await TagManager.findFilesByTag(state.currentPath.path, event.tag);
-
-      // Nếu không tìm thấy kết quả, thử tìm kiếm toàn cục
-      if (matchingFiles.isEmpty) {
-        print(
-            "Không tìm thấy kết quả trong thư mục hiện tại, thử tìm kiếm toàn cục");
-        final globalResults =
-            await TagManager.findFilesByTagGlobally(event.tag);
-
-        emit(state.copyWith(
-          isLoading: false,
-          searchResults: globalResults,
-          currentSearchTag: event.tag,
-          currentSearchQuery: null,
-          isGlobalSearch: true, // Đánh dấu là tìm kiếm toàn cục
-        ));
-      } else {
-        emit(state.copyWith(
-          isLoading: false,
-          searchResults: matchingFiles,
-          currentSearchTag: event.tag,
-          currentSearchQuery: null,
-        ));
-      }
-    } catch (e) {
-      emit(state.copyWith(
-          isLoading: false, error: "Error searching by tag: ${e.toString()}"));
-    }
-  }
-
-  void _onSearchByTagGlobally(
-      SearchByTagGlobally event, Emitter<FolderListState> emit) async {
-    emit(state.copyWith(
-      isLoading: true,
-      isSearchByName: false,
-      isGlobalSearch: true,
-    ));
-
-    try {
-      // Xóa cache TagManager trước khi tìm kiếm để đảm bảo kết quả mới nhất
-      TagManager.clearCache();
-
-      // Dùng phương thức đã cải thiện để tìm kiếm file theo tag trên toàn hệ thống
-      final matchingFiles = await TagManager.findFilesByTagGlobally(event.tag);
-
-      emit(state.copyWith(
-        isLoading: false,
-        searchResults: matchingFiles,
-        currentSearchTag: event.tag,
-        currentSearchQuery: null,
-      ));
-    } catch (e) {
-      emit(state.copyWith(
-          isLoading: false,
-          error: "Error searching by tag globally: ${e.toString()}"));
-    }
-  }
-
-  void _onSearchByFileName(
-      SearchByFileName event, Emitter<FolderListState> emit) async {
-    emit(state.copyWith(
-      isLoading: true,
-      isSearchByName: true,
-    ));
-
-    try {
-      final String query = event.query.toLowerCase();
-      final String path = state.currentPath.path;
-      final List<FileSystemEntity> matchingFiles = [];
-
-      // Function to search directory for matching files và thư mục
-      Future<void> searchDirectory(String dirPath, bool recursive) async {
-        final Directory dir = Directory(dirPath);
-        if (!await dir.exists()) return;
-
-        await for (var entity in dir.list(recursive: recursive)) {
-          final String name = pathlib.basename(entity.path).toLowerCase();
-          if (name.contains(query)) {
-            matchingFiles.add(entity);
-          }
-        }
-      }
-
-      // Perform search
-      await searchDirectory(path, event.recursive);
-
-      emit(state.copyWith(
-        isLoading: false,
-        searchResults: matchingFiles,
-        currentSearchQuery: event.query,
-        currentSearchTag: null,
-      ));
-    } catch (e) {
-      emit(state.copyWith(
-          isLoading: false, error: "Error searching files: ${e.toString()}"));
-    }
-  }
-
-  void _onSearchMediaFiles(
-      SearchMediaFiles event, Emitter<FolderListState> emit) async {
-    emit(state.copyWith(
-      isLoading: true,
-      isSearchByMedia: true,
-      isSearchByName: false,
-      searchRecursive: event.recursive,
-      currentMediaSearch: _convertMediaSearchTypeToMediaType(event.mediaType),
-      currentSearchTag: null,
-      currentSearchQuery: null,
-    ));
-
-    try {
-      final String path = state.currentPath.path;
-      final List<FileSystemEntity> matchingFiles = [];
-
-      // Define media type extensions
-      List<String> targetExtensions = [];
-      String mediaTypeLabel = '';
-
-      // Set up the file extensions to search for based on media type
-      switch (event.mediaType) {
-        case MediaSearchType.images:
-          targetExtensions = [
-            'jpg',
-            'jpeg',
-            'png',
-            'gif',
-            'webp',
-            'bmp',
-            'heic',
-            'heif'
-          ];
-          mediaTypeLabel = 'images';
-          break;
-        case MediaSearchType.videos:
-          targetExtensions = [
-            'mp4',
-            'mov',
-            'avi',
-            'mkv',
-            'flv',
-            'wmv',
-            'webm',
-            '3gp',
-            'm4v'
-          ];
-          mediaTypeLabel = 'videos';
-          break;
-        case MediaSearchType.all:
-          targetExtensions = [
-            'jpg',
-            'jpeg',
-            'png',
-            'gif',
-            'webp',
-            'bmp',
-            'heic',
-            'heif',
-            'mp4',
-            'mov',
-            'avi',
-            'mkv',
-            'flv',
-            'wmv',
-            'webm',
-            '3gp',
-            'm4v'
-          ];
-          mediaTypeLabel = 'media files';
-          break;
-      }
-
-      // Function to search directory for matching files
-      Future<void> searchDirectory(String dirPath, bool recursive) async {
-        final Directory dir = Directory(dirPath);
-        if (!await dir.exists()) return;
-
-        await for (var entity in dir.list(recursive: recursive)) {
-          if (entity is File) {
-            final String extension = entity.path.split('.').last.toLowerCase();
-            if (targetExtensions.contains(extension)) {
-              matchingFiles.add(entity);
-            }
-          }
-        }
-      }
-
-      // Perform search
-      await searchDirectory(path, event.recursive);
-
-      emit(state.copyWith(
-        isLoading: false,
-        searchResults: matchingFiles,
-      ));
-    } catch (e) {
-      emit(state.copyWith(
-          isLoading: false,
-          error: "Error searching media files: ${e.toString()}"));
-    }
-  }
-
-  // Helper method to convert MediaSearchType to MediaType
-  MediaType _convertMediaSearchTypeToMediaType(MediaSearchType searchType) {
-    switch (searchType) {
-      case MediaSearchType.images:
-        return MediaType.image;
-      case MediaSearchType.videos:
-        return MediaType.video;
-      case MediaSearchType.audio:
-        return MediaType.audio; // Handle the audio case
-      case MediaSearchType.all:
-        return MediaType.image; // Default to image type when searching all
-    }
-  }
-
   void _onLoadTagsFromFile(
-      LoadTagsFromFile event, Emitter<FolderListState> emit) async {
+    LoadTagsFromFile event,
+    Emitter<FolderListState> emit,
+  ) async {
     try {
       final tags = await TagManager.getTags(event.filePath);
 
@@ -631,8 +499,9 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
   void _onLoadAllTags(LoadAllTags event, Emitter<FolderListState> emit) async {
     try {
       // Get all unique tags across the entire file system (globally)
-      final Set<String> allTags =
-          await TagManager.getAllUniqueTags(event.directory);
+      final Set<String> allTags = await TagManager.getAllUniqueTags(
+        event.directory,
+      );
       emit(state.copyWith(allUniqueTags: allTags));
     } catch (e) {
       print('Error loading all tags: ${e.toString()}');
@@ -649,7 +518,9 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
   }
 
   void _onSetSortOption(
-      SetSortOption event, Emitter<FolderListState> emit) async {
+    SetSortOption event,
+    Emitter<FolderListState> emit,
+  ) async {
     emit(state.copyWith(isLoading: true));
 
     try {
@@ -659,10 +530,12 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
       // Create new sorted lists by copying the original lists
       List<FileSystemEntity> sortedFolders = List.from(state.folders);
       List<FileSystemEntity> sortedFiles = List.from(state.files);
-      List<FileSystemEntity> sortedFilteredFiles =
-          List.from(state.filteredFiles);
-      List<FileSystemEntity> sortedSearchResults =
-          List.from(state.searchResults);
+      List<FileSystemEntity> sortedFilteredFiles = List.from(
+        state.filteredFiles,
+      );
+      List<FileSystemEntity> sortedSearchResults = List.from(
+        state.searchResults,
+      );
 
       // Cache file stats for better performance
       Future<void> cacheFileStats(List<FileSystemEntity> entities) async {
@@ -746,41 +619,53 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
       sortedSearchResults.sort(compareFunction);
 
       // Emit the new state with sorted lists and the updated sort option
-      emit(state.copyWith(
-        isLoading: false,
-        sortOption: event.sortOption,
-        folders: sortedFolders,
-        files: sortedFiles,
-        filteredFiles: sortedFilteredFiles,
-        searchResults: sortedSearchResults,
-        fileStatsCache: fileStatsCache,
-      ));
+      emit(
+        state.copyWith(
+          isLoading: false,
+          sortOption: event.sortOption,
+          folders: sortedFolders,
+          files: sortedFiles,
+          filteredFiles: sortedFilteredFiles,
+          searchResults: sortedSearchResults,
+          fileStatsCache: fileStatsCache,
+        ),
+      );
     } catch (e) {
-      emit(state.copyWith(
-          isLoading: false, error: "Error sorting files: ${e.toString()}"));
+      emit(
+        state.copyWith(
+          isLoading: false,
+          error: "Error sorting files: ${e.toString()}",
+        ),
+      );
     }
   }
 
   void _onClearSearchAndFilters(
-      ClearSearchAndFilters event, Emitter<FolderListState> emit) {
+    ClearSearchAndFilters event,
+    Emitter<FolderListState> emit,
+  ) {
     // Reset all search and filter related state variables
-    emit(state.copyWith(
-      currentSearchTag: null,
-      currentSearchQuery: null,
-      currentFilter: null,
-      searchResults: [],
-      filteredFiles: [],
-      isSearchByName: false,
-      isSearchByMedia: false,
-      isGlobalSearch: false,
-      searchRecursive: false,
-      currentMediaSearch: null,
-      error: null, // Also clear any previous error messages
-    ));
+    emit(
+      state.copyWith(
+        currentSearchTag: null,
+        currentSearchQuery: null,
+        currentFilter: null,
+        searchResults: [],
+        filteredFiles: [],
+        isSearchByName: false,
+        isSearchByMedia: false,
+        isGlobalSearch: false,
+        searchRecursive: false,
+        currentMediaSearch: null,
+        error: null, // Also clear any previous error messages
+      ),
+    );
   }
 
   void _onFolderListDeleteFiles(
-      FolderListDeleteFiles event, Emitter<FolderListState> emit) async {
+    FolderListDeleteFiles event,
+    Emitter<FolderListState> emit,
+  ) async {
     emit(state.copyWith(isLoading: true));
     try {
       List<String> failedDeletes = [];
@@ -799,33 +684,41 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
       }
 
       if (failedDeletes.isNotEmpty) {
-        emit(state.copyWith(
-          isLoading: false,
-          error: 'Failed to delete ${failedDeletes.length} files',
-        ));
+        emit(
+          state.copyWith(
+            isLoading: false,
+            error: 'Failed to delete ${failedDeletes.length} files',
+          ),
+        );
       }
 
       // Refresh the current directory
       add(FolderListLoad(state.currentPath.path));
     } catch (e) {
-      emit(state.copyWith(
-        isLoading: false,
-        error: 'Error deleting files: ${e.toString()}',
-      ));
+      emit(
+        state.copyWith(
+          isLoading: false,
+          error: 'Error deleting files: ${e.toString()}',
+        ),
+      );
     }
   }
 
   void _onSetTagSearchResults(
-      SetTagSearchResults event, Emitter<FolderListState> emit) {
+    SetTagSearchResults event,
+    Emitter<FolderListState> emit,
+  ) {
     // Update the state with tag search results
-    emit(state.copyWith(
-      searchResults: event.results,
-      currentSearchTag: event.tagName,
-      isLoading: false,
-      isSearchByName: false,
-      isGlobalSearch: false,
-      currentSearchQuery: null,
-    ));
+    emit(
+      state.copyWith(
+        searchResults: event.results,
+        currentSearchTag: event.tagName,
+        isLoading: false,
+        isSearchByName: false,
+        isGlobalSearch: false,
+        currentSearchQuery: null,
+      ),
+    );
   }
 
   // File operation handlers
@@ -833,13 +726,13 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
     try {
       // Use the FileOperations singleton to add the file to clipboard
       FileOperations().copyToClipboard(event.entity);
-      emit(state.copyWith(
-        error: null, // Clear any previous errors
-      ));
+      emit(
+        state.copyWith(
+          error: null, // Clear any previous errors
+        ),
+      );
     } catch (e) {
-      emit(state.copyWith(
-        error: 'Error copying file/folder: ${e.toString()}',
-      ));
+      emit(state.copyWith(error: 'Error copying file/folder: ${e.toString()}'));
     }
   }
 
@@ -847,21 +740,19 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
     try {
       // Use the FileOperations singleton to add the file to clipboard for cutting
       FileOperations().cutToClipboard(event.entity);
-      emit(state.copyWith(
-        error: null, // Clear any previous errors
-      ));
+      emit(
+        state.copyWith(
+          error: null, // Clear any previous errors
+        ),
+      );
     } catch (e) {
-      emit(state.copyWith(
-        error: 'Error cutting file/folder: ${e.toString()}',
-      ));
+      emit(state.copyWith(error: 'Error cutting file/folder: ${e.toString()}'));
     }
   }
 
   void _onPasteFile(PasteFile event, Emitter<FolderListState> emit) async {
     if (!FileOperations().hasClipboardItem) {
-      emit(state.copyWith(
-        error: 'Nothing to paste - clipboard is empty',
-      ));
+      emit(state.copyWith(error: 'Nothing to paste - clipboard is empty'));
       return;
     }
 
@@ -874,15 +765,19 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
       // Refresh the current directory to show the new file/folder
       add(FolderListLoad(state.currentPath.path));
     } catch (e) {
-      emit(state.copyWith(
-        isLoading: false,
-        error: 'Error pasting file/folder: ${e.toString()}',
-      ));
+      emit(
+        state.copyWith(
+          isLoading: false,
+          error: 'Error pasting file/folder: ${e.toString()}',
+        ),
+      );
     }
   }
 
   void _onRenameFileOrFolder(
-      RenameFileOrFolder event, Emitter<FolderListState> emit) async {
+    RenameFileOrFolder event,
+    Emitter<FolderListState> emit,
+  ) async {
     emit(state.copyWith(isLoading: true));
 
     try {
@@ -892,10 +787,50 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
       // Refresh the current directory to show the renamed file/folder
       add(FolderListLoad(state.currentPath.path));
     } catch (e) {
-      emit(state.copyWith(
-        isLoading: false,
-        error: 'Error renaming file/folder: ${e.toString()}',
-      ));
+      emit(
+        state.copyWith(
+          isLoading: false,
+          error: 'Error renaming file/folder: ${e.toString()}',
+        ),
+      );
+    }
+  }
+
+  // Handle reloading the current folder
+  void _onFolderListReloadCurrentFolder(
+    FolderListReloadCurrentFolder event,
+    Emitter<FolderListState> emit,
+  ) async {
+    // Only proceed if we have a valid current path
+    if (state.currentPath.path.isNotEmpty) {
+      // Use the optimized refresh that doesn't reset scroll position
+      _refreshTagsOnly(state.currentPath.path);
+    }
+  }
+
+  // Handle deleting a tag globally
+  void _onFolderListDeleteTagGlobally(
+    FolderListDeleteTagGlobally event,
+    Emitter<FolderListState> emit,
+  ) async {
+    try {
+      // Delete the tag from all files in the system
+      await TagManager.deleteTagGlobally(event.tag);
+
+      // Clear tag cache to ensure fresh data
+      TagManager.clearCache();
+
+      // Notify with special path to indicate global tag deletion
+      TagManager.instance.notifyTagChanged("global:tag_deleted");
+
+      // Refresh the current directory view
+      if (state.currentPath.path.isNotEmpty) {
+        add(FolderListRefresh(state.currentPath.path,
+            forceRegenerateThumbnails: true));
+      }
+    } catch (e) {
+      print('Error deleting tag globally: $e');
+      // No state update needed as we'll refresh the entire view
     }
   }
 }

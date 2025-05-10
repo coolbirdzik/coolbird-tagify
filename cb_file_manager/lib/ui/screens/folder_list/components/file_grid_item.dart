@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:async';
 
 import 'package:cb_file_manager/ui/screens/folder_list/file_details_screen.dart';
 import 'package:cb_file_manager/ui/screens/folder_list/folder_list_state.dart';
@@ -6,6 +7,7 @@ import 'package:cb_file_manager/ui/screens/media_gallery/video_gallery_screen.da
 import 'package:cb_file_manager/ui/screens/media_gallery/image_viewer_screen.dart';
 import 'package:cb_file_manager/helpers/frame_timing_optimizer.dart';
 import 'package:cb_file_manager/helpers/trash_manager.dart';
+import 'package:cb_file_manager/helpers/tag_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
@@ -17,8 +19,10 @@ import 'package:cb_file_manager/ui/screens/folder_list/folder_list_event.dart';
 import 'package:cb_file_manager/ui/dialogs/open_with_dialog.dart';
 import 'package:cb_file_manager/helpers/external_app_helper.dart';
 import 'package:cb_file_manager/helpers/file_icon_helper.dart';
+import 'package:cb_file_manager/config/app_theme.dart';
+import 'package:cb_file_manager/widgets/tag_chip.dart';
 
-class FileGridItem extends StatelessWidget {
+class FileGridItem extends StatefulWidget {
   final File file;
   final FolderListState state;
   final bool isSelectionMode;
@@ -45,14 +49,81 @@ class FileGridItem extends StatelessWidget {
   }) : super(key: key);
 
   @override
+  State<FileGridItem> createState() => _FileGridItemState();
+}
+
+class _FileGridItemState extends State<FileGridItem> {
+  late List<String> _fileTags;
+  StreamSubscription? _tagChangeSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _fileTags = widget.state.getTagsForFile(widget.file.path);
+
+    _tagChangeSubscription = TagManager.onTagChanged.listen(_onTagChanged);
+  }
+
+  @override
+  void dispose() {
+    _tagChangeSubscription?.cancel();
+    super.dispose();
+  }
+
+  void _onTagChanged(String changedFilePath) {
+    if (changedFilePath == widget.file.path ||
+        changedFilePath == "global:tag_deleted") {
+      final newTags = widget.state.getTagsForFile(widget.file.path);
+
+      if (!_areTagListsEqual(newTags, _fileTags)) {
+        setState(() {
+          _fileTags = newTags;
+        });
+      }
+    }
+  }
+
+  bool _areTagListsEqual(List<String> list1, List<String> list2) {
+    if (list1.length != list2.length) return false;
+    for (int i = 0; i < list1.length; i++) {
+      if (!list2.contains(list1[i])) return false;
+    }
+    return true;
+  }
+
+  @override
+  void didUpdateWidget(FileGridItem oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final newTags = widget.state.getTagsForFile(widget.file.path);
+    if (!_areTagListsEqual(newTags, _fileTags)) {
+      setState(() {
+        _fileTags = newTags;
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     FrameTimingOptimizer().optimizeImageRendering();
 
-    final extension = file.path.split('.').last.toLowerCase();
-    final bool isVideo =
-        ['mp4', 'avi', 'mov', 'mkv', 'webm', 'flv', 'wmv'].contains(extension);
-    final bool isImage =
-        ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].contains(extension);
+    final extension = widget.file.path.split('.').last.toLowerCase();
+    final bool isVideo = [
+      'mp4',
+      'avi',
+      'mov',
+      'mkv',
+      'webm',
+      'flv',
+      'wmv',
+    ].contains(extension);
+    final bool isImage = [
+      'jpg',
+      'jpeg',
+      'png',
+      'gif',
+      'webp',
+      'bmp',
+    ].contains(extension);
 
     IconData icon;
     Color? iconColor;
@@ -65,12 +136,26 @@ class FileGridItem extends StatelessWidget {
     } else if (['mp4', 'mov', 'avi', 'mkv', 'flv', 'wmv'].contains(extension)) {
       icon = EvaIcons.videoOutline;
       iconColor = Colors.red;
-    } else if (['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac']
-        .contains(extension)) {
+    } else if ([
+      'mp3',
+      'wav',
+      'ogg',
+      'm4a',
+      'aac',
+      'flac',
+    ].contains(extension)) {
       icon = EvaIcons.musicOutline;
       iconColor = Colors.purple;
-    } else if (['pdf', 'doc', 'docx', 'txt', 'xls', 'xlsx', 'ppt', 'pptx']
-        .contains(extension)) {
+    } else if ([
+      'pdf',
+      'doc',
+      'docx',
+      'txt',
+      'xls',
+      'xlsx',
+      'ppt',
+      'pptx',
+    ].contains(extension)) {
       icon = EvaIcons.fileTextOutline;
       iconColor = Colors.indigo;
     } else {
@@ -78,56 +163,60 @@ class FileGridItem extends StatelessWidget {
       iconColor = Colors.grey;
     }
 
-    final List<String> fileTags = state.getTagsForFile(file.path);
-
     return GestureDetector(
       onSecondaryTap: () => _showFileContextMenu(context, isVideo),
       child: Container(
         decoration: BoxDecoration(
-          color: isSelected ? Colors.blue.shade50 : Theme.of(context).cardColor,
+          color: widget.isSelected
+              ? Colors.blue.shade50
+              : Theme.of(context).cardColor,
           border: Border.all(color: Colors.grey.shade300),
           borderRadius: BorderRadius.circular(8.0),
         ),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: () {
-            if (isSelectionMode) {
-              toggleFileSelection(file.path);
-            } else if (onFileTap != null) {
-              onFileTap!(file, isVideo);
+            if (widget.isSelectionMode) {
+              widget.toggleFileSelection(widget.file.path);
+            } else if (widget.onFileTap != null) {
+              widget.onFileTap!(widget.file, isVideo);
             } else if (isVideo) {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => VideoPlayerFullScreen(file: file),
+                  builder: (context) =>
+                      VideoPlayerFullScreen(file: widget.file),
                 ),
               );
             } else if (isImage) {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => ImageViewerScreen(file: file),
+                  builder: (context) => ImageViewerScreen(file: widget.file),
                 ),
               );
             } else {
               // Open other file types with external app
-              ExternalAppHelper.openFileWithApp(file.path, 'shell_open')
-                  .then((success) {
+              ExternalAppHelper.openFileWithApp(
+                widget.file.path,
+                'shell_open',
+              ).then((success) {
                 if (!success && context.mounted) {
                   // If that fails, show the open with dialog
                   showDialog(
                     context: context,
-                    builder: (context) => OpenWithDialog(filePath: file.path),
+                    builder: (context) =>
+                        OpenWithDialog(filePath: widget.file.path),
                   );
                 }
               });
             }
           },
           onLongPress: () {
-            if (!isSelectionMode) {
+            if (!widget.isSelectionMode) {
               _showFileContextMenu(context, isVideo);
             } else {
-              toggleFileSelection(file.path);
+              widget.toggleFileSelection(widget.file.path);
             }
           },
           child: Column(
@@ -139,20 +228,18 @@ class FileGridItem extends StatelessWidget {
                   fit: StackFit.expand,
                   children: [
                     isPreviewable || isVideo
-                        ? _buildThumbnail(file)
+                        ? _buildThumbnail(widget.file)
                         : Center(
                             child: FutureBuilder<Widget>(
-                              future:
-                                  FileIconHelper.getIconForFile(file, size: 48),
+                              future: FileIconHelper.getIconForFile(
+                                widget.file,
+                                size: 48,
+                              ),
                               builder: (context, snapshot) {
                                 if (snapshot.connectionState ==
                                     ConnectionState.waiting) {
                                   // Return a generic icon while loading
-                                  return Icon(
-                                    icon,
-                                    size: 48,
-                                    color: iconColor,
-                                  );
+                                  return Icon(icon, size: 48, color: iconColor);
                                 }
 
                                 if (snapshot.hasData) {
@@ -160,15 +247,11 @@ class FileGridItem extends StatelessWidget {
                                 }
 
                                 // Fallback to generic icon
-                                return Icon(
-                                  icon,
-                                  size: 48,
-                                  color: iconColor,
-                                );
+                                return Icon(icon, size: 48, color: iconColor);
                               },
                             ),
                           ),
-                    if (isSelectionMode)
+                    if (widget.isSelectionMode)
                       Positioned(
                         right: 6,
                         top: 6,
@@ -176,14 +259,18 @@ class FileGridItem extends StatelessWidget {
                           width: 24,
                           height: 24,
                           decoration: BoxDecoration(
-                            color: isSelected ? Colors.blue : Colors.white,
+                            color:
+                                widget.isSelected ? Colors.blue : Colors.white,
                             shape: BoxShape.circle,
                             border: Border.all(color: Colors.grey.shade400),
                           ),
                           child: Center(
-                            child: isSelected
-                                ? const Icon(EvaIcons.checkmark,
-                                    size: 16, color: Colors.white)
+                            child: widget.isSelected
+                                ? const Icon(
+                                    EvaIcons.checkmark,
+                                    size: 16,
+                                    color: Colors.white,
+                                  )
                                 : null,
                           ),
                         ),
@@ -200,7 +287,7 @@ class FileGridItem extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        _basename(file),
+                        _basename(widget.file),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
@@ -210,7 +297,7 @@ class FileGridItem extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       FutureBuilder<FileStat>(
-                        future: file.stat(),
+                        future: widget.file.stat(),
                         builder: (context, snapshot) {
                           if (snapshot.hasData) {
                             return Text(
@@ -218,27 +305,48 @@ class FileGridItem extends StatelessWidget {
                               style: const TextStyle(fontSize: 10),
                             );
                           }
-                          return const Text('Loading...',
-                              style: TextStyle(fontSize: 10));
+                          return const Text(
+                            'Loading...',
+                            style: TextStyle(fontSize: 10),
+                          );
                         },
                       ),
-                      if (fileTags.isNotEmpty)
+                      if (_fileTags.isNotEmpty)
                         Flexible(
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(EvaIcons.bookmarkOutline,
-                                  size: 12, color: Colors.green[800]),
+                              Icon(
+                                EvaIcons.bookmarkOutline,
+                                size: 12,
+                                color: AppTheme.primaryBlue,
+                              ),
                               const SizedBox(width: 4),
                               Flexible(
-                                child: Text(
-                                  '${fileTags.length} tags',
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    color: Colors.green[800],
-                                  ),
-                                ),
+                                child: _fileTags.length == 1
+                                    ? TagChip(
+                                        tag: _fileTags.first,
+                                        isCompact: true,
+                                        onTap: () {
+                                          // Search by tag functionality
+                                          final bloc =
+                                              BlocProvider.of<FolderListBloc>(
+                                            context,
+                                          );
+                                          bloc.add(
+                                            SearchByTag(_fileTags.first),
+                                          );
+                                        },
+                                      )
+                                    : Text(
+                                        '${_fileTags.length} ${_fileTags.length == 1 ? 'tag' : 'tags'}',
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          color: AppTheme.primaryBlue,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
                               ),
                             ],
                           ),
@@ -255,15 +363,14 @@ class FileGridItem extends StatelessWidget {
   }
 
   void _showFileContextMenu(BuildContext context, bool isVideo) {
-    bool isImage = file.path.toLowerCase().endsWith('.jpg') ||
-        file.path.toLowerCase().endsWith('.jpeg') ||
-        file.path.toLowerCase().endsWith('.png') ||
-        file.path.toLowerCase().endsWith('.gif') ||
-        file.path.toLowerCase().endsWith('.webp');
+    bool isImage = widget.file.path.toLowerCase().endsWith('.jpg') ||
+        widget.file.path.toLowerCase().endsWith('.jpeg') ||
+        widget.file.path.toLowerCase().endsWith('.png') ||
+        widget.file.path.toLowerCase().endsWith('.gif') ||
+        widget.file.path.toLowerCase().endsWith('.webp');
 
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
-    final List<String> fileTags = state.getTagsForFile(file.path);
-    final extension = _getFileExtension(file);
+    final extension = _getFileExtension(widget.file);
 
     showModalBottomSheet(
       context: context,
@@ -300,7 +407,7 @@ class FileGridItem extends StatelessWidget {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    _basename(file),
+                    _basename(widget.file),
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
@@ -318,158 +425,182 @@ class FileGridItem extends StatelessWidget {
           ),
           ListTile(
             leading: Icon(
-                isVideo
-                    ? EvaIcons.playCircleOutline
-                    : isImage
-                        ? EvaIcons.imageOutline
-                        : EvaIcons.eyeOutline,
-                color: isDarkMode ? Colors.white70 : Colors.black87),
+              isVideo
+                  ? EvaIcons.playCircleOutline
+                  : isImage
+                      ? EvaIcons.imageOutline
+                      : EvaIcons.eyeOutline,
+              color: isDarkMode ? Colors.white70 : Colors.black87,
+            ),
             title: Text(
               isVideo
                   ? 'Play Video'
                   : isImage
                       ? 'View Image'
                       : 'Open File',
-              style:
-                  TextStyle(color: isDarkMode ? Colors.white : Colors.black87),
+              style: TextStyle(
+                color: isDarkMode ? Colors.white : Colors.black87,
+              ),
             ),
             onTap: () {
               Navigator.pop(context);
-              if (onFileTap != null) {
-                onFileTap!(file, isVideo);
+              if (widget.onFileTap != null) {
+                widget.onFileTap!(widget.file, isVideo);
               } else if (isVideo) {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => VideoPlayerFullScreen(file: file),
+                    builder: (context) =>
+                        VideoPlayerFullScreen(file: widget.file),
                   ),
                 );
               } else if (isImage) {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => ImageViewerScreen(
-                      file: file,
-                    ),
+                    builder: (context) => ImageViewerScreen(file: widget.file),
                   ),
                 );
               } else {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => FileDetailsScreen(file: file),
+                    builder: (context) => FileDetailsScreen(file: widget.file),
                   ),
                 );
               }
             },
           ),
           ListTile(
-            leading: Icon(EvaIcons.externalLinkOutline,
-                color: isDarkMode ? Colors.white70 : Colors.black87),
+            leading: Icon(
+              EvaIcons.externalLinkOutline,
+              color: isDarkMode ? Colors.white70 : Colors.black87,
+            ),
             title: Text(
               'Open With...',
-              style:
-                  TextStyle(color: isDarkMode ? Colors.white : Colors.black87),
+              style: TextStyle(
+                color: isDarkMode ? Colors.white : Colors.black87,
+              ),
             ),
             onTap: () {
               Navigator.pop(context);
               showDialog(
                 context: context,
-                builder: (context) => OpenWithDialog(filePath: file.path),
+                builder: (context) =>
+                    OpenWithDialog(filePath: widget.file.path),
               );
             },
           ),
           ListTile(
-            leading: Icon(EvaIcons.infoOutline,
-                color: isDarkMode ? Colors.white70 : Colors.black87),
+            leading: Icon(
+              EvaIcons.infoOutline,
+              color: isDarkMode ? Colors.white70 : Colors.black87,
+            ),
             title: Text(
               'Properties',
-              style:
-                  TextStyle(color: isDarkMode ? Colors.white : Colors.black87),
+              style: TextStyle(
+                color: isDarkMode ? Colors.white : Colors.black87,
+              ),
             ),
             onTap: () {
               Navigator.pop(context);
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => FileDetailsScreen(file: file),
+                  builder: (context) => FileDetailsScreen(file: widget.file),
                 ),
               );
             },
           ),
           // Thêm tùy chọn Sao chép (Copy)
           ListTile(
-            leading: Icon(EvaIcons.copyOutline,
-                color: isDarkMode ? Colors.white70 : Colors.black87),
+            leading: Icon(
+              EvaIcons.copyOutline,
+              color: isDarkMode ? Colors.white70 : Colors.black87,
+            ),
             title: Text(
               'Copy',
-              style:
-                  TextStyle(color: isDarkMode ? Colors.white : Colors.black87),
+              style: TextStyle(
+                color: isDarkMode ? Colors.white : Colors.black87,
+              ),
             ),
             onTap: () {
               Navigator.pop(context);
               // Gửi sự kiện Copy tới BLoC
-              context.read<FolderListBloc>().add(CopyFile(file));
+              context.read<FolderListBloc>().add(CopyFile(widget.file));
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                    content: Text('Copied "${_basename(file)}" to clipboard')),
+                  content: Text(
+                    'Copied "${_basename(widget.file)}" to clipboard',
+                  ),
+                ),
               );
             },
           ),
           // Thêm tùy chọn Cắt (Cut)
           ListTile(
-            leading: Icon(Icons.content_cut,
-                color: isDarkMode ? Colors.white70 : Colors.black87),
+            leading: Icon(
+              Icons.content_cut,
+              color: isDarkMode ? Colors.white70 : Colors.black87,
+            ),
             title: Text(
               'Cut',
-              style:
-                  TextStyle(color: isDarkMode ? Colors.white : Colors.black87),
+              style: TextStyle(
+                color: isDarkMode ? Colors.white : Colors.black87,
+              ),
             ),
             onTap: () {
               Navigator.pop(context);
               // Gửi sự kiện Cut tới BLoC
-              context.read<FolderListBloc>().add(CutFile(file));
+              context.read<FolderListBloc>().add(CutFile(widget.file));
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                    content: Text('Cut "${_basename(file)}" to clipboard')),
+                  content: Text(
+                    'Cut "${_basename(widget.file)}" to clipboard',
+                  ),
+                ),
               );
             },
           ),
           // Thêm tùy chọn Đổi tên (Rename)
           ListTile(
-            leading: Icon(EvaIcons.editOutline,
-                color: isDarkMode ? Colors.white70 : Colors.black87),
+            leading: Icon(
+              EvaIcons.editOutline,
+              color: isDarkMode ? Colors.white70 : Colors.black87,
+            ),
             title: Text(
               'Rename',
-              style:
-                  TextStyle(color: isDarkMode ? Colors.white : Colors.black87),
+              style: TextStyle(
+                color: isDarkMode ? Colors.white : Colors.black87,
+              ),
             ),
             onTap: () {
               Navigator.pop(context);
               _showRenameDialog(context);
             },
           ),
-          if (showAddTagToFileDialog != null)
+          if (widget.showAddTagToFileDialog != null)
             ListTile(
-              leading: Icon(EvaIcons.bookmarkOutline,
-                  color: isDarkMode ? Colors.white70 : Colors.black87),
+              leading: Icon(
+                EvaIcons.bookmarkOutline,
+                color: isDarkMode ? Colors.white70 : Colors.black87,
+              ),
               title: Text(
                 'Add Tag',
                 style: TextStyle(
-                    color: isDarkMode ? Colors.white : Colors.black87),
+                  color: isDarkMode ? Colors.white : Colors.black87,
+                ),
               ),
               onTap: () {
                 Navigator.pop(context);
-                showAddTagToFileDialog!(context, file.path);
+                widget.showAddTagToFileDialog!(context, widget.file.path);
               },
             ),
           ListTile(
             leading: Icon(EvaIcons.trash2Outline, color: Colors.red),
             title: Text(
               'Move to Trash',
-              style: TextStyle(
-                color: Colors.red,
-              ),
+              style: TextStyle(color: Colors.red),
             ),
             onTap: () async {
               Navigator.pop(context);
@@ -479,7 +610,8 @@ class FileGridItem extends StatelessWidget {
                 builder: (context) => AlertDialog(
                   title: const Text('Move to Trash?'),
                   content: Text(
-                      'Do you want to move "${_basename(file)}" to trash?'),
+                    'Do you want to move "${_basename(widget.file)}" to trash?',
+                  ),
                   actions: [
                     TextButton(
                       onPressed: () => Navigator.pop(context, false),
@@ -487,8 +619,10 @@ class FileGridItem extends StatelessWidget {
                     ),
                     TextButton(
                       onPressed: () => Navigator.pop(context, true),
-                      child: const Text('MOVE TO TRASH',
-                          style: TextStyle(color: Colors.red)),
+                      child: const Text(
+                        'MOVE TO TRASH',
+                        style: TextStyle(color: Colors.red),
+                      ),
                     ),
                   ],
                 ),
@@ -497,10 +631,13 @@ class FileGridItem extends StatelessWidget {
               if (confirmed == true && context.mounted) {
                 try {
                   final trashManager = TrashManager();
-                  await trashManager.moveToTrash(file.path);
+                  await trashManager.moveToTrash(widget.file.path);
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                        content: Text('Moved "${_basename(file)}" to trash')),
+                      content: Text(
+                        'Moved "${_basename(widget.file)}" to trash',
+                      ),
+                    ),
                   );
                 } catch (e) {
                   if (context.mounted) {
@@ -524,8 +661,14 @@ class FileGridItem extends StatelessWidget {
     FrameTimingOptimizer().optimizeImageRendering();
 
     final String extension = _getFileExtension(file);
-    final bool isVideo =
-        ['mp4', 'mov', 'avi', 'mkv', 'flv', 'wmv'].contains(extension);
+    final bool isVideo = [
+      'mp4',
+      'mov',
+      'avi',
+      'mkv',
+      'flv',
+      'wmv',
+    ].contains(extension);
 
     if (isVideo) {
       return RepaintBoundary(
@@ -537,8 +680,8 @@ class FileGridItem extends StatelessWidget {
             height: double.infinity,
             keepAlive: true,
             onThumbnailGenerated: (path) {
-              if (onThumbnailGenerated != null) {
-                onThumbnailGenerated!();
+              if (widget.onThumbnailGenerated != null) {
+                widget.onThumbnailGenerated!();
               }
             },
             fallbackBuilder: () => Container(
@@ -555,7 +698,9 @@ class FileGridItem extends StatelessWidget {
                     const SizedBox(height: 4),
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 4),
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.black.withOpacity(0.5),
                         borderRadius: BorderRadius.circular(4),
@@ -616,12 +761,14 @@ class FileGridItem extends StatelessWidget {
   }
 
   void _showRenameDialog(BuildContext context) {
-    final TextEditingController nameController =
-        TextEditingController(text: _basename(file));
-    final String fileName = _basename(file);
-    final String extension = pathlib.extension(file.path);
-    final String fileNameWithoutExt =
-        pathlib.basenameWithoutExtension(file.path);
+    final TextEditingController nameController = TextEditingController(
+      text: _basename(widget.file),
+    );
+    final String fileName = _basename(widget.file);
+    final String extension = pathlib.extension(widget.file.path);
+    final String fileNameWithoutExt = pathlib.basenameWithoutExtension(
+      widget.file.path,
+    );
 
     // Pre-fill with current name without extension
     nameController.text = fileNameWithoutExt;
@@ -663,9 +810,9 @@ class FileGridItem extends StatelessWidget {
               }
 
               // Dispatch rename event with correct event type
-              context
-                  .read<FolderListBloc>()
-                  .add(RenameFileOrFolder(file, newName));
+              context.read<FolderListBloc>().add(
+                    RenameFileOrFolder(widget.file, newName),
+                  );
               Navigator.pop(context);
 
               // Show confirmation

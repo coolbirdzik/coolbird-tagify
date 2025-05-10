@@ -64,6 +64,8 @@ dependencies:
   win32: ^5.0.9
   crypto: ^3.0.6
   share_plus: ^11.0.0
+  flutter_chips_input: ^2.0.0
+  flutter_colorpicker: ^1.1.0
 
 dev_dependencies:
   flutter_test:

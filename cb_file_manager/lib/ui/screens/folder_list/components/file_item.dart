@@ -1,10 +1,12 @@
 import 'dart:io';
+import 'dart:async'; // Thêm import cho StreamSubscription
 
 import 'package:cb_file_manager/ui/screens/folder_list/file_details_screen.dart';
 import 'package:cb_file_manager/ui/screens/folder_list/folder_list_state.dart';
 import 'package:cb_file_manager/ui/screens/media_gallery/video_gallery_screen.dart';
 import 'package:cb_file_manager/ui/screens/media_gallery/image_viewer_screen.dart';
 import 'package:cb_file_manager/helpers/trash_manager.dart';
+import 'package:cb_file_manager/helpers/tag_manager.dart'; // Import TagManager để lắng nghe thay đổi
 import 'package:flutter/material.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
 import 'package:cb_file_manager/widgets/lazy_video_thumbnail.dart';
@@ -15,10 +17,11 @@ import 'package:path/path.dart' as pathlib;
 import 'package:cb_file_manager/ui/dialogs/open_with_dialog.dart';
 import 'package:cb_file_manager/helpers/external_app_helper.dart';
 import 'package:cb_file_manager/helpers/file_icon_helper.dart';
+import 'package:cb_file_manager/config/app_theme.dart'; // Import app theme
+import 'package:cb_file_manager/widgets/tag_chip.dart'; // Import the new TagChip widget
+import 'package:cb_file_manager/ui/tab_manager/components/tag_dialogs.dart';
 
-import 'tag_dialogs.dart';
-
-class FileItem extends StatelessWidget {
+class FileItem extends StatefulWidget {
   final File file;
   final FolderListState state;
   final bool isSelectionMode;
@@ -41,8 +44,70 @@ class FileItem extends StatelessWidget {
   }) : super(key: key);
 
   @override
+  State<FileItem> createState() => _FileItemState();
+}
+
+class _FileItemState extends State<FileItem> {
+  late List<String> _fileTags;
+  StreamSubscription? _tagChangeSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _fileTags = widget.state.getTagsForFile(widget.file.path);
+
+    // Đăng ký lắng nghe thay đổi tag
+    _tagChangeSubscription = TagManager.onTagChanged.listen(_onTagChanged);
+  }
+
+  @override
+  void dispose() {
+    // Hủy đăng ký lắng nghe khi widget bị hủy
+    _tagChangeSubscription?.cancel();
+    super.dispose();
+  }
+
+  // Xử lý sự kiện thay đổi tag
+  void _onTagChanged(String changedFilePath) {
+    // Nếu thay đổi tag liên quan đến file này
+    if (changedFilePath == widget.file.path ||
+        changedFilePath == "global:tag_deleted") {
+      // Lấy tags mới từ state
+      final newTags = widget.state.getTagsForFile(widget.file.path);
+
+      // Cập nhật UI nếu tags đã thay đổi
+      if (!_areTagListsEqual(newTags, _fileTags)) {
+        setState(() {
+          _fileTags = newTags;
+        });
+      }
+    }
+  }
+
+  // Helper để so sánh hai danh sách tag
+  bool _areTagListsEqual(List<String> list1, List<String> list2) {
+    if (list1.length != list2.length) return false;
+    for (int i = 0; i < list1.length; i++) {
+      if (!list2.contains(list1[i])) return false;
+    }
+    return true;
+  }
+
+  @override
+  void didUpdateWidget(FileItem oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Vẫn giữ mã này để cập nhật từ state khi state thay đổi
+    final newTags = widget.state.getTagsForFile(widget.file.path);
+    if (!_areTagListsEqual(newTags, _fileTags)) {
+      setState(() {
+        _fileTags = newTags;
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final extension = file.path.split('.').last.toLowerCase();
+    final extension = widget.file.path.split('.').last.toLowerCase();
     IconData icon;
     Color? iconColor;
     bool isVideo = false;
@@ -57,12 +122,26 @@ class FileItem extends StatelessWidget {
       icon = EvaIcons.videoOutline;
       iconColor = Colors.red;
       isVideo = true;
-    } else if (['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac']
-        .contains(extension)) {
+    } else if ([
+      'mp3',
+      'wav',
+      'ogg',
+      'm4a',
+      'aac',
+      'flac',
+    ].contains(extension)) {
       icon = EvaIcons.musicOutline;
       iconColor = Colors.purple;
-    } else if (['pdf', 'doc', 'docx', 'txt', 'xls', 'xlsx', 'ppt', 'pptx']
-        .contains(extension)) {
+    } else if ([
+      'pdf',
+      'doc',
+      'docx',
+      'txt',
+      'xls',
+      'xlsx',
+      'ppt',
+      'pptx',
+    ].contains(extension)) {
       icon = EvaIcons.fileTextOutline;
       iconColor = Colors.indigo;
     } else {
@@ -70,15 +149,14 @@ class FileItem extends StatelessWidget {
       iconColor = Colors.grey;
     }
 
-    // Get tags for this file
-    final List<String> fileTags = state.getTagsForFile(file.path);
-
     return GestureDetector(
       onSecondaryTap: () => _showFileContextMenu(context, isVideo, isImage),
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.blue.shade50 : Theme.of(context).cardColor,
+          color: widget.isSelected
+              ? Colors.blue.shade50
+              : Theme.of(context).cardColor,
           border: Border.all(color: Colors.grey.shade300),
           borderRadius: BorderRadius.circular(8.0),
         ),
@@ -86,82 +164,94 @@ class FileItem extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             ListTile(
-              leading: isSelectionMode
+              leading: widget.isSelectionMode
                   ? Checkbox(
-                      value: isSelected,
+                      value: widget.isSelected,
                       onChanged: (bool? value) {
-                        toggleFileSelection(file.path);
+                        widget.toggleFileSelection(widget.file.path);
                       },
                     )
                   : _buildLeadingWidget(isVideo, icon, iconColor),
-              title: Text(_basename(file)),
+              title: Text(_basename(widget.file)),
               subtitle: FutureBuilder<FileStat>(
-                future: file.stat(),
+                future: widget.file.stat(),
                 builder: (context, snapshot) {
                   if (snapshot.hasData) {
                     String sizeText = _formatFileSize(snapshot.data!.size);
                     return Text(
-                        '${snapshot.data!.modified.toString().split('.')[0]} • $sizeText');
+                      '${snapshot.data!.modified.toString().split('.')[0]} • $sizeText',
+                    );
                   }
                   return const Text('Loading...');
                 },
               ),
               onTap: () {
-                if (isSelectionMode) {
-                  toggleFileSelection(file.path);
-                } else if (onFileTap != null) {
-                  onFileTap!(file, isVideo);
+                if (widget.isSelectionMode) {
+                  widget.toggleFileSelection(widget.file.path);
+                } else if (widget.onFileTap != null) {
+                  widget.onFileTap!(widget.file, isVideo);
                 } else if (isVideo) {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => VideoPlayerFullScreen(file: file),
+                      builder: (context) =>
+                          VideoPlayerFullScreen(file: widget.file),
                     ),
                   );
                 } else if (isImage) {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => ImageViewerScreen(file: file),
+                      builder: (context) =>
+                          ImageViewerScreen(file: widget.file),
                     ),
                   );
                 } else {
                   // Open other file types with external app
-                  ExternalAppHelper.openFileWithApp(file.path, 'shell_open')
-                      .then((success) {
+                  ExternalAppHelper.openFileWithApp(
+                    widget.file.path,
+                    'shell_open',
+                  ).then((success) {
                     if (!success && context.mounted) {
                       // If that fails, show the open with dialog
                       showDialog(
                         context: context,
                         builder: (context) =>
-                            OpenWithDialog(filePath: file.path),
+                            OpenWithDialog(filePath: widget.file.path),
                       );
                     }
                   });
                 }
               },
               onLongPress: () {
-                if (isSelectionMode) {
-                  toggleFileSelection(file.path);
+                if (widget.isSelectionMode) {
+                  widget.toggleFileSelection(widget.file.path);
                 } else {
                   _showFileContextMenu(context, isVideo, isImage);
                 }
               },
-              trailing: isSelectionMode
+              trailing: widget.isSelectionMode
                   ? null
                   : PopupMenuButton<String>(
                       icon: const Icon(Icons.more_vert),
                       onSelected: (String value) {
                         if (value == 'tag') {
-                          showAddTagToFileDialog(context, file.path);
+                          widget.showAddTagToFileDialog(
+                            context,
+                            widget.file.path,
+                          );
                         } else if (value == 'delete_tag') {
-                          showDeleteTagDialog(context, file.path, fileTags);
+                          widget.showDeleteTagDialog(
+                            context,
+                            widget.file.path,
+                            _fileTags,
+                          );
                         } else if (value == 'details') {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
                               builder: (context) =>
-                                  FileDetailsScreen(file: file),
+                                  FileDetailsScreen(file: widget.file),
                             ),
                           );
                         } else if (value == 'trash') {
@@ -173,30 +263,53 @@ class FileItem extends StatelessWidget {
                           value: 'tag',
                           child: Text('Add Tag'),
                         ),
+                        if (_fileTags.isNotEmpty)
+                          const PopupMenuItem(
+                            value: 'delete_tag',
+                            child: Text('Manage Tags'),
+                          ),
                         const PopupMenuItem(
                           value: 'details',
                           child: Text('Properties'),
                         ),
                         const PopupMenuItem(
                           value: 'trash',
-                          child: Text('Move to Trash',
-                              style: TextStyle(color: Colors.red)),
+                          child: Text(
+                            'Move to Trash',
+                            style: TextStyle(color: Colors.red),
+                          ),
                         ),
                       ],
                     ),
             ),
-            if (fileTags.isNotEmpty)
+            if (_fileTags.isNotEmpty)
               Padding(
-                padding:
-                    const EdgeInsets.only(left: 16.0, bottom: 8.0, right: 16.0),
+                padding: const EdgeInsets.only(
+                  left: 16.0,
+                  bottom: 8.0,
+                  right: 16.0,
+                ),
                 child: Wrap(
                   spacing: 8.0,
-                  children: fileTags.map((tag) {
-                    return Chip(
-                      label: Text(tag),
-                      backgroundColor: Colors.green[100],
-                      deleteIcon: const Icon(Icons.close, size: 18),
-                      onDeleted: () {},
+                  runSpacing: 4.0,
+                  children: _fileTags.map((tag) {
+                    return TagChip(
+                      tag: tag,
+                      onTap: () {
+                        // Search by tag functionality
+                        final bloc = BlocProvider.of<FolderListBloc>(
+                          context,
+                        );
+                        bloc.add(SearchByTag(tag));
+                      },
+                      onDeleted: () {
+                        // Show delete tag dialog when remove button is pressed
+                        widget.showDeleteTagDialog(
+                          context,
+                          widget.file.path,
+                          [tag],
+                        );
+                      },
                     );
                   }).toList(),
                 ),
@@ -209,7 +322,6 @@ class FileItem extends StatelessWidget {
 
   void _showFileContextMenu(BuildContext context, bool isVideo, bool isImage) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
-    final List<String> fileTags = state.getTagsForFile(file.path);
 
     showModalBottomSheet(
       context: context,
@@ -246,161 +358,182 @@ class FileItem extends StatelessWidget {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    _basename(file),
+                    _basename(widget.file),
                     style: TextStyle(
-                      fontSize: 18,
+                      fontSize: 16,
                       fontWeight: FontWeight.bold,
                       color: isDarkMode ? Colors.white : Colors.black87,
                     ),
+                    maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.close),
-                  onPressed: () => Navigator.pop(context),
                 ),
               ],
             ),
           ),
           ListTile(
             leading: Icon(
-                isVideo
-                    ? EvaIcons.playCircleOutline
-                    : isImage
-                        ? EvaIcons.imageOutline
-                        : EvaIcons.eyeOutline,
-                color: isDarkMode ? Colors.white70 : Colors.black87),
+              isVideo
+                  ? EvaIcons.playCircleOutline
+                  : isImage
+                      ? EvaIcons.imageOutline
+                      : EvaIcons.eyeOutline,
+              color: isDarkMode ? Colors.white70 : Colors.black87,
+            ),
             title: Text(
               isVideo
                   ? 'Play Video'
                   : isImage
                       ? 'View Image'
                       : 'Open File',
-              style:
-                  TextStyle(color: isDarkMode ? Colors.white : Colors.black87),
+              style: TextStyle(
+                color: isDarkMode ? Colors.white : Colors.black87,
+              ),
             ),
             onTap: () {
               Navigator.pop(context);
-              if (onFileTap != null) {
-                onFileTap!(file, isVideo);
+              if (widget.onFileTap != null) {
+                widget.onFileTap!(widget.file, isVideo);
               } else if (isVideo) {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => VideoPlayerFullScreen(file: file),
+                    builder: (context) =>
+                        VideoPlayerFullScreen(file: widget.file),
                   ),
                 );
               } else if (isImage) {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => ImageViewerScreen(
-                      file: file,
-                    ),
+                    builder: (context) => ImageViewerScreen(file: widget.file),
                   ),
                 );
               } else {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => FileDetailsScreen(file: file),
+                    builder: (context) => FileDetailsScreen(file: widget.file),
                   ),
                 );
               }
             },
           ),
           ListTile(
-            leading: Icon(EvaIcons.externalLinkOutline,
-                color: isDarkMode ? Colors.white70 : Colors.black87),
+            leading: Icon(
+              EvaIcons.externalLinkOutline,
+              color: isDarkMode ? Colors.white70 : Colors.black87,
+            ),
             title: Text(
               'Open With...',
-              style:
-                  TextStyle(color: isDarkMode ? Colors.white : Colors.black87),
+              style: TextStyle(
+                color: isDarkMode ? Colors.white : Colors.black87,
+              ),
             ),
             onTap: () {
               Navigator.pop(context);
               showDialog(
                 context: context,
-                builder: (context) => OpenWithDialog(filePath: file.path),
+                builder: (context) =>
+                    OpenWithDialog(filePath: widget.file.path),
               );
             },
           ),
           ListTile(
-            leading: Icon(EvaIcons.infoOutline,
-                color: isDarkMode ? Colors.white70 : Colors.black87),
+            leading: Icon(
+              EvaIcons.infoOutline,
+              color: isDarkMode ? Colors.white70 : Colors.black87,
+            ),
             title: Text(
               'Properties',
-              style:
-                  TextStyle(color: isDarkMode ? Colors.white : Colors.black87),
+              style: TextStyle(
+                color: isDarkMode ? Colors.white : Colors.black87,
+              ),
             ),
             onTap: () {
               Navigator.pop(context);
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => FileDetailsScreen(file: file),
+                  builder: (context) => FileDetailsScreen(file: widget.file),
                 ),
               );
             },
           ),
-          // Display tags option
-          if (showAddTagToFileDialog != null)
-            ListTile(
-              leading: Icon(EvaIcons.bookmarkOutline,
-                  color: isDarkMode ? Colors.white70 : Colors.black87),
-              title: Text(
-                'Add Tag',
-                style: TextStyle(
-                    color: isDarkMode ? Colors.white : Colors.black87),
-              ),
-              onTap: () {
-                Navigator.pop(context);
-                showAddTagToFileDialog(context, file.path);
-              },
-            ),
           ListTile(
-            leading: Icon(EvaIcons.copyOutline,
-                color: isDarkMode ? Colors.white70 : Colors.black87),
+            leading: Icon(
+              EvaIcons.bookmarkOutline,
+              color: isDarkMode ? Colors.white70 : Colors.black87,
+            ),
+            title: Text(
+              'Manage Tags',
+              style: TextStyle(
+                color: isDarkMode ? Colors.white : Colors.black87,
+              ),
+            ),
+            onTap: () {
+              Navigator.pop(context);
+              widget.showAddTagToFileDialog(context, widget.file.path);
+            },
+          ),
+          ListTile(
+            leading: Icon(
+              EvaIcons.copyOutline,
+              color: isDarkMode ? Colors.white70 : Colors.black87,
+            ),
             title: Text(
               'Copy',
-              style:
-                  TextStyle(color: isDarkMode ? Colors.white : Colors.black87),
+              style: TextStyle(
+                color: isDarkMode ? Colors.white : Colors.black87,
+              ),
             ),
             onTap: () {
               Navigator.pop(context);
               // Dispatch copy event to the bloc
-              context.read<FolderListBloc>().add(CopyFile(file));
+              context.read<FolderListBloc>().add(CopyFile(widget.file));
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                    content: Text('Copied "${_basename(file)}" to clipboard')),
+                  content: Text(
+                    'Copied "${_basename(widget.file)}" to clipboard',
+                  ),
+                ),
               );
             },
           ),
           ListTile(
-            leading: Icon(Icons.content_cut,
-                color: isDarkMode ? Colors.white70 : Colors.black87),
+            leading: Icon(
+              Icons.content_cut,
+              color: isDarkMode ? Colors.white70 : Colors.black87,
+            ),
             title: Text(
               'Cut',
-              style:
-                  TextStyle(color: isDarkMode ? Colors.white : Colors.black87),
+              style: TextStyle(
+                color: isDarkMode ? Colors.white : Colors.black87,
+              ),
             ),
             onTap: () {
               Navigator.pop(context);
               // Dispatch cut event to the bloc
-              context.read<FolderListBloc>().add(CutFile(file));
+              context.read<FolderListBloc>().add(CutFile(widget.file));
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                    content: Text('Cut "${_basename(file)}" to clipboard')),
+                  content: Text(
+                    'Cut "${_basename(widget.file)}" to clipboard',
+                  ),
+                ),
               );
             },
           ),
           ListTile(
-            leading: Icon(EvaIcons.editOutline,
-                color: isDarkMode ? Colors.white70 : Colors.black87),
+            leading: Icon(
+              EvaIcons.editOutline,
+              color: isDarkMode ? Colors.white70 : Colors.black87,
+            ),
             title: Text(
               'Rename',
-              style:
-                  TextStyle(color: isDarkMode ? Colors.white : Colors.black87),
+              style: TextStyle(
+                color: isDarkMode ? Colors.white : Colors.black87,
+              ),
             ),
             onTap: () {
               Navigator.pop(context);
@@ -411,9 +544,7 @@ class FileItem extends StatelessWidget {
             leading: Icon(EvaIcons.trash2Outline, color: Colors.red),
             title: Text(
               'Move to Trash',
-              style: TextStyle(
-                color: Colors.red,
-              ),
+              style: TextStyle(color: Colors.red),
             ),
             onTap: () {
               Navigator.pop(context);
@@ -430,7 +561,9 @@ class FileItem extends StatelessWidget {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Move to Trash?'),
-        content: Text('Do you want to move "${_basename(file)}" to trash?'),
+        content: Text(
+          'Do you want to move "${_basename(widget.file)}" to trash?',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -438,8 +571,10 @@ class FileItem extends StatelessWidget {
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('MOVE TO TRASH',
-                style: TextStyle(color: Colors.red)),
+            child: const Text(
+              'MOVE TO TRASH',
+              style: TextStyle(color: Colors.red),
+            ),
           ),
         ],
       ),
@@ -448,9 +583,9 @@ class FileItem extends StatelessWidget {
     if (confirmed == true && context.mounted) {
       try {
         final trashManager = TrashManager();
-        await trashManager.moveToTrash(file.path);
+        await trashManager.moveToTrash(widget.file.path);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Moved "${_basename(file)}" to trash')),
+          SnackBar(content: Text('Moved "${_basename(widget.file)}" to trash')),
         );
       } catch (e) {
         if (context.mounted) {
@@ -467,10 +602,11 @@ class FileItem extends StatelessWidget {
 
   void _showRenameDialog(BuildContext context) {
     final TextEditingController nameController = TextEditingController();
-    final String fileName = _basename(file);
-    final String extension = pathlib.extension(file.path);
-    final String fileNameWithoutExt =
-        pathlib.basenameWithoutExtension(file.path);
+    final String fileName = _basename(widget.file);
+    final String extension = pathlib.extension(widget.file.path);
+    final String fileNameWithoutExt = pathlib.basenameWithoutExtension(
+      widget.file.path,
+    );
 
     // Pre-fill with current name without extension
     nameController.text = fileNameWithoutExt;
@@ -512,9 +648,9 @@ class FileItem extends StatelessWidget {
               }
 
               // Dispatch rename event
-              context
-                  .read<FolderListBloc>()
-                  .add(RenameFileOrFolder(file, newName));
+              context.read<FolderListBloc>().add(
+                    RenameFileOrFolder(widget.file, newName),
+                  );
               Navigator.pop(context);
 
               // Show confirmation
@@ -537,7 +673,7 @@ class FileItem extends StatelessWidget {
           width: 56,
           height: 56,
           child: LazyVideoThumbnail(
-            videoPath: file.path,
+            videoPath: widget.file.path,
             width: 56,
             height: 56,
             keepAlive: true,
@@ -557,7 +693,7 @@ class FileItem extends StatelessWidget {
     } else {
       // Wrap with FutureBuilder to load the app icon
       return FutureBuilder<Widget>(
-        future: FileIconHelper.getIconForFile(file, size: 36),
+        future: FileIconHelper.getIconForFile(widget.file, size: 36),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             // Return a generic icon while loading

@@ -183,6 +183,17 @@ class FolderListRefresh extends FolderListEvent {
   final bool forceRegenerateThumbnails;
 
   FolderListRefresh(this.path, {this.forceRegenerateThumbnails = false});
+
+  @override
+  List<Object> get props => [path, forceRegenerateThumbnails];
+}
+
+// Add an event to reload the current folder without changing path
+class FolderListReloadCurrentFolder extends FolderListEvent {
+  const FolderListReloadCurrentFolder();
+
+  @override
+  List<Object?> get props => [];
 }
 
 // File operation events
