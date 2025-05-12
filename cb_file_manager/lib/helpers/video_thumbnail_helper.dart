@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'dart:async';
-import 'dart:typed_data';
 import 'dart:collection';
 import 'dart:convert';
 import 'dart:math';
@@ -277,6 +276,9 @@ class VideoThumbnailHelper {
   /// Flag to prevent items from being completely forgotten when scrolled out of viewport
   static bool _preserveRequestsWhenScrolled = true;
 
+  // Add a static flag to check if processing should continue
+  static bool _shouldStopProcessing = false;
+
   static void setVerboseLogging(bool enabled) {
     _verboseLogging = enabled;
   }
@@ -342,6 +344,10 @@ class VideoThumbnailHelper {
 
     int canceledCount = 0;
 
+    // Set flag to stop any new processing
+    _shouldStopProcessing = true;
+
+    // Clear pending queue for other directories
     final List<_ThumbnailRequest> requestsToRemove = [];
 
     for (final request in _pendingQueue) {
@@ -357,8 +363,26 @@ class VideoThumbnailHelper {
 
     _pendingQueue.removeWhere((req) => requestsToRemove.contains(req));
 
+    // Also cancel any currently processing thumbnails
+    final List<_ThumbnailRequest> processingsToRemove = [];
+    for (final request in _processingQueue) {
+      final requestDir = path.dirname(request.videoPath);
+      if (requestDir != dirPath) {
+        if (!request.completer.isCompleted) {
+          request.completer.complete(null);
+        }
+        processingsToRemove.add(request);
+        canceledCount++;
+      }
+    }
+
+    _processingQueue.removeWhere((req) => processingsToRemove.contains(req));
+
+    // Reset flag after clearing the queues
+    _shouldStopProcessing = false;
+
     _log(
-        'VideoThumbnail: Canceled $canceledCount pending thumbnails for other directories',
+        'VideoThumbnail: Canceled $canceledCount thumbnails for other directories',
         forceShow: true);
   }
 
@@ -492,7 +516,18 @@ class VideoThumbnailHelper {
     try {
       // Process as many items as allowed by _maxConcurrentProcesses
       while (_processingQueue.length < _maxConcurrentProcesses &&
-          _pendingQueue.isNotEmpty) {
+          _pendingQueue.isNotEmpty &&
+          !_shouldStopProcessing) {
+        // Check if processing should stop
+
+        // If we're switching directories, don't process more thumbnails
+        if (_shouldStopProcessing) {
+          _log(
+              'VideoThumbnail: Stopping queue processing due to directory change',
+              forceShow: true);
+          break;
+        }
+
         // Sort by priority to ensure most visible thumbnails are processed first
         _pendingQueue.sort((a, b) => b.priority.compareTo(a.priority));
 
@@ -519,6 +554,17 @@ class VideoThumbnailHelper {
 
   static Future<void> _processRequest(_ThumbnailRequest request) async {
     try {
+      // Check if we should stop processing before starting
+      if (_shouldStopProcessing) {
+        _log(
+            'VideoThumbnail: Skipping request for ${request.videoPath} due to directory change',
+            forceShow: true);
+        if (!request.completer.isCompleted) {
+          request.completer.complete(null);
+        }
+        return;
+      }
+
       final thumbnailPath = await _generateThumbnailInternal(request.videoPath,
           forceRegenerate: request.forceRegenerate);
 
@@ -590,6 +636,13 @@ class VideoThumbnailHelper {
   static Future<String?> _generateThumbnailInternal(String videoPath,
       {bool forceRegenerate = false}) async {
     try {
+      // Check if processing should stop before doing intensive work
+      if (_shouldStopProcessing) {
+        _log(
+            'VideoThumbnail: Generation canceled for $videoPath due to directory change');
+        return null;
+      }
+
       final cacheFilename = _createCacheFilename(videoPath);
 
       String absoluteVideoPath = path.absolute(videoPath);
@@ -620,6 +673,13 @@ class VideoThumbnailHelper {
           _log('VideoThumbnail: Error checking cache: $e');
           _fileCache.remove(videoPath);
         }
+      }
+
+      // Check again if we should stop before starting the compute-intensive work
+      if (_shouldStopProcessing) {
+        _log(
+            'VideoThumbnail: Generation canceled for $videoPath due to directory change');
+        return null;
       }
 
       final rootToken = RootIsolateToken.instance;
@@ -1335,6 +1395,36 @@ class VideoThumbnailHelper {
       _log('VideoThumbnail: Error regenerating thumbnails: $e',
           forceShow: true);
     }
+  }
+
+  /// Explicitly stop all thumbnail processing
+  /// Call this method when navigating to a different folder or opening a file
+  static void stopAllProcessing() {
+    _log('VideoThumbnail: Explicitly stopping all thumbnail processing',
+        forceShow: true);
+    _shouldStopProcessing = true;
+
+    // Clear the processing queue
+    for (final request in _processingQueue) {
+      if (!request.completer.isCompleted) {
+        request.completer.complete(null);
+      }
+    }
+
+    // Don't actually remove items from processing queue here
+    // They'll be cleaned up naturally in the process queue loop
+
+    // Wait a short time before allowing processing to continue
+    // This helps prevent immediate restart of processing
+    Future.delayed(const Duration(milliseconds: 100), () {
+      _shouldStopProcessing = false;
+    });
+  }
+
+  /// Check if thumbnail processing should stop
+  /// This can be called from other classes to check if they should stop processing
+  static bool shouldStopProcessing() {
+    return _shouldStopProcessing;
   }
 }
 

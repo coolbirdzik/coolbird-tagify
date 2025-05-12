@@ -11,6 +11,8 @@ import 'package:cb_file_manager/helpers/batch_tag_manager.dart';
 import 'dart:ui' as ui; // Import for ImageFilter
 import 'package:flutter/rendering.dart';
 import 'package:cb_file_manager/widgets/tag_management_section.dart';
+import 'package:cb_file_manager/models/database/database_manager.dart';
+import 'package:cb_file_manager/helpers/tag_color_manager.dart';
 
 /// Dialog for adding a tag to a file
 void showAddTagToFileDialog(BuildContext context, String filePath) {
@@ -37,6 +39,9 @@ void showAddTagToFileDialog(BuildContext context, String filePath) {
   showDialog(
     context: context,
     builder: (context) {
+      // Create a reference to the TagManagementSection widget
+      late TagManagementSection tagManagementSection;
+
       return StatefulBuilder(
         builder: (context, setState) {
           return BackdropFilter(
@@ -62,10 +67,15 @@ void showAddTagToFileDialog(BuildContext context, String filePath) {
                 ),
                 padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
                 child: SingleChildScrollView(
-                  child: TagManagementSection(
-                    filePath: filePath,
-                    onTagsUpdated: () {
-                      _refreshParentUI(context, filePath);
+                  child: Builder(
+                    builder: (context) {
+                      tagManagementSection = TagManagementSection(
+                        filePath: filePath,
+                        onTagsUpdated: () {
+                          _refreshParentUI(context, filePath);
+                        },
+                      );
+                      return tagManagementSection;
                     },
                   ),
                 ),
@@ -73,6 +83,8 @@ void showAddTagToFileDialog(BuildContext context, String filePath) {
               actions: [
                 TextButton(
                   onPressed: () {
+                    // Discard changes
+                    tagManagementSection.discardChanges();
                     Navigator.of(context).pop();
                   },
                   style: TextButton.styleFrom(
@@ -84,6 +96,9 @@ void showAddTagToFileDialog(BuildContext context, String filePath) {
                 ),
                 ElevatedButton(
                   onPressed: () async {
+                    // Save changes
+                    tagManagementSection.saveChanges();
+
                     // Make sure to notify the parent UI of changes
                     _refreshParentUI(context, filePath);
 
@@ -248,19 +263,22 @@ void showDeleteTagDialog(
                               final bloc = BlocProvider.of<FolderListBloc>(
                                   context,
                                   listen: false);
+
+                              // Only notify about the specific tag removal
+                              // Do NOT refresh the entire list
                               bloc.add(
                                   RemoveTagFromFile(filePath, selectedTag!));
-
-                              // Refresh the file list to show changes immediately
-                              final currentPath =
-                                  Directory(filePath).parent.path;
-                              bloc.add(FolderListRefresh(currentPath));
                             }
                           } catch (e) {
                             // Bloc not available in this context - it's okay, just continue
                             print(
                                 'FolderListBloc not available in this context: $e');
                           }
+
+                          // Directly notify with a special prefix to indicate
+                          // this is just a tag change and shouldn't trigger a full reload
+                          TagManager.instance
+                              .notifyTagChanged("tag_only:" + filePath);
 
                           // Show confirmation
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -300,10 +318,11 @@ void showDeleteTagDialog(
 /// Dialog for batch adding tags
 void showBatchAddTagDialog(BuildContext context, List<String> selectedFiles) {
   final focusNode = FocusNode();
+  final TextEditingController textController = TextEditingController();
   List<String> tagSuggestions = [];
   List<String> selectedTags = [];
 
-  // Get screen size for responsive dialog sizing
+  // Get screen size for responsive dialog sizing - match single tag dialog
   final Size screenSize = MediaQuery.of(context).size;
   final double dialogWidth = screenSize.width * 0.5; // 50% of screen width
   final double dialogHeight = screenSize.height * 0.6; // 60% of screen height
@@ -318,6 +337,16 @@ void showBatchAddTagDialog(BuildContext context, List<String> selectedFiles) {
     final suggestions = await TagManager.instance.searchTags(text);
     tagSuggestions =
         suggestions.where((tag) => !selectedTags.contains(tag)).toList();
+  }
+
+  // Function to add a tag directly
+  void addTag(String tag) {
+    if (tag.trim().isEmpty) return;
+
+    if (!selectedTags.contains(tag.trim())) {
+      selectedTags.add(tag.trim());
+      textController.clear();
+    }
   }
 
   // Function to directly refresh the UI in parent components
@@ -347,11 +376,31 @@ void showBatchAddTagDialog(BuildContext context, List<String> selectedFiles) {
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setState) {
+            void handleTextChange(String value) {
+              updateTagSuggestions(value);
+              setState(() {});
+            }
+
+            void handleTagSubmit(String value) {
+              if (value.trim().isNotEmpty) {
+                setState(() {
+                  addTag(value);
+                  tagSuggestions = [];
+                });
+              }
+            }
+
+            void handleTagSelected(String tag) {
+              setState(() {
+                addTag(tag);
+              });
+            }
+
             return BackdropFilter(
               filter: ui.ImageFilter.blur(sigmaX: 5, sigmaY: 5),
               child: AlertDialog(
                 title: Text(
-                  'Add Tag to ${selectedFiles.length} files',
+                  'Thêm thẻ cho ${selectedFiles.length} tệp',
                   style: TextStyle(
                     fontSize: 24,
                     fontWeight: FontWeight.bold,
@@ -361,257 +410,142 @@ void showBatchAddTagDialog(BuildContext context, List<String> selectedFiles) {
                   borderRadius: BorderRadius.circular(16),
                 ),
                 contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 16),
-                content: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    // Main content container
-                    Container(
-                      width: double.maxFinite,
-                      constraints: BoxConstraints(
-                        maxWidth: dialogWidth,
-                        maxHeight: dialogHeight,
-                        minHeight: dialogHeight * 0.7,
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                          vertical: 12, horizontal: 8),
-                      child: SingleChildScrollView(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            // Improved input field with ChipsInput
-                            Focus(
-                              focusNode: focusNode,
-                              child: ChipsInput<String>(
-                                values: selectedTags,
-                                decoration: InputDecoration(
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  labelText: 'Tag Name',
-                                  labelStyle: TextStyle(fontSize: 18),
-                                  hintText: 'Enter tag name',
-                                  hintStyle: TextStyle(fontSize: 18),
-                                  prefixIcon:
-                                      const Icon(Icons.local_offer, size: 24),
-                                  filled: true,
-                                  fillColor: Theme.of(context).brightness ==
-                                          Brightness.dark
-                                      ? Colors.grey[800]
-                                      : Colors.grey[100],
-                                ),
-                                style: TextStyle(fontSize: 18),
-                                onChanged: (updatedTags) {
+                content: Container(
+                  width: double.maxFinite,
+                  constraints: BoxConstraints(
+                    maxWidth: dialogWidth,
+                    maxHeight: dialogHeight,
+                    minHeight: dialogHeight * 0.7,
+                  ),
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Input field for tags
+                        Focus(
+                          focusNode: focusNode,
+                          child: ChipsInput<String>(
+                            values: selectedTags,
+                            decoration: InputDecoration(
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              labelText: 'Tên thẻ',
+                              hintText: 'Nhập tên thẻ...',
+                              prefixIcon: const Icon(Icons.local_offer),
+                              filled: true,
+                              fillColor: Theme.of(context).brightness ==
+                                      Brightness.dark
+                                  ? Colors.grey[800]
+                                  : Colors.grey[100],
+                            ),
+                            onChanged: (updatedTags) {
+                              setState(() {
+                                selectedTags.clear();
+                                selectedTags.addAll(updatedTags);
+                              });
+                            },
+                            onTextChanged: handleTextChange,
+                            onSubmitted: handleTagSubmit,
+                            chipBuilder: (context, tag) {
+                              return TagInputChip(
+                                tag: tag,
+                                onDeleted: (removedTag) {
                                   setState(() {
-                                    selectedTags.clear();
-                                    selectedTags.addAll(updatedTags);
+                                    selectedTags.remove(removedTag);
                                   });
                                 },
-                                onTextChanged: (value) {
-                                  updateTagSuggestions(value);
-                                  setState(() {});
-                                },
-                                onSubmitted: (value) {
-                                  if (value.trim().isNotEmpty) {
-                                    final newTag = value.trim();
-                                    if (!selectedTags.contains(newTag)) {
-                                      setState(() {
-                                        selectedTags.add(newTag);
-                                      });
-                                    }
+                                onSelected: (selectedTag) {},
+                              );
+                            },
+                          ),
+                        ),
 
-                                    if (selectedTags.length == 1) {
-                                      // If it's the first tag, add it directly
-                                      _addTagToBatchFiles(
-                                          context, selectedFiles, newTag);
-                                    }
-                                  }
-                                },
-                                chipBuilder: (context, tag) {
-                                  return TagInputChip(
-                                    tag: tag,
-                                    onDeleted: (removedTag) {
-                                      setState(() {
-                                        selectedTags.remove(removedTag);
-                                      });
-                                    },
-                                    onSelected: (selectedTag) {},
-                                  );
-                                },
+                        // Tag suggestions
+                        if (tagSuggestions.isNotEmpty)
+                          Container(
+                            margin: const EdgeInsets.only(top: 8),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).brightness ==
+                                      Brightness.dark
+                                  ? Colors.grey[800]
+                                  : Colors.grey[100],
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: Colors.grey.withOpacity(0.2),
                               ),
                             ),
-
-                            // Space for suggestions
-                            const SizedBox(height: 24),
-
-                            // Popular tags section with improved design
-                            FutureBuilder<Map<String, int>>(
-                              future:
-                                  TagManager.instance.getPopularTags(limit: 10),
-                              builder: (context, snapshot) {
-                                if (!snapshot.hasData)
-                                  return const SizedBox.shrink();
-
-                                final popularTags = snapshot.data ?? {};
-                                if (popularTags.isEmpty)
-                                  return const SizedBox.shrink();
-
-                                return Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const SizedBox(height: 24),
-                                    Row(
-                                      children: [
-                                        Icon(
-                                          Icons.star,
-                                          size: 24,
-                                          color: Theme.of(context).brightness ==
-                                                  Brightness.dark
-                                              ? Colors.amber[300]
-                                              : Colors.amber,
-                                        ),
-                                        const SizedBox(width: 10),
-                                        Text(
-                                          'Popular Tags:',
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 18,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 12),
-                                    Wrap(
-                                      spacing: 12.0,
-                                      runSpacing: 8.0,
-                                      children:
-                                          popularTags.entries.map((entry) {
-                                        return TagChip(
-                                          tag: entry.key,
-                                          isCompact: true,
-                                          onTap: () {
-                                            if (!selectedTags
-                                                .contains(entry.key)) {
-                                              setState(() {
-                                                selectedTags.add(entry.key);
-                                              });
-                                            }
-                                          },
-                                        );
-                                      }).toList(),
-                                    ),
-                                  ],
+                            child: ListView.builder(
+                              shrinkWrap: true,
+                              physics: const ClampingScrollPhysics(),
+                              itemCount: tagSuggestions.length > 5
+                                  ? 5
+                                  : tagSuggestions.length,
+                              itemBuilder: (context, index) {
+                                final suggestion = tagSuggestions[index];
+                                return ListTile(
+                                  dense: true,
+                                  leading:
+                                      const Icon(Icons.local_offer, size: 18),
+                                  title: Text(suggestion),
+                                  onTap: () {
+                                    setState(() {
+                                      addTag(suggestion);
+                                      tagSuggestions = [];
+                                    });
+                                  },
                                 );
                               },
                             ),
-                          ],
-                        ),
-                      ),
-                    ),
-
-                    // Tag suggestions dropdown overlay - positioned on top of everything else
-                    if (tagSuggestions.isNotEmpty)
-                      Positioned(
-                        top: 70, // Position below input field
-                        left: 0,
-                        right: 0,
-                        child: IgnorePointer(
-                          ignoring: false,
-                          child: Material(
-                            color: Colors.transparent,
-                            elevation: 20,
-                            shadowColor: Colors.black54,
-                            borderRadius: BorderRadius.circular(8),
-                            child: Container(
-                              constraints: const BoxConstraints(maxHeight: 250),
-                              decoration: BoxDecoration(
-                                color: Theme.of(context).brightness ==
-                                        Brightness.dark
-                                    ? Colors.grey[850]
-                                    : Colors.white,
-                                borderRadius: BorderRadius.circular(8),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withOpacity(0.2),
-                                    blurRadius: 8,
-                                    spreadRadius: 1,
-                                    offset: const Offset(0, 3),
-                                  ),
-                                ],
-                                border: Border.all(
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .primary
-                                      .withOpacity(0.2),
-                                  width: 1,
-                                ),
-                              ),
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(8),
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Padding(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 16, vertical: 10),
-                                      child: Text(
-                                        'Suggestions',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 16,
-                                          color: Theme.of(context)
-                                              .colorScheme
-                                              .primary,
-                                        ),
-                                      ),
-                                    ),
-                                    Divider(
-                                        height: 1,
-                                        thickness: 1,
-                                        color: Colors.grey.withOpacity(0.1)),
-                                    ListView.builder(
-                                      shrinkWrap: true,
-                                      physics: const ClampingScrollPhysics(),
-                                      itemCount: tagSuggestions.length > 6
-                                          ? 6
-                                          : tagSuggestions.length,
-                                      itemBuilder: (context, index) {
-                                        final suggestion =
-                                            tagSuggestions[index];
-                                        return Material(
-                                          color: Colors.transparent,
-                                          child: InkWell(
-                                            onTap: () {
-                                              if (!selectedTags
-                                                  .contains(suggestion)) {
-                                                setState(() {
-                                                  selectedTags.add(suggestion);
-                                                  tagSuggestions = [];
-                                                });
-                                              }
-                                            },
-                                            child: ListTile(
-                                              dense: true,
-                                              leading: const Icon(
-                                                  Icons.local_offer,
-                                                  size: 20),
-                                              title: Text(
-                                                suggestion,
-                                                style: TextStyle(fontSize: 16),
-                                              ),
-                                            ),
-                                          ),
-                                        );
-                                      },
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
                           ),
-                        ),
-                      ),
-                  ],
+
+                        const SizedBox(height: 24),
+
+                        // Display selected tags
+                        if (selectedTags.isNotEmpty)
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Thẻ đã chọn:',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Wrap(
+                                spacing: 8.0,
+                                runSpacing: 8.0,
+                                children: selectedTags.map((tag) {
+                                  return Chip(
+                                    label: Text(tag),
+                                    onDeleted: () {
+                                      setState(() {
+                                        selectedTags.remove(tag);
+                                      });
+                                    },
+                                    deleteIcon: Icon(Icons.close, size: 16),
+                                  );
+                                }).toList(),
+                              ),
+                            ],
+                          ),
+
+                        const SizedBox(height: 24),
+
+                        // Popular tags section using the reusable widget
+                        PopularTagsWidget(onTagSelected: handleTagSelected),
+
+                        const SizedBox(height: 24),
+
+                        // Recent tags section using the reusable widget
+                        RecentTagsWidget(onTagSelected: handleTagSelected),
+                      ],
+                    ),
+                  ),
                 ),
                 actions: [
                   TextButton(
@@ -623,18 +557,30 @@ void showBatchAddTagDialog(BuildContext context, List<String> selectedFiles) {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 12),
                     ),
-                    child: const Text('CANCEL'),
+                    child: const Text('HỦY'),
                   ),
                   ElevatedButton(
                     onPressed: () async {
                       if (context.mounted) {
                         try {
+                          // Hiển thị thông báo đang xử lý
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Đang áp dụng thay đổi...'),
+                              duration: Duration(seconds: 1),
+                            ),
+                          );
+
                           // Clear tag cache first
                           TagManager.clearCache();
 
                           // First get common tags among all files
                           final commonTags = await batchTagManager
                               .findCommonTags(selectedFiles);
+
+                          // Keeping track of changes for summary report
+                          int tagsAdded = 0;
+                          int tagsRemoved = 0;
 
                           // For each file, we need to check existing tags and handle differences
                           for (final filePath in selectedFiles) {
@@ -650,12 +596,6 @@ void showBatchAddTagDialog(BuildContext context, List<String> selectedFiles) {
                             final Set<String> commonTagsSet =
                                 Set.from(commonTags);
 
-                            // Debug information
-                            print('File: $filePath');
-                            print('  Original tags: $originalTagsSet');
-                            print('  Selected tags: $currentTagsSet');
-                            print('  Common tags: $commonTagsSet');
-
                             // Create updated tags set - keep non-common tags and add selected tags
                             final updatedTags =
                                 Set<String>.from(originalTagsSet);
@@ -664,18 +604,66 @@ void showBatchAddTagDialog(BuildContext context, List<String> selectedFiles) {
                             final commonTagsToRemove =
                                 commonTagsSet.difference(currentTagsSet);
                             updatedTags.removeAll(commonTagsToRemove);
+                            tagsRemoved += commonTagsToRemove.length;
 
                             // Add newly selected tags
-                            updatedTags.addAll(currentTagsSet);
+                            final tagsToAdd =
+                                currentTagsSet.difference(originalTagsSet);
+                            updatedTags.addAll(tagsToAdd);
+                            tagsAdded += tagsToAdd.length;
 
                             // Set all tags at once - most reliable approach
-                            print('  Final tags: $updatedTags');
                             await TagManager.setTags(
                                 filePath, updatedTags.toList());
+
+                            // Try to notify the bloc about changes, with proper error handling
+                            try {
+                              if (context.mounted &&
+                                  BlocProvider.of<FolderListBloc>(context,
+                                          listen: false) !=
+                                      null) {
+                                final bloc = BlocProvider.of<FolderListBloc>(
+                                    context,
+                                    listen: false);
+                                for (String tag in commonTagsToRemove) {
+                                  bloc.add(RemoveTagFromFile(filePath, tag));
+                                }
+                                for (String tag in tagsToAdd) {
+                                  bloc.add(AddTagToFile(filePath, tag));
+                                }
+                              }
+                            } catch (e) {
+                              // Bloc not available in this context - it's okay, just continue
+                              print(
+                                  'FolderListBloc not available in batch tag dialog: $e');
+                            }
                           }
 
                           // Make sure to notify the parent UI of changes
                           _refreshParentUIBatch();
+
+                          // Hiển thị thông báo tổng kết
+                          if (context.mounted) {
+                            String message =
+                                'Đã cập nhật tags cho ${selectedFiles.length} tệp';
+                            if (tagsAdded > 0 || tagsRemoved > 0) {
+                              message += ' (';
+                              if (tagsAdded > 0) {
+                                message += 'thêm $tagsAdded';
+                              }
+                              if (tagsAdded > 0 && tagsRemoved > 0) {
+                                message += ', ';
+                              }
+                              if (tagsRemoved > 0) {
+                                message += 'xóa $tagsRemoved';
+                              }
+                              message += ')';
+                            }
+
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(message)),
+                            );
+                          }
 
                           // Close the dialog
                           Navigator.of(context).pop();
@@ -695,7 +683,7 @@ void showBatchAddTagDialog(BuildContext context, List<String> selectedFiles) {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 20, vertical: 12),
                     ),
-                    child: const Text('SAVE'),
+                    child: const Text('LƯU'),
                   ),
                 ],
               ),
@@ -705,6 +693,309 @@ void showBatchAddTagDialog(BuildContext context, List<String> selectedFiles) {
       },
     );
   });
+}
+
+/// Widget to display a list of popular tags with animation and hover effects
+class PopularTagsWidget extends StatelessWidget {
+  final Function(String) onTagSelected;
+  final int limit;
+
+  const PopularTagsWidget({
+    Key? key,
+    required this.onTagSelected,
+    this.limit = 10,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<Map<String, int>>(
+      future: TagManager.instance.getPopularTags(limit: limit),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData || snapshot.data!.isEmpty)
+          return const SizedBox.shrink();
+
+        final popularTags = snapshot.data ?? {};
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.star,
+                  size: 18,
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? Colors.amber[300]
+                      : Colors.amber,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Thẻ phổ biến:',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            AnimatedTagList(
+              tags: popularTags.keys.toList(),
+              counts: popularTags,
+              onTagSelected: onTagSelected,
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// Widget to display a list of recently used tags with animation and hover effects
+class RecentTagsWidget extends StatelessWidget {
+  final Function(String) onTagSelected;
+  final int limit;
+
+  const RecentTagsWidget({
+    Key? key,
+    required this.onTagSelected,
+    this.limit = 10,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<String>>(
+      future: TagManager.getRecentTags(limit: limit),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData || snapshot.data!.isEmpty)
+          return const SizedBox.shrink();
+
+        final recentTags = snapshot.data ?? [];
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.history,
+                  size: 18,
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? Colors.grey[400]
+                      : Colors.grey[700],
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Thẻ gần đây:',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            AnimatedTagList(
+              tags: recentTags,
+              onTagSelected: onTagSelected,
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// An animated tag list that shows tags with hover effects and animations
+class AnimatedTagList extends StatelessWidget {
+  final List<String> tags;
+  final Map<String, int>? counts;
+  final Function(String) onTagSelected;
+
+  const AnimatedTagList({
+    Key? key,
+    required this.tags,
+    required this.onTagSelected,
+    this.counts,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 8.0,
+      runSpacing: 8.0,
+      children: tags.map((tag) {
+        final count = counts != null ? counts![tag] : null;
+        final displayText = count != null ? '$tag ($count)' : tag;
+
+        return AnimatedTagChip(
+          tag: tag,
+          displayText: displayText,
+          onTap: () => onTagSelected(tag),
+        );
+      }).toList(),
+    );
+  }
+}
+
+/// An animated tag chip with hover effects
+class AnimatedTagChip extends StatefulWidget {
+  final String tag;
+  final String displayText;
+  final VoidCallback onTap;
+
+  const AnimatedTagChip({
+    Key? key,
+    required this.tag,
+    required this.onTap,
+    required this.displayText,
+  }) : super(key: key);
+
+  @override
+  State<AnimatedTagChip> createState() => _AnimatedTagChipState();
+}
+
+class _AnimatedTagChipState extends State<AnimatedTagChip>
+    with SingleTickerProviderStateMixin {
+  bool _isHovered = false;
+  late AnimationController _controller;
+  late Animation<double> _scaleAnimation;
+  late Animation<double> _elevationAnimation;
+  late final TagColorManager _colorManager = TagColorManager.instance;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 150),
+      vsync: this,
+    );
+
+    _scaleAnimation = Tween<double>(begin: 1.0, end: 1.05).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeOut),
+    );
+
+    _elevationAnimation = Tween<double>(begin: 0, end: 2).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    // Get tag color from TagColorManager
+    final tagColor = _colorManager.getTagColor(widget.tag);
+
+    // If tag has a custom color, use it; otherwise use theme colors
+    final bool hasCustomColor = tagColor != null;
+
+    // Dynamic colors based on hover state and tag color
+    final Color backgroundColor = hasCustomColor
+        ? (tagColor!.withOpacity(_isHovered ? 0.3 : 0.2))
+        : (_isHovered
+            ? (isDark
+                ? Colors.blue.withOpacity(0.3)
+                : theme.colorScheme.primary.withOpacity(0.15))
+            : (isDark ? Colors.grey[700]! : Colors.grey[200]!));
+
+    final Color textColor = hasCustomColor
+        ? (tagColor!)
+        : (_isHovered
+            ? (isDark ? Colors.white : theme.colorScheme.primary)
+            : (isDark ? Colors.grey[200]! : Colors.grey[800]!));
+
+    final Color iconColor = hasCustomColor
+        ? (tagColor!)
+        : (_isHovered
+            ? (isDark ? Colors.white : theme.colorScheme.primary)
+            : (isDark ? Colors.grey[400]! : Colors.grey[600]!));
+
+    final Color borderColor = hasCustomColor
+        ? (tagColor!.withOpacity(_isHovered ? 0.8 : 0.3))
+        : (_isHovered
+            ? theme.colorScheme.primary.withOpacity(0.5)
+            : Colors.transparent);
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.click, // Use hand cursor on hover
+      onEnter: (_) {
+        setState(() => _isHovered = true);
+        _controller.forward();
+      },
+      onExit: (_) {
+        setState(() => _isHovered = false);
+        _controller.reverse();
+      },
+      child: GestureDetector(
+        onTap: () {
+          // Play a quick "press" animation
+          _controller.forward().then((_) => _controller.reverse());
+          widget.onTap();
+        },
+        child: AnimatedBuilder(
+          animation: _controller,
+          builder: (context, child) {
+            return Transform.scale(
+              scale: _scaleAnimation.value,
+              child: Material(
+                elevation: _elevationAnimation.value,
+                color: Colors.transparent,
+                borderRadius: BorderRadius.circular(16),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: backgroundColor,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: borderColor,
+                      width: 1,
+                    ),
+                  ),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.local_offer,
+                        size: 14,
+                        color: iconColor,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        widget.displayText,
+                        style: TextStyle(
+                          color: textColor,
+                          fontSize: 13,
+                          fontWeight:
+                              _isHovered ? FontWeight.bold : FontWeight.normal,
+                        ),
+                      ),
+                      if (_isHovered) ...[
+                        const SizedBox(width: 4),
+                        Icon(
+                          Icons.add_circle_outline,
+                          size: 14,
+                          color: iconColor,
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
 }
 
 // Helper function to add a tag to multiple files
@@ -780,289 +1071,20 @@ Future<void> _addTagToBatchFilesQuiet(
 
 /// Dialog for managing all tags
 void showManageTagsDialog(
-  BuildContext context,
-  List<String> allTags,
-  String currentPath,
-) {
-  final Set<String> selectedTags = Set.from(allTags);
-  final focusNode = FocusNode();
-  List<String> tagSuggestions = [];
-
-  // Get screen size for responsive dialog sizing
-  final Size screenSize = MediaQuery.of(context).size;
-  final double dialogWidth = screenSize.width * 0.5; // 50% of screen width
-  final double dialogHeight = screenSize.height * 0.7; // 70% of screen height
-
-  // Function to directly refresh the UI in parent components
-  void _refreshParentUIManage() {
-    // Clear tag cache immediately
-    TagManager.clearCache();
-
-    try {
-      if (context.mounted) {
-        // For global tag management, notify with the directory path and preserve scroll
-        TagManager.instance.notifyTagChanged("preserve_scroll:" + currentPath);
-      }
-    } catch (e) {
-      print('Error refreshing parent UI: $e');
-    }
+    BuildContext context, List<String> allTags, String currentPath,
+    {List<String>? selectedFiles}) {
+  // If there are selected files, just show the remove tags dialog
+  if (selectedFiles != null && selectedFiles.isNotEmpty) {
+    showRemoveTagsDialog(context, selectedFiles);
+    return;
   }
 
-  void updateTagSuggestions(String text, Function setState) {
-    if (text.isEmpty) {
-      setState(() {
-        tagSuggestions = [];
-      });
-      return;
-    }
-
-    TagManager.instance.searchTags(text).then((suggestions) {
-      setState(() {
-        tagSuggestions =
-            suggestions.where((tag) => !selectedTags.contains(tag)).toList();
-      });
-    });
-  }
-
-  showDialog(
-    context: context,
-    builder: (context) {
-      return StatefulBuilder(
-        builder: (context, setState) {
-          return BackdropFilter(
-            filter: ui.ImageFilter.blur(sigmaX: 5, sigmaY: 5),
-            child: AlertDialog(
-              title: Row(
-                children: [
-                  const Icon(Icons.tag, size: 28, color: Colors.blue),
-                  const SizedBox(width: 12),
-                  const Text('Quản lý Tag', style: TextStyle(fontSize: 24)),
-                  const Spacer(),
-                  IconButton(
-                    icon: const Icon(Icons.refresh, size: 24),
-                    tooltip: "Tải lại danh sách tag",
-                    onPressed: () {
-                      setState(() {
-                        TagManager.clearCache();
-                      });
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Đã tải lại danh sách tag'),
-                          duration: Duration(seconds: 1),
-                        ),
-                      );
-                    },
-                  ),
-                ],
-              ),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-              content: Container(
-                width: double.maxFinite,
-                constraints: BoxConstraints(
-                  maxWidth: dialogWidth,
-                  maxHeight: dialogHeight,
-                  minHeight: 400,
-                  minWidth: dialogWidth * 0.8,
-                ),
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Focus(
-                        focusNode: focusNode,
-                        child: ChipsInput<String>(
-                          values: selectedTags.toList(),
-                          decoration: InputDecoration(
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            labelText: 'Thêm hoặc xóa Tag',
-                            hintText: 'Nhập tên tag để thêm...',
-                            prefixIcon: const Icon(Icons.local_offer),
-                            filled: true,
-                            fillColor:
-                                Theme.of(context).brightness == Brightness.dark
-                                    ? Colors.grey[800]
-                                    : Colors.grey[50],
-                          ),
-                          onChanged: (updatedTags) {
-                            setState(() {
-                              selectedTags.clear();
-                              selectedTags.addAll(updatedTags);
-                            });
-                          },
-                          onTextChanged: (value) {
-                            updateTagSuggestions(value, setState);
-                          },
-                          onSubmitted: (value) {
-                            final newTag = value.trim();
-                            if (newTag.isNotEmpty &&
-                                !selectedTags.contains(newTag)) {
-                              setState(() {
-                                selectedTags.add(newTag);
-                                tagSuggestions = [];
-                              });
-                            }
-                          },
-                          chipBuilder: (context, tag) {
-                            return TagInputChip(
-                              tag: tag,
-                              onSelected: (selectedTag) {},
-                              onDeleted: (removedTag) async {
-                                final confirmed = await showDialog<bool>(
-                                  context: context,
-                                  builder: (context) => AlertDialog(
-                                    title: Text('Xóa tag "$removedTag"?'),
-                                    content: const Text(
-                                      'Tag này sẽ bị xóa khỏi tất cả các tệp. Bạn có chắc chắn không?',
-                                    ),
-                                    actions: [
-                                      TextButton(
-                                        onPressed: () =>
-                                            Navigator.pop(context, false),
-                                        child: const Text('HỦY'),
-                                      ),
-                                      TextButton(
-                                        onPressed: () =>
-                                            Navigator.pop(context, true),
-                                        child: const Text('XÓA',
-                                            style:
-                                                TextStyle(color: Colors.red)),
-                                      ),
-                                    ],
-                                  ),
-                                );
-
-                                if (confirmed == true) {
-                                  setState(() {
-                                    selectedTags.remove(removedTag);
-                                    updateTagSuggestions("", setState);
-                                  });
-
-                                  try {
-                                    if (BlocProvider.of<FolderListBloc>(context,
-                                            listen: false) !=
-                                        null) {
-                                      BlocProvider.of<FolderListBloc>(context,
-                                              listen: false)
-                                          .add(
-                                        FolderListDeleteTagGlobally(removedTag),
-                                      );
-                                    }
-                                  } catch (e) {
-                                    print(
-                                        'FolderListBloc not available in this context: $e');
-                                  }
-
-                                  TagManager.clearCache();
-
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text('Đã xóa tag "$removedTag"'),
-                                      backgroundColor: Colors.red,
-                                      action: SnackBarAction(
-                                        label: 'HOÀN TÁC',
-                                        onPressed: () {
-                                          setState(() {
-                                            selectedTags.add(removedTag);
-                                          });
-                                        },
-                                      ),
-                                    ),
-                                  );
-                                }
-                              },
-                            );
-                          },
-                        ),
-                      ),
-                      if (tagSuggestions.isNotEmpty)
-                        Container(
-                          margin: const EdgeInsets.only(top: 4),
-                          decoration: BoxDecoration(
-                            color:
-                                Theme.of(context).brightness == Brightness.dark
-                                    ? Colors.grey[800]
-                                    : Colors.grey[100],
-                            borderRadius: BorderRadius.circular(8),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.1),
-                                blurRadius: 4,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                          child: ListView.builder(
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            itemCount: tagSuggestions.length > 5
-                                ? 5
-                                : tagSuggestions.length,
-                            itemBuilder: (context, index) {
-                              final suggestion = tagSuggestions[index];
-                              return ListTile(
-                                dense: true,
-                                leading:
-                                    const Icon(Icons.local_offer, size: 18),
-                                title: Text(suggestion),
-                                trailing: IconButton(
-                                  icon: const Icon(Icons.add, size: 18),
-                                  tooltip: "Thêm tag",
-                                  onPressed: () {
-                                    setState(() {
-                                      if (!selectedTags.contains(suggestion)) {
-                                        selectedTags.add(suggestion);
-                                      }
-                                      tagSuggestions = [];
-                                    });
-                                    focusNode.requestFocus();
-                                  },
-                                ),
-                                onTap: () {
-                                  setState(() {
-                                    if (!selectedTags.contains(suggestion)) {
-                                      selectedTags.add(suggestion);
-                                    }
-                                    tagSuggestions = [];
-                                  });
-                                  focusNode.requestFocus();
-                                },
-                              );
-                            },
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                  },
-                  child: const Text('ĐÓNG'),
-                ),
-                ElevatedButton.icon(
-                  icon: const Icon(Icons.save, size: 18),
-                  label: const Text('XONG'),
-                  onPressed: () async {
-                    if (context.mounted) {
-                      // Make sure to notify the parent UI of changes
-                      _refreshParentUIManage();
-                    }
-                    Navigator.of(context).pop();
-                  },
-                ),
-              ],
-            ),
-          );
-        },
-      );
-    },
+  // If no files are selected, show a notification
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text('Vui lòng chọn các file để xóa thẻ'),
+      duration: const Duration(seconds: 2),
+    ),
   );
 }
 
@@ -1183,6 +1205,25 @@ class _RemoveTagsChipDialogState extends State<RemoveTagsChipDialog> {
       for (final tagToRemove in _selectedTagsToRemove) {
         await BatchTagManager.removeTagFromFilesStatic(
             widget.filePaths, tagToRemove);
+
+        // Try to notify the bloc about tag removal, with proper error handling
+        if (mounted) {
+          try {
+            // Check if BlocProvider is available before trying to access it
+            if (BlocProvider.of<FolderListBloc>(context, listen: false) !=
+                null) {
+              final bloc =
+                  BlocProvider.of<FolderListBloc>(context, listen: false);
+              for (final filePath in widget.filePaths) {
+                bloc.add(RemoveTagFromFile(filePath, tagToRemove));
+              }
+            }
+          } catch (e) {
+            // Bloc not available in this context - it's okay, just continue
+            print(
+                'FolderListBloc not available in this context for tag removal: $e');
+          }
+        }
       }
 
       if (mounted) {
@@ -1226,226 +1267,165 @@ class _RemoveTagsChipDialogState extends State<RemoveTagsChipDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isLightMode = theme.brightness == Brightness.light;
-
     // Get screen size for responsive dialog sizing
     final Size screenSize = MediaQuery.of(context).size;
-    final double dialogWidth = screenSize.width * 0.5; // 50% of screen width
-    final double dialogHeight = screenSize.height * 0.7; // 70% of screen height
+    final double dialogWidth =
+        screenSize.width * 0.5; // Match single tag dialog
+    final double dialogHeight =
+        screenSize.height * 0.6; // Match single tag dialog
 
-    return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      clipBehavior: Clip.antiAlias,
-      child: Container(
-        constraints: BoxConstraints(
-          maxWidth: dialogWidth,
-          maxHeight: dialogHeight,
+    return BackdropFilter(
+      filter: ui.ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+      child: AlertDialog(
+        title: Text(
+          'Xóa thẻ cho ${widget.filePaths.length} tệp',
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+          ),
         ),
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                gradient: LinearGradient(
-                  colors: [
-                    theme.colorScheme.error.withOpacity(0.8),
-                    theme.colorScheme.error.withOpacity(0.5),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.delete_sweep_outlined,
-                      color: Colors.white, size: 24),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      'Xóa thẻ từ ${widget.filePaths.length} tệp',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  Material(
-                    color: Colors.transparent,
-                    borderRadius: BorderRadius.circular(50),
-                    clipBehavior: Clip.antiAlias,
-                    child: IconButton(
-                      icon: const Icon(Icons.close, color: Colors.white),
-                      onPressed: () => Navigator.of(context).pop(),
-                      tooltip: 'Đóng',
-                    ),
-                  )
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
-            if (_isLoading)
-              const Expanded(
-                child: Center(
-                    child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    CircularProgressIndicator(),
-                    SizedBox(height: 16),
-                    Text("Đang tải thẻ...")
-                  ],
-                )),
-              )
-            else if (_commonTags.isEmpty && !_isLoading)
-              Expanded(
-                child: Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 16),
+        content: Container(
+          width: double.maxFinite,
+          constraints: BoxConstraints(
+            maxWidth: dialogWidth,
+            maxHeight: dialogHeight,
+            minHeight: dialogHeight * 0.7,
+          ),
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (_isLoading)
+                const Expanded(
+                  child: Center(
+                      child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.info_outline,
-                          size: 48, color: Colors.grey.shade400),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Không có thẻ chung nào giữa các tệp đã chọn.',
-                        style: theme.textTheme.titleSmall
-                            ?.copyWith(color: Colors.grey.shade600),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Hãy thử chọn các tệp khác nhau hoặc đảm bảo chúng có thẻ chung.',
-                        style: theme.textTheme.bodyMedium
-                            ?.copyWith(color: Colors.grey),
-                        textAlign: TextAlign.center,
-                      ),
+                      CircularProgressIndicator(),
+                      SizedBox(height: 16),
+                      Text("Đang tải thẻ...")
                     ],
-                  ),
-                ),
-              )
-            else
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 8.0),
-                      child: Text('Chọn thẻ chung để xóa:',
-                          style: theme.textTheme.titleMedium),
+                  )),
+                )
+              else if (_commonTags.isEmpty && !_isLoading)
+                Expanded(
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.info_outline,
+                            size: 48, color: Colors.grey.shade400),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Không có thẻ chung nào giữa các tệp đã chọn',
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleMedium
+                              ?.copyWith(color: Colors.grey.shade600),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
                     ),
-                    if (_selectedTagsToRemove.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 12.0),
-                        child: Text(
-                            "Đã chọn: ${_selectedTagsToRemove.join(", ")}",
-                            style: theme.textTheme.bodySmall
-                                ?.copyWith(color: theme.colorScheme.error)),
+                  ),
+                )
+              else
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (_selectedTagsToRemove.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 16.0),
+                          child: Text(
+                              "Đã chọn: ${_selectedTagsToRemove.length} thẻ",
+                              style: TextStyle(
+                                color: Theme.of(context).colorScheme.error,
+                                fontWeight: FontWeight.bold,
+                              )),
+                        ),
+                      const Text(
+                        'Chọn thẻ chung để xóa:',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                    Expanded(
-                      child: Container(
-                        decoration: BoxDecoration(
-                            color: isLightMode
-                                ? Colors.grey.shade100
-                                : Colors.grey.shade800,
-                            borderRadius: BorderRadius.circular(12),
+                      const SizedBox(height: 16),
+                      Expanded(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color:
+                                Theme.of(context).brightness == Brightness.dark
+                                    ? Colors.grey[800]
+                                    : Colors.grey[100],
+                            borderRadius: BorderRadius.circular(8),
                             border: Border.all(
-                                color: Colors.grey.withOpacity(0.2))),
-                        child: SingleChildScrollView(
-                          padding: const EdgeInsets.all(12),
-                          child: Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
+                              color: Colors.grey.withOpacity(0.2),
+                            ),
+                          ),
+                          child: ListView(
+                            padding: const EdgeInsets.all(8),
                             children: _commonTags.map((tag) {
                               final isSelected =
                                   _selectedTagsToRemove.contains(tag);
-                              return FilterChip(
-                                label: Text(tag),
-                                selected: isSelected,
-                                onSelected: (_) => _toggleTagSelection(tag),
-                                backgroundColor: isSelected
-                                    ? theme.colorScheme.error.withOpacity(0.2)
-                                    : (isLightMode
-                                        ? Colors.grey.shade200
-                                        : Colors.grey.shade700),
-                                selectedColor:
-                                    theme.colorScheme.error.withOpacity(0.3),
-                                checkmarkColor: theme.colorScheme.error,
-                                labelStyle: TextStyle(
-                                    color: isSelected
-                                        ? theme.colorScheme.error
-                                        : null),
-                                side: BorderSide(
-                                  color: isSelected
-                                      ? theme.colorScheme.error.withOpacity(0.5)
-                                      : Colors.grey.withOpacity(0.3),
-                                  width: 1,
-                                ),
+                              return CheckboxListTile(
+                                title: Text(tag),
+                                value: isSelected,
+                                onChanged: (_) => _toggleTagSelection(tag),
+                                activeColor:
+                                    Theme.of(context).colorScheme.error,
+                                checkColor: Colors.white,
+                                controlAffinity:
+                                    ListTileControlAffinity.leading,
+                                dense: true,
                               );
                             }).toList(),
                           ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-            const SizedBox(height: 24),
-            if (!_isLoading)
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                    color: isLightMode
-                        ? Colors.grey.shade50
-                        : Colors.grey.shade900,
-                    borderRadius: BorderRadius.circular(12)),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton.icon(
-                        onPressed: _isRemoving
-                            ? null
-                            : () => Navigator.of(context).pop(),
-                        icon: const Icon(Icons.cancel_outlined),
-                        label: const Text('HỦY'),
-                        style: TextButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 20, vertical: 12),
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8)))),
-                    const SizedBox(width: 12),
-                    FilledButton.icon(
-                      onPressed: _selectedTagsToRemove.isEmpty ||
-                              _isRemoving ||
-                              _commonTags.isEmpty
-                          ? null
-                          : _removeSelectedTags,
-                      icon: _isRemoving
-                          ? Container(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ))
-                          : const Icon(Icons.delete_forever),
-                      label: const Text('XÓA THẺ ĐÃ CHỌN'),
-                      style: FilledButton.styleFrom(
-                          backgroundColor: theme.colorScheme.error,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 20, vertical: 12),
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8))),
-                    ),
-                  ],
-                ),
-              ),
-          ],
+            ],
+          ),
         ),
+        actions: [
+          TextButton(
+            onPressed: _isRemoving ? null : () => Navigator.of(context).pop(),
+            style: TextButton.styleFrom(
+              textStyle: const TextStyle(fontSize: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            ),
+            child: const Text('HỦY'),
+          ),
+          ElevatedButton(
+            onPressed: _selectedTagsToRemove.isEmpty ||
+                    _isRemoving ||
+                    _commonTags.isEmpty
+                ? null
+                : _removeSelectedTags,
+            style: ElevatedButton.styleFrom(
+              textStyle: const TextStyle(fontSize: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              backgroundColor: Theme.of(context).colorScheme.error,
+              foregroundColor: Colors.white,
+            ),
+            child: _isRemoving
+                ? SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Text('XÓA THẺ'),
+          ),
+        ],
       ),
     );
   }

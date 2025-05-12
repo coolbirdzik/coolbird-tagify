@@ -9,7 +9,6 @@ import 'package:cb_file_manager/helpers/trash_manager.dart';
 import 'package:cb_file_manager/helpers/tag_manager.dart'; // Import TagManager để lắng nghe thay đổi
 import 'package:flutter/material.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
-import 'package:cb_file_manager/widgets/lazy_video_thumbnail.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:cb_file_manager/ui/screens/folder_list/folder_list_bloc.dart';
 import 'package:cb_file_manager/ui/screens/folder_list/folder_list_event.dart';
@@ -20,6 +19,8 @@ import 'package:cb_file_manager/helpers/file_icon_helper.dart';
 import 'package:cb_file_manager/config/app_theme.dart'; // Import app theme
 import 'package:cb_file_manager/widgets/tag_chip.dart'; // Import the new TagChip widget
 import 'package:cb_file_manager/ui/tab_manager/components/tag_dialogs.dart';
+import 'package:cb_file_manager/ui/components/shared_file_context_menu.dart';
+import 'package:cb_file_manager/widgets/lazy_video_thumbnail.dart';
 
 class FileItem extends StatefulWidget {
   final File file;
@@ -69,9 +70,23 @@ class _FileItemState extends State<FileItem> {
 
   // Xử lý sự kiện thay đổi tag
   void _onTagChanged(String changedFilePath) {
-    // Nếu thay đổi tag liên quan đến file này
-    if (changedFilePath == widget.file.path ||
+    // Kiểm tra xem có phải tag_only event không
+    bool isTagOnlyEvent = false;
+    String actualPath = changedFilePath;
+
+    if (changedFilePath.startsWith("tag_only:")) {
+      isTagOnlyEvent = true;
+      actualPath = changedFilePath.substring("tag_only:".length);
+    }
+
+    // Chỉ xử lý nếu sự kiện liên quan đến file này
+    if (actualPath == widget.file.path ||
         changedFilePath == "global:tag_deleted") {
+      // Chỉ xóa cache khi cần thiết, không xóa nếu là tag_only event
+      if (!isTagOnlyEvent) {
+        TagManager.clearCache();
+      }
+
       // Lấy tags mới từ state
       final newTags = widget.state.getTagsForFile(widget.file.path);
 
@@ -102,6 +117,51 @@ class _FileItemState extends State<FileItem> {
       setState(() {
         _fileTags = newTags;
       });
+    }
+  }
+
+  // Hàm xóa tag trực tiếp, không reload tab
+  Future<void> _removeTagDirectly(String tag) async {
+    try {
+      // Xóa tag
+      await TagManager.removeTag(widget.file.path, tag);
+
+      // Cập nhật danh sách local
+      setState(() {
+        _fileTags.remove(tag);
+      });
+
+      // Thông báo cho các thành phần khác với prefix tag_only
+      TagManager.instance.notifyTagChanged("tag_only:" + widget.file.path);
+
+      // Thông báo bloc nếu có
+      try {
+        if (context.mounted) {
+          final bloc = BlocProvider.of<FolderListBloc>(context, listen: false);
+          bloc.add(RemoveTagFromFile(widget.file.path, tag));
+        }
+      } catch (e) {
+        print('Error notifying bloc: $e');
+      }
+
+      // Hiển thị thông báo
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Tag "$tag" đã được xóa'),
+            duration: const Duration(seconds: 1),
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lỗi khi xóa tag: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -147,6 +207,24 @@ class _FileItemState extends State<FileItem> {
     } else {
       icon = EvaIcons.fileOutline;
       iconColor = Colors.grey;
+    }
+
+    // Thay đổi phần tạo TagChip để xử lý xóa tag trực tiếp
+    Widget _buildTagChip(String tag) {
+      return TagChip(
+        tag: tag,
+        onTap: () {
+          // Search by tag functionality
+          final bloc = BlocProvider.of<FolderListBloc>(
+            context,
+          );
+          bloc.add(SearchByTag(tag));
+        },
+        onDeleted: () {
+          // Xóa tag trực tiếp thay vì hiển thị dialog
+          _removeTagDirectly(tag);
+        },
+      );
     }
 
     return GestureDetector(
@@ -292,26 +370,7 @@ class _FileItemState extends State<FileItem> {
                 child: Wrap(
                   spacing: 8.0,
                   runSpacing: 4.0,
-                  children: _fileTags.map((tag) {
-                    return TagChip(
-                      tag: tag,
-                      onTap: () {
-                        // Search by tag functionality
-                        final bloc = BlocProvider.of<FolderListBloc>(
-                          context,
-                        );
-                        bloc.add(SearchByTag(tag));
-                      },
-                      onDeleted: () {
-                        // Show delete tag dialog when remove button is pressed
-                        widget.showDeleteTagDialog(
-                          context,
-                          widget.file.path,
-                          [tag],
-                        );
-                      },
-                    );
-                  }).toList(),
+                  children: _fileTags.map((tag) => _buildTagChip(tag)).toList(),
                 ),
               ),
           ],
@@ -321,238 +380,14 @@ class _FileItemState extends State<FileItem> {
   }
 
   void _showFileContextMenu(BuildContext context, bool isVideo, bool isImage) {
-    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
-
-    showModalBottomSheet(
+    // Use the shared file context menu
+    showFileContextMenu(
       context: context,
-      backgroundColor: isDarkMode ? Colors.grey[900] : Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (context) => Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              border: Border(
-                bottom: BorderSide(
-                  color: isDarkMode ? Colors.grey[800]! : Colors.grey[300]!,
-                ),
-              ),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  isVideo
-                      ? EvaIcons.videoOutline
-                      : isImage
-                          ? EvaIcons.imageOutline
-                          : EvaIcons.fileOutline,
-                  color: isVideo
-                      ? Colors.red
-                      : isImage
-                          ? Colors.blue
-                          : Colors.grey,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    _basename(widget.file),
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: isDarkMode ? Colors.white : Colors.black87,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          ListTile(
-            leading: Icon(
-              isVideo
-                  ? EvaIcons.playCircleOutline
-                  : isImage
-                      ? EvaIcons.imageOutline
-                      : EvaIcons.eyeOutline,
-              color: isDarkMode ? Colors.white70 : Colors.black87,
-            ),
-            title: Text(
-              isVideo
-                  ? 'Play Video'
-                  : isImage
-                      ? 'View Image'
-                      : 'Open File',
-              style: TextStyle(
-                color: isDarkMode ? Colors.white : Colors.black87,
-              ),
-            ),
-            onTap: () {
-              Navigator.pop(context);
-              if (widget.onFileTap != null) {
-                widget.onFileTap!(widget.file, isVideo);
-              } else if (isVideo) {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) =>
-                        VideoPlayerFullScreen(file: widget.file),
-                  ),
-                );
-              } else if (isImage) {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => ImageViewerScreen(file: widget.file),
-                  ),
-                );
-              } else {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => FileDetailsScreen(file: widget.file),
-                  ),
-                );
-              }
-            },
-          ),
-          ListTile(
-            leading: Icon(
-              EvaIcons.externalLinkOutline,
-              color: isDarkMode ? Colors.white70 : Colors.black87,
-            ),
-            title: Text(
-              'Open With...',
-              style: TextStyle(
-                color: isDarkMode ? Colors.white : Colors.black87,
-              ),
-            ),
-            onTap: () {
-              Navigator.pop(context);
-              showDialog(
-                context: context,
-                builder: (context) =>
-                    OpenWithDialog(filePath: widget.file.path),
-              );
-            },
-          ),
-          ListTile(
-            leading: Icon(
-              EvaIcons.infoOutline,
-              color: isDarkMode ? Colors.white70 : Colors.black87,
-            ),
-            title: Text(
-              'Properties',
-              style: TextStyle(
-                color: isDarkMode ? Colors.white : Colors.black87,
-              ),
-            ),
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => FileDetailsScreen(file: widget.file),
-                ),
-              );
-            },
-          ),
-          ListTile(
-            leading: Icon(
-              EvaIcons.bookmarkOutline,
-              color: isDarkMode ? Colors.white70 : Colors.black87,
-            ),
-            title: Text(
-              'Manage Tags',
-              style: TextStyle(
-                color: isDarkMode ? Colors.white : Colors.black87,
-              ),
-            ),
-            onTap: () {
-              Navigator.pop(context);
-              widget.showAddTagToFileDialog(context, widget.file.path);
-            },
-          ),
-          ListTile(
-            leading: Icon(
-              EvaIcons.copyOutline,
-              color: isDarkMode ? Colors.white70 : Colors.black87,
-            ),
-            title: Text(
-              'Copy',
-              style: TextStyle(
-                color: isDarkMode ? Colors.white : Colors.black87,
-              ),
-            ),
-            onTap: () {
-              Navigator.pop(context);
-              // Dispatch copy event to the bloc
-              context.read<FolderListBloc>().add(CopyFile(widget.file));
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    'Copied "${_basename(widget.file)}" to clipboard',
-                  ),
-                ),
-              );
-            },
-          ),
-          ListTile(
-            leading: Icon(
-              Icons.content_cut,
-              color: isDarkMode ? Colors.white70 : Colors.black87,
-            ),
-            title: Text(
-              'Cut',
-              style: TextStyle(
-                color: isDarkMode ? Colors.white : Colors.black87,
-              ),
-            ),
-            onTap: () {
-              Navigator.pop(context);
-              // Dispatch cut event to the bloc
-              context.read<FolderListBloc>().add(CutFile(widget.file));
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    'Cut "${_basename(widget.file)}" to clipboard',
-                  ),
-                ),
-              );
-            },
-          ),
-          ListTile(
-            leading: Icon(
-              EvaIcons.editOutline,
-              color: isDarkMode ? Colors.white70 : Colors.black87,
-            ),
-            title: Text(
-              'Rename',
-              style: TextStyle(
-                color: isDarkMode ? Colors.white : Colors.black87,
-              ),
-            ),
-            onTap: () {
-              Navigator.pop(context);
-              _showRenameDialog(context);
-            },
-          ),
-          ListTile(
-            leading: Icon(EvaIcons.trash2Outline, color: Colors.red),
-            title: Text(
-              'Move to Trash',
-              style: TextStyle(color: Colors.red),
-            ),
-            onTap: () {
-              Navigator.pop(context);
-              _moveToTrash(context);
-            },
-          ),
-        ],
-      ),
+      file: widget.file,
+      fileTags: _fileTags,
+      isVideo: isVideo,
+      isImage: isImage,
+      showAddTagToFileDialog: widget.showAddTagToFileDialog,
     );
   }
 

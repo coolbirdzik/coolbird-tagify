@@ -62,7 +62,7 @@ class SelectionAppBar extends StatelessWidget implements PreferredSizeWidget {
                   children: [
                     Icon(EvaIcons.settings2Outline),
                     SizedBox(width: 8),
-                    Text('Quản lý tất cả thẻ'),
+                    Text('Xóa thẻ'),
                   ],
                 ),
               ),

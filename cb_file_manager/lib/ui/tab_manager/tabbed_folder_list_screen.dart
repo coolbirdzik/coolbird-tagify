@@ -365,6 +365,9 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
   // This method updates both the tab's path in the TabManager
   // and the local UI state to display the new path
   void _navigateToPath(String path) {
+    // Stop any ongoing thumbnail processing to prevent UI lag
+    VideoThumbnailHelper.stopAllProcessing();
+
     // Update the current path in local state
     setState(() {
       _currentPath = path;
@@ -431,39 +434,10 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
     });
   }
 
-  Future<bool> _handleBackNavigation() async {
-    // First check if we're in selection mode
-    if (_isSelectionMode) {
-      setState(() {
-        _isSelectionMode = false;
-        _selectedFilePaths.clear();
-      });
-      return false; // Don't exit the app, just exit selection mode
-    }
-
-    // Check if we're showing search results
-    if (_currentSearchTag != null || _currentFilter != null) {
-      _folderListBloc.add(const ClearSearchAndFilters());
-      _folderListBloc.add(FolderListLoad(_currentPath));
-      return false; // Don't exit the app, just exit search mode
-    }
-
-    // Check if we are at a root drive level (like C:\) and should navigate to drive selection
-    if (Platform.isWindows &&
-        (_currentPath.length == 3 && _currentPath.endsWith(':\\'))) {
-      setState(() {
-        _currentPath = '';
-        _pathController.text = '';
-      });
-
-      // Update the tab's path in the TabManager
-      context.read<TabManagerBloc>().add(UpdateTabPath(widget.tabId, ''));
-      context.read<TabManagerBloc>().add(AddToTabHistory(widget.tabId, ''));
-      context.read<TabManagerBloc>().add(UpdateTabName(widget.tabId, 'Drives'));
-
-      // Don't call FolderListLoad here as the build method will handle showing the drive view
-      return false; // Don't exit app, we're navigating to the drives view
-    }
+  // Handle back button press for Android
+  Future<bool> _handleBackButton() async {
+    // Stop any ongoing thumbnail processing when navigating
+    VideoThumbnailHelper.stopAllProcessing();
 
     // Check if we can navigate back in the folder hierarchy
     final tabManagerBloc = context.read<TabManagerBloc>();
@@ -500,6 +474,9 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
   // Centralized method to update path and reload folder contents
   void _updatePath(String newPath) {
     if (_isHandlingPathUpdate) return; // Prevent recursive updates
+
+    // Stop any ongoing thumbnail processing to prevent UI lag
+    VideoThumbnailHelper.stopAllProcessing();
 
     _isHandlingPathUpdate = true;
 
@@ -558,7 +535,7 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
         }
       },
       child: WillPopScope(
-        onWillPop: _handleBackNavigation,
+        onWillPop: _handleBackButton,
         // Wrap with Listener to detect mouse button events
         child: Listener(
           onPointerDown: (PointerDownEvent event) {
@@ -978,8 +955,24 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
   }
 
   void _showManageAllTagsDialog(BuildContext context) {
-    tab_components.showManageTagsDialog(
-        context, _folderListBloc.state.allTags.toList(), _currentPath);
+    // Nếu đang ở chế độ chọn file và có file được chọn,
+    // truyền danh sách file đã chọn vào dialog quản lý tag
+    if (_isSelectionMode && _selectedFilePaths.isNotEmpty) {
+      tab_components.showManageTagsDialog(
+        context,
+        _folderListBloc.state.allTags.toList(),
+        _currentPath,
+        selectedFiles: _selectedFilePaths.toList(),
+      );
+    } else {
+      // Nếu không trong chế độ chọn file, hoặc không có file nào được chọn,
+      // sử dụng phương thức cũ
+      tab_components.showManageTagsDialog(
+        context,
+        _folderListBloc.state.allTags.toList(),
+        _currentPath,
+      );
+    }
   }
 
   void _handleGridZoomChange(int zoomLevel) {
@@ -1022,8 +1015,16 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
 
   // Xử lý khi người dùng click vào một file trong kết quả tìm kiếm
   void _onFileTap(File file, bool isVideo) {
-    final extension = file.path.split('.').last.toLowerCase();
+    // Stop any ongoing thumbnail processing when opening a file
+    VideoThumbnailHelper.stopAllProcessing();
+
+    // Get file extension
+    String extension = file.path.split('.').last.toLowerCase();
+
+    // Use lists to check file types
+    final videoExtensions = ['mp4', 'mov', 'avi', 'mkv', 'webm', 'flv', 'm4v'];
     final imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'];
+    final isVideo = videoExtensions.contains(extension);
 
     // Open file based on file type
     if (isVideo) {

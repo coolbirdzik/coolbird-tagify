@@ -15,6 +15,7 @@ import 'package:cb_file_manager/helpers/frame_timing_optimizer.dart';
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/services.dart';
+import 'package:cb_file_manager/helpers/folder_sort_manager.dart';
 
 // Extension to provide Vietnamese display names for SortOption enum
 extension SortOptionExtension on SortOption {
@@ -25,15 +26,29 @@ extension SortOptionExtension on SortOption {
       case SortOption.nameDesc:
         return 'Tên (Z → A)';
       case SortOption.dateAsc:
-        return 'Ngày (Cũ nhất trước)';
+        return 'Ngày sửa (Cũ nhất trước)';
       case SortOption.dateDesc:
-        return 'Ngày (Mới nhất trước)';
+        return 'Ngày sửa (Mới nhất trước)';
       case SortOption.sizeAsc:
         return 'Kích thước (Nhỏ nhất trước)';
       case SortOption.sizeDesc:
         return 'Kích thước (Lớn nhất trước)';
       case SortOption.typeAsc:
         return 'Loại tệp (A → Z)';
+      case SortOption.typeDesc:
+        return 'Loại tệp (Z → A)';
+      case SortOption.dateCreatedAsc:
+        return 'Ngày tạo (Cũ nhất trước)';
+      case SortOption.dateCreatedDesc:
+        return 'Ngày tạo (Mới nhất trước)';
+      case SortOption.extensionAsc:
+        return 'Đuôi tệp (A → Z)';
+      case SortOption.extensionDesc:
+        return 'Đuôi tệp (Z → A)';
+      case SortOption.attributesAsc:
+        return 'Thuộc tính (A → Z)';
+      case SortOption.attributesDesc:
+        return 'Thuộc tính (Z → A)';
     }
   }
 }
@@ -237,6 +252,93 @@ class _VideoGalleryScreenState extends State<VideoGalleryScreen>
             .toLowerCase()
             .compareTo(pathlib.extension(b.path).toLowerCase()));
         break;
+
+      case SortOption.typeDesc:
+        _videoFiles.sort((a, b) => pathlib
+            .extension(b.path)
+            .toLowerCase()
+            .compareTo(pathlib.extension(a.path).toLowerCase()));
+        break;
+
+      case SortOption.dateCreatedAsc:
+        _videoFiles.sort((a, b) {
+          try {
+            // On Windows, changed means creation time
+            if (Platform.isWindows) {
+              final aStats = FileStat.statSync(a.path);
+              final bStats = FileStat.statSync(b.path);
+              return aStats.changed.compareTo(bStats.changed);
+            } else {
+              // On other platforms, fallback to modified time
+              return a.lastModifiedSync().compareTo(b.lastModifiedSync());
+            }
+          } catch (e) {
+            return 0;
+          }
+        });
+        break;
+
+      case SortOption.dateCreatedDesc:
+        _videoFiles.sort((a, b) {
+          try {
+            // On Windows, changed means creation time
+            if (Platform.isWindows) {
+              final aStats = FileStat.statSync(a.path);
+              final bStats = FileStat.statSync(b.path);
+              return bStats.changed.compareTo(aStats.changed);
+            } else {
+              // On other platforms, fallback to modified time
+              return b.lastModifiedSync().compareTo(a.lastModifiedSync());
+            }
+          } catch (e) {
+            return 0;
+          }
+        });
+        break;
+
+      case SortOption.extensionAsc:
+        _videoFiles.sort((a, b) => pathlib
+            .extension(a.path)
+            .toLowerCase()
+            .compareTo(pathlib.extension(b.path).toLowerCase()));
+        break;
+
+      case SortOption.extensionDesc:
+        _videoFiles.sort((a, b) => pathlib
+            .extension(b.path)
+            .toLowerCase()
+            .compareTo(pathlib.extension(a.path).toLowerCase()));
+        break;
+
+      case SortOption.attributesAsc:
+        _videoFiles.sort((a, b) {
+          try {
+            final aStats = FileStat.statSync(a.path);
+            final bStats = FileStat.statSync(b.path);
+            // Create a string representation of attributes for comparison
+            final aAttrs = '${aStats.mode},${aStats.type}';
+            final bAttrs = '${bStats.mode},${bStats.type}';
+            return aAttrs.compareTo(bAttrs);
+          } catch (e) {
+            return 0;
+          }
+        });
+        break;
+
+      case SortOption.attributesDesc:
+        _videoFiles.sort((a, b) {
+          try {
+            final aStats = FileStat.statSync(a.path);
+            final bStats = FileStat.statSync(b.path);
+            // Create a string representation of attributes for comparison
+            final aAttrs = '${aStats.mode},${aStats.type}';
+            final bAttrs = '${bStats.mode},${bStats.type}';
+            return bAttrs.compareTo(aAttrs);
+          } catch (e) {
+            return 0;
+          }
+        });
+        break;
     }
   }
 
@@ -247,11 +349,21 @@ class _VideoGalleryScreenState extends State<VideoGalleryScreen>
         _sortVideoFiles();
       });
 
-      // Save sort preference
+      // Save sort preference (global and folder-specific)
       try {
+        // Lưu preference toàn cục
         await _preferences.setSortOption(option);
+
+        // Lưu cài đặt cho thư mục cụ thể
+        final folderSortManager = FolderSortManager();
+        bool success =
+            await folderSortManager.saveFolderSortOption(widget.path, option);
+
+        // Log kết quả
+        debugPrint(
+            'Saved sort option ${option.name} for folder: ${widget.path}, success: $success');
       } catch (e) {
-        print('Error saving sort option: $e');
+        debugPrint('Error saving sort option: $e');
       }
     }
   }

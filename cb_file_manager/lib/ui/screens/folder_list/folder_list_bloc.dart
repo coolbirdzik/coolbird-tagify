@@ -7,6 +7,7 @@ import 'package:cb_file_manager/helpers/filesystem_utils.dart'; // Import for Fi
 import 'package:path/path.dart' as pathlib;
 import 'package:cb_file_manager/helpers/video_thumbnail_helper.dart';
 import 'dart:async'; // Thêm import cho StreamSubscription
+import 'package:cb_file_manager/helpers/folder_sort_manager.dart';
 
 import 'folder_list_event.dart';
 import 'folder_list_state.dart';
@@ -189,7 +190,9 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
               folders.add(entity);
             } else if (entity is File) {
               // Skip tag files - no longer needed with global tags
-              if (!entity.path.endsWith('.tags')) {
+              // Also skip hidden config files
+              if (!entity.path.endsWith('.tags') &&
+                  pathlib.basename(entity.path) != '.cbfile_config.json') {
                 files.add(entity);
               }
             }
@@ -206,6 +209,25 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
             }
           }
 
+          // Get folder-specific sort option if available
+          final folderSortManager = FolderSortManager();
+          final folderSortOption =
+              await folderSortManager.getFolderSortOption(event.path);
+
+          // Use folder-specific sort option if available, otherwise use the current sort option
+          SortOption sortOptionToUse = folderSortOption ?? state.sortOption;
+
+          // Once we have files and folders, sort them according to the sort option
+          await _sortFilesAndFolders(
+            folders,
+            files,
+            sortOptionToUse,
+            emit,
+            updateSortOption: folderSortOption !=
+                null, // Only update state.sortOption if we found a folder-specific one
+          );
+
+          // Emit state with files and folders (sorting will be handled later)
           emit(
             state.copyWith(
               isLoading: false,
@@ -213,6 +235,8 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
               files: files,
               fileTags: fileTags,
               error: null, // Clear any previous errors
+              sortOption: folderSortOption ??
+                  state.sortOption, // Update the sort option if folder-specific
             ),
           );
 
@@ -273,6 +297,211 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
     }
   }
 
+  // Helper method to sort files and folders according to a given sort option
+  Future<void> _sortFilesAndFolders(
+      List<FileSystemEntity> folders,
+      List<FileSystemEntity> files,
+      SortOption sortOption,
+      Emitter<FolderListState> emit,
+      {bool updateSortOption = false}) async {
+    try {
+      // Get file stats for sorting
+      Map<String, FileStat> fileStatsCache = {};
+
+      // Cache file stats for better performance
+      Future<void> cacheFileStats(List<FileSystemEntity> entities) async {
+        for (var entity in entities) {
+          if (!fileStatsCache.containsKey(entity.path)) {
+            fileStatsCache[entity.path] = await entity.stat();
+          }
+        }
+      }
+
+      // Wait for all file stats to be loaded
+      await Future.wait([
+        cacheFileStats(folders),
+        cacheFileStats(files),
+      ]);
+
+      // Define the sorting function based on the selected sort option
+      int Function(FileSystemEntity, FileSystemEntity) compareFunction;
+
+      switch (sortOption) {
+        case SortOption.nameAsc:
+          compareFunction = (a, b) => pathlib
+              .basename(a.path)
+              .toLowerCase()
+              .compareTo(pathlib.basename(b.path).toLowerCase());
+          break;
+        case SortOption.nameDesc:
+          compareFunction = (a, b) => pathlib
+              .basename(b.path)
+              .toLowerCase()
+              .compareTo(pathlib.basename(a.path).toLowerCase());
+          break;
+        case SortOption.dateAsc:
+          compareFunction = (a, b) {
+            final aStats = fileStatsCache[a.path]!;
+            final bStats = fileStatsCache[b.path]!;
+            return aStats.modified.compareTo(bStats.modified);
+          };
+          break;
+        case SortOption.dateDesc:
+          compareFunction = (a, b) {
+            final aStats = fileStatsCache[a.path]!;
+            final bStats = fileStatsCache[b.path]!;
+            return bStats.modified.compareTo(aStats.modified);
+          };
+          break;
+        case SortOption.sizeAsc:
+          compareFunction = (a, b) {
+            final aStats = fileStatsCache[a.path]!;
+            final bStats = fileStatsCache[b.path]!;
+            return aStats.size.compareTo(bStats.size);
+          };
+          break;
+        case SortOption.sizeDesc:
+          compareFunction = (a, b) {
+            final aStats = fileStatsCache[a.path]!;
+            final bStats = fileStatsCache[b.path]!;
+            return bStats.size.compareTo(aStats.size);
+          };
+          break;
+        case SortOption.typeAsc:
+          compareFunction = (a, b) {
+            final aExt = pathlib.extension(a.path).toLowerCase();
+            final bExt = pathlib.extension(b.path).toLowerCase();
+            return aExt.compareTo(bExt);
+          };
+          break;
+        case SortOption.typeDesc:
+          compareFunction = (a, b) {
+            final aExt = pathlib.extension(a.path).toLowerCase();
+            final bExt = pathlib.extension(b.path).toLowerCase();
+            return bExt.compareTo(aExt);
+          };
+          break;
+        case SortOption.dateCreatedAsc:
+          compareFunction = (a, b) {
+            // On Windows, we can get creation time
+            if (FolderSortManager().isWindows) {
+              try {
+                final aStats = fileStatsCache[a.path]!;
+                final bStats = fileStatsCache[b.path]!;
+                return aStats.changed.compareTo(bStats.changed);
+              } catch (e) {
+                // Fallback to modified date if any error
+                final aStats = fileStatsCache[a.path]!;
+                final bStats = fileStatsCache[b.path]!;
+                return aStats.modified.compareTo(bStats.modified);
+              }
+            } else {
+              // On other platforms, use modified as a fallback
+              final aStats = fileStatsCache[a.path]!;
+              final bStats = fileStatsCache[b.path]!;
+              return aStats.modified.compareTo(bStats.modified);
+            }
+          };
+          break;
+        case SortOption.dateCreatedDesc:
+          compareFunction = (a, b) {
+            // On Windows, we can get creation time
+            if (FolderSortManager().isWindows) {
+              try {
+                final aStats = fileStatsCache[a.path]!;
+                final bStats = fileStatsCache[b.path]!;
+                return bStats.changed.compareTo(aStats.changed);
+              } catch (e) {
+                // Fallback to modified date if any error
+                final aStats = fileStatsCache[a.path]!;
+                final bStats = fileStatsCache[b.path]!;
+                return bStats.modified.compareTo(aStats.modified);
+              }
+            } else {
+              // On other platforms, use modified as a fallback
+              final aStats = fileStatsCache[a.path]!;
+              final bStats = fileStatsCache[b.path]!;
+              return bStats.modified.compareTo(aStats.modified);
+            }
+          };
+          break;
+        case SortOption.extensionAsc:
+          compareFunction = (a, b) {
+            final aExt = pathlib.extension(a.path).toLowerCase();
+            final bExt = pathlib.extension(b.path).toLowerCase();
+            return aExt.compareTo(bExt);
+          };
+          break;
+        case SortOption.extensionDesc:
+          compareFunction = (a, b) {
+            final aExt = pathlib.extension(a.path).toLowerCase();
+            final bExt = pathlib.extension(b.path).toLowerCase();
+            return bExt.compareTo(aExt);
+          };
+          break;
+        case SortOption.attributesAsc:
+          compareFunction = (a, b) {
+            final aStats = fileStatsCache[a.path]!;
+            final bStats = fileStatsCache[b.path]!;
+            // Create a string representation of attributes for comparison
+            final aAttrs = '${aStats.mode},${aStats.type}';
+            final bAttrs = '${bStats.mode},${bStats.type}';
+            return aAttrs.compareTo(bAttrs);
+          };
+          break;
+        case SortOption.attributesDesc:
+          compareFunction = (a, b) {
+            final aStats = fileStatsCache[a.path]!;
+            final bStats = fileStatsCache[b.path]!;
+            // Create a string representation of attributes for comparison
+            final aAttrs = '${aStats.mode},${aStats.type}';
+            final bAttrs = '${bStats.mode},${bStats.type}';
+            return bAttrs.compareTo(aAttrs);
+          };
+          break;
+        default:
+          compareFunction = (a, b) => pathlib
+              .basename(a.path)
+              .toLowerCase()
+              .compareTo(pathlib.basename(b.path).toLowerCase());
+      }
+
+      // Folders always come first, then apply the sort function within each group
+      final folderFirstCompare = (FileSystemEntity a, FileSystemEntity b) {
+        final aIsDir = a is Directory;
+        final bIsDir = b is Directory;
+
+        // If both are directories or both are files, use the specific compare function
+        if (aIsDir == bIsDir) {
+          return compareFunction(a, b);
+        }
+
+        // Otherwise, directories come first
+        return aIsDir ? -1 : 1;
+      };
+
+      // Sort folders and files with the folder-first comparison
+      folders.sort(compareFunction);
+      files.sort(compareFunction);
+
+      // Only update the sort option in state if requested
+      if (updateSortOption) {
+        emit(state.copyWith(
+          sortOption: sortOption,
+          fileStatsCache: fileStatsCache,
+        ));
+      } else {
+        // Just update the fileStatsCache
+        emit(state.copyWith(
+          fileStatsCache: fileStatsCache,
+        ));
+      }
+    } catch (e) {
+      print("Error sorting files and folders: $e");
+      // Don't update state on error
+    }
+  }
+
   void _onFolderListRefresh(
     FolderListRefresh event,
     Emitter<FolderListState> emit,
@@ -294,7 +523,8 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
             folders.add(entity);
           } else if (entity is File) {
             // Skip tag files
-            if (!entity.path.endsWith('.tags')) {
+            if (!entity.path.endsWith('.tags') &&
+                pathlib.basename(entity.path) != '.cbfile_config.json') {
               files.add(entity);
             }
           }
@@ -318,6 +548,14 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
         // Get all unique tags for this directory
         final allUniqueTags = await TagManager.getAllUniqueTags(event.path);
 
+        // Get folder-specific sort option if available
+        final folderSortManager = FolderSortManager();
+        final folderSortOption =
+            await folderSortManager.getFolderSortOption(event.path);
+
+        // Use folder-specific sort option if available, otherwise use the current sort option
+        SortOption sortOptionToUse = folderSortOption ?? state.sortOption;
+
         // IMPORTANT: Update UI state IMMEDIATELY to show content, even before thumbnails are ready
         // This prevents UI blocking while thumbnails are generated
         emit(
@@ -329,7 +567,18 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
             allUniqueTags: allUniqueTags,
             error: null,
             currentPath: Directory(event.path),
+            sortOption: folderSortOption ??
+                state.sortOption, // Update sort option if folder-specific
           ),
+        );
+
+        // Apply sorting after emitting the initial state
+        await _sortFilesAndFolders(
+          folders,
+          files,
+          sortOptionToUse,
+          emit,
+          updateSortOption: false, // Already updated the sort option
         );
 
         // Start thumbnail generation in background AFTER updating UI
@@ -389,6 +638,13 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
       for (var videoFile in videoFiles) {
         if (videoFile is File) {
           try {
+            // Check with the VideoThumbnailHelper if we should continue processing
+            // This will prevent thumbnail generation from continuing if user navigates away
+            if (VideoThumbnailHelper.shouldStopProcessing()) {
+              print('Thumbnail generation canceled due to navigation');
+              break;
+            }
+
             await VideoThumbnailHelper.forceRegenerateThumbnail(
               videoFile.path,
             ).timeout(
@@ -554,6 +810,11 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
         cacheFileStats(sortedSearchResults),
       ]);
 
+      // Save the sort option to the current folder
+      final folderSortManager = FolderSortManager();
+      await folderSortManager.saveFolderSortOption(
+          state.currentPath.path, event.sortOption);
+
       // Define the sorting function based on the selected sort option
       int Function(FileSystemEntity, FileSystemEntity) compareFunction;
 
@@ -600,9 +861,94 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
           break;
         case SortOption.typeAsc:
           compareFunction = (a, b) {
-            final aExt = a.path.split('.').last.toLowerCase();
-            final bExt = b.path.split('.').last.toLowerCase();
+            final aExt = pathlib.extension(a.path).toLowerCase();
+            final bExt = pathlib.extension(b.path).toLowerCase();
             return aExt.compareTo(bExt);
+          };
+          break;
+        case SortOption.typeDesc:
+          compareFunction = (a, b) {
+            final aExt = pathlib.extension(a.path).toLowerCase();
+            final bExt = pathlib.extension(b.path).toLowerCase();
+            return bExt.compareTo(aExt);
+          };
+          break;
+        case SortOption.dateCreatedAsc:
+          compareFunction = (a, b) {
+            // On Windows, we can get creation time
+            if (FolderSortManager().isWindows) {
+              try {
+                final aStats = fileStatsCache[a.path]!;
+                final bStats = fileStatsCache[b.path]!;
+                return aStats.changed.compareTo(bStats.changed);
+              } catch (e) {
+                // Fallback to modified date if any error
+                final aStats = fileStatsCache[a.path]!;
+                final bStats = fileStatsCache[b.path]!;
+                return aStats.modified.compareTo(bStats.modified);
+              }
+            } else {
+              // On other platforms, use modified as a fallback
+              final aStats = fileStatsCache[a.path]!;
+              final bStats = fileStatsCache[b.path]!;
+              return aStats.modified.compareTo(bStats.modified);
+            }
+          };
+          break;
+        case SortOption.dateCreatedDesc:
+          compareFunction = (a, b) {
+            // On Windows, we can get creation time
+            if (FolderSortManager().isWindows) {
+              try {
+                final aStats = fileStatsCache[a.path]!;
+                final bStats = fileStatsCache[b.path]!;
+                return bStats.changed.compareTo(aStats.changed);
+              } catch (e) {
+                // Fallback to modified date if any error
+                final aStats = fileStatsCache[a.path]!;
+                final bStats = fileStatsCache[b.path]!;
+                return bStats.modified.compareTo(aStats.modified);
+              }
+            } else {
+              // On other platforms, use modified as a fallback
+              final aStats = fileStatsCache[a.path]!;
+              final bStats = fileStatsCache[b.path]!;
+              return bStats.modified.compareTo(aStats.modified);
+            }
+          };
+          break;
+        case SortOption.extensionAsc:
+          compareFunction = (a, b) {
+            final aExt = pathlib.extension(a.path).toLowerCase();
+            final bExt = pathlib.extension(b.path).toLowerCase();
+            return aExt.compareTo(bExt);
+          };
+          break;
+        case SortOption.extensionDesc:
+          compareFunction = (a, b) {
+            final aExt = pathlib.extension(a.path).toLowerCase();
+            final bExt = pathlib.extension(b.path).toLowerCase();
+            return bExt.compareTo(aExt);
+          };
+          break;
+        case SortOption.attributesAsc:
+          compareFunction = (a, b) {
+            final aStats = fileStatsCache[a.path]!;
+            final bStats = fileStatsCache[b.path]!;
+            // Create a string representation of attributes for comparison
+            final aAttrs = '${aStats.mode},${aStats.type}';
+            final bAttrs = '${bStats.mode},${bStats.type}';
+            return aAttrs.compareTo(bAttrs);
+          };
+          break;
+        case SortOption.attributesDesc:
+          compareFunction = (a, b) {
+            final aStats = fileStatsCache[a.path]!;
+            final bStats = fileStatsCache[b.path]!;
+            // Create a string representation of attributes for comparison
+            final aAttrs = '${aStats.mode},${aStats.type}';
+            final bAttrs = '${bStats.mode},${bStats.type}';
+            return bAttrs.compareTo(aAttrs);
           };
           break;
         default:
@@ -611,6 +957,20 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
               .toLowerCase()
               .compareTo(pathlib.basename(b.path).toLowerCase());
       }
+
+      // Folders always come first, then apply the sort function within each group
+      final folderFirstCompare = (FileSystemEntity a, FileSystemEntity b) {
+        final aIsDir = a is Directory;
+        final bIsDir = b is Directory;
+
+        // If both are directories or both are files, use the specific compare function
+        if (aIsDir == bIsDir) {
+          return compareFunction(a, b);
+        }
+
+        // Otherwise, directories come first
+        return aIsDir ? -1 : 1;
+      };
 
       // Sort folders and files separately
       sortedFolders.sort(compareFunction);
