@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
+import 'package:flutter/services.dart'; // Import for keyboard keys
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
 import 'package:cb_file_manager/helpers/io_extensions.dart';
 import 'package:cb_file_manager/helpers/folder_thumbnail_service.dart';
@@ -10,57 +11,180 @@ import 'package:cb_file_manager/ui/screens/folder_list/folder_list_bloc.dart';
 import 'package:cb_file_manager/ui/screens/folder_list/folder_list_event.dart';
 import 'package:path/path.dart' as path;
 import 'package:cb_file_manager/ui/components/shared_file_context_menu.dart';
+import 'package:flutter/scheduler.dart';
+import 'dart:ui'; // Import for lerpDouble
 
 /// Component for displaying a folder item in grid view
-class FolderGridItem extends StatelessWidget {
+class FolderGridItem extends StatefulWidget {
   final Directory folder;
   final Function(String) onNavigate;
+  final bool isSelected;
+  final Function(String, {bool shiftSelect, bool ctrlSelect})?
+      toggleFolderSelection;
+  final bool isDesktopMode;
+  final String? lastSelectedPath;
 
-  FolderGridItem({
+  const FolderGridItem({
     Key? key,
     required this.folder,
     required this.onNavigate,
+    this.isSelected = false,
+    this.toggleFolderSelection,
+    this.isDesktopMode = false,
+    this.lastSelectedPath,
   }) : super(key: key);
+
+  @override
+  State<FolderGridItem> createState() => _FolderGridItemState();
+}
+
+class _FolderGridItemState extends State<FolderGridItem> {
+  bool _isHovering = false;
+  // Locally cached selection state for instant response
+  bool _visuallySelected = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _visuallySelected = widget.isSelected;
+  }
+
+  @override
+  void didUpdateWidget(FolderGridItem oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Only update when external selection state changes
+    if (widget.isSelected != oldWidget.isSelected) {
+      _visuallySelected = widget.isSelected;
+    }
+  }
+
+  // Handle folder selection with immediate visual feedback
+  void _handleFolderSelection() {
+    if (widget.toggleFolderSelection == null) return;
+
+    // Get keyboard state
+    final RawKeyboard keyboard = RawKeyboard.instance;
+    final bool isShiftPressed =
+        keyboard.keysPressed.contains(LogicalKeyboardKey.shift) ||
+            keyboard.keysPressed.contains(LogicalKeyboardKey.shiftLeft) ||
+            keyboard.keysPressed.contains(LogicalKeyboardKey.shiftRight);
+    final bool isCtrlPressed =
+        keyboard.keysPressed.contains(LogicalKeyboardKey.control) ||
+            keyboard.keysPressed.contains(LogicalKeyboardKey.controlLeft) ||
+            keyboard.keysPressed.contains(LogicalKeyboardKey.controlRight) ||
+            keyboard.keysPressed.contains(LogicalKeyboardKey.meta) ||
+            keyboard.keysPressed.contains(LogicalKeyboardKey.metaLeft) ||
+            keyboard.keysPressed.contains(LogicalKeyboardKey.metaRight);
+
+    // Visual update depends on the selection type
+    if (!isShiftPressed) {
+      // For single selection or Ctrl+click, toggle this item
+      setState(() {
+        if (!isCtrlPressed) {
+          // Single selection: this item will be selected
+          _visuallySelected = true;
+        } else {
+          // Ctrl+click: toggle this item's selection
+          _visuallySelected = !_visuallySelected;
+        }
+      });
+    }
+    // For Shift+click, we don't update visually here since the parent will handle it
+
+    // Call the selection handler with the appropriate modifiers
+    widget.toggleFolderSelection!(widget.folder.path,
+        shiftSelect: isShiftPressed, ctrlSelect: isCtrlPressed);
+  }
 
   @override
   Widget build(BuildContext context) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
 
+    // DIRECT RENDERING - no animations, just direct state-based rendering
+    final Color backgroundColor = _visuallySelected
+        ? Theme.of(context).colorScheme.primaryContainer.withOpacity(0.7)
+        : _isHovering && widget.isDesktopMode
+            ? Theme.of(context).hoverColor
+            : Theme.of(context).cardColor;
+
+    final Color borderColor = _visuallySelected
+        ? Theme.of(context).primaryColor
+        : _isHovering && widget.isDesktopMode
+            ? Theme.of(context).primaryColor.withOpacity(0.5)
+            : Colors.transparent;
+
+    final double elevation = _visuallySelected
+        ? 3
+        : _isHovering && widget.isDesktopMode
+            ? 2
+            : 1;
+
     return GestureDetector(
       onSecondaryTap: () => _showFolderContextMenu(context),
-      child: Card(
-        clipBehavior: Clip.antiAlias,
-        elevation: 2,
-        child: InkWell(
-          onTap: () => onNavigate(folder.path),
-          onLongPress: () => _showFolderContextMenu(context),
-          child: Column(
-            children: [
-              // Thumbnail/Icon section
-              Expanded(
-                flex: 3,
-                child: FolderThumbnail(folder: folder),
-              ),
-              // Text section
-              Container(
-                height: 40,
-                width: double.infinity,
-                padding: const EdgeInsets.all(4),
-                color: isDarkMode ? Colors.grey[800] : Colors.grey[200],
-                alignment: Alignment.center,
-                child: Text(
-                  folder.basename(),
-                  textAlign: TextAlign.center,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: isDarkMode ? Colors.white : Colors.black87,
-                    fontWeight: FontWeight.w500,
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _isHovering = true),
+        onExit: (_) => setState(() => _isHovering = false),
+        cursor: SystemMouseCursors.click,
+        child: Card(
+          clipBehavior: Clip.antiAlias,
+          elevation: elevation,
+          color: backgroundColor,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8.0),
+            side: BorderSide(
+              color: borderColor,
+              width: 1.0,
+            ),
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () {
+                if (widget.isDesktopMode &&
+                    widget.toggleFolderSelection != null) {
+                  // On desktop, use keyboard modifiers for selection with INSTANT feedback
+                  _handleFolderSelection();
+                } else {
+                  // Navigate to folder
+                  widget.onNavigate(widget.folder.path);
+                }
+              },
+              onDoubleTap: widget.isDesktopMode
+                  ? () => widget.onNavigate(widget.folder.path)
+                  : null,
+              onLongPress: () => _showFolderContextMenu(context),
+              child: Column(
+                children: [
+                  // Thumbnail/Icon section
+                  Expanded(
+                    flex: 3,
+                    child: FolderThumbnail(folder: widget.folder),
                   ),
-                ),
+                  // Text section
+                  Container(
+                    height: 40,
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(4),
+                    color: isDarkMode ? Colors.grey[800] : Colors.grey[200],
+                    alignment: Alignment.center,
+                    child: Text(
+                      widget.folder.basename(),
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isDarkMode ? Colors.white : Colors.black87,
+                        fontWeight: _visuallySelected
+                            ? FontWeight.bold
+                            : FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -71,86 +195,230 @@ class FolderGridItem extends StatelessWidget {
     // Use the shared folder context menu
     showFolderContextMenu(
       context: context,
-      folder: folder,
-      onNavigate: onNavigate,
+      folder: widget.folder,
+      onNavigate: widget.onNavigate,
     );
   }
 }
 
 /// Component for displaying a folder item in list view
-class FolderListItem extends StatelessWidget {
+class FolderListItem extends StatefulWidget {
   final Directory folder;
   final Function(String) onNavigate;
+  final bool isSelected;
+  final Function(String, {bool shiftSelect, bool ctrlSelect})?
+      toggleFolderSelection;
+  final bool isDesktopMode;
+  final String? lastSelectedPath;
 
-  FolderListItem({
+  const FolderListItem({
     Key? key,
     required this.folder,
     required this.onNavigate,
+    this.isSelected = false,
+    this.toggleFolderSelection,
+    this.isDesktopMode = false,
+    this.lastSelectedPath,
   }) : super(key: key);
+
+  @override
+  State<FolderListItem> createState() => _FolderListItemState();
+}
+
+class _FolderListItemState extends State<FolderListItem> {
+  bool _isHovering = false;
+  bool _visuallySelected = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _visuallySelected = widget.isSelected;
+  }
+
+  @override
+  void didUpdateWidget(FolderListItem oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isSelected != oldWidget.isSelected) {
+      setState(() {
+        _visuallySelected = widget.isSelected;
+      });
+    }
+  }
+
+  // Handle folder selection based on keyboard modifiers
+  void _handleFolderSelection() {
+    if (widget.toggleFolderSelection == null) return;
+
+    // Check for Shift and Ctrl keys
+    final RawKeyboard keyboard = RawKeyboard.instance;
+
+    // Check for Shift key
+    final bool isShiftPressed =
+        keyboard.keysPressed.contains(LogicalKeyboardKey.shift) ||
+            keyboard.keysPressed.contains(LogicalKeyboardKey.shiftLeft) ||
+            keyboard.keysPressed.contains(LogicalKeyboardKey.shiftRight);
+
+    // Check for Ctrl key (Control on Windows/Linux, Command on Mac)
+    final bool isCtrlPressed =
+        keyboard.keysPressed.contains(LogicalKeyboardKey.control) ||
+            keyboard.keysPressed.contains(LogicalKeyboardKey.controlLeft) ||
+            keyboard.keysPressed.contains(LogicalKeyboardKey.controlRight) ||
+            keyboard.keysPressed
+                .contains(LogicalKeyboardKey.meta) || // Command key on Mac
+            keyboard.keysPressed.contains(LogicalKeyboardKey.metaLeft) ||
+            keyboard.keysPressed.contains(LogicalKeyboardKey.metaRight);
+
+    // Visual update for immediate feedback
+    if (!isShiftPressed) {
+      setState(() {
+        if (!isCtrlPressed) {
+          // Single selection without Ctrl: this item will be selected, others will be deselected
+          _visuallySelected = true;
+        } else {
+          // Ctrl+click: toggle this item's selection
+          _visuallySelected = !_visuallySelected;
+        }
+      });
+    }
+    // For Shift+click, we don't update visually here since the parent will handle
+    // the range selection and update all items in the range
+
+    // Call toggleFolderSelection with appropriate parameters
+    widget.toggleFolderSelection!(widget.folder.path,
+        shiftSelect: isShiftPressed, ctrlSelect: isCtrlPressed);
+  }
 
   @override
   Widget build(BuildContext context) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
 
+    // Colors and effects similar to Windows Explorer
+    final Color itemBackgroundColor = _visuallySelected
+        ? Theme.of(context).colorScheme.primaryContainer.withOpacity(0.7)
+        : _isHovering && widget.isDesktopMode
+            ? Theme.of(context).hoverColor
+            : Theme.of(context).cardColor;
+
+    // Border for default or hover/selected state
+    final Border itemBorder = _visuallySelected
+        ? Border.all(color: Theme.of(context).primaryColor, width: 1.0)
+        : _isHovering && widget.isDesktopMode
+            ? Border.all(
+                color: Theme.of(context).primaryColor.withOpacity(0.5),
+                width: 1.0)
+            : Border.all(color: Colors.grey.shade300);
+
     return GestureDetector(
       onSecondaryTap: () => _showFolderContextMenu(context),
-      child: Card(
-        margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
-        child: InkWell(
-          onLongPress: () => _showFolderContextMenu(context),
-          child: ListTile(
-            leading: SizedBox(
-              width: 40,
-              height: 40,
-              child: FolderThumbnail(
-                folder: folder,
-                size: 40,
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _isHovering = true),
+        onExit: (_) => setState(() => _isHovering = false),
+        cursor: SystemMouseCursors.click,
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+          decoration: BoxDecoration(
+            color: itemBackgroundColor,
+            border: itemBorder,
+            borderRadius: BorderRadius.circular(8.0),
+            boxShadow: _visuallySelected
+                ? [
+                    BoxShadow(
+                      color: Theme.of(context).primaryColor.withOpacity(0.3),
+                      blurRadius: 4,
+                      offset: Offset(0, 1),
+                    )
+                  ]
+                : _isHovering && widget.isDesktopMode
+                    ? [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 4,
+                          offset: Offset(0, 1),
+                        )
+                      ]
+                    : null,
+          ),
+          child: GestureDetector(
+            onDoubleTap: widget.isDesktopMode
+                ? () => widget.onNavigate(widget.folder.path)
+                : null,
+            child: Theme(
+              // Apply no splash theme
+              data: Theme.of(context).copyWith(
+                splashFactory: NoSplashFactory(),
+                highlightColor: Colors.transparent,
               ),
-            ),
-            title: Text(
-              folder.basename(),
-              style: TextStyle(
-                color: isDarkMode ? Colors.white : Colors.black87,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            subtitle: FutureBuilder<FileStat>(
-              future: folder.stat(),
-              builder: (context, snapshot) {
-                if (snapshot.hasData) {
-                  return Text(
-                    '${snapshot.data!.modified.toString().split('.')[0]}',
+              child: Material(
+                color: Colors.transparent,
+                child: ListTile(
+                  leading: SizedBox(
+                    width: 40,
+                    height: 40,
+                    child: FolderThumbnail(
+                      folder: widget.folder,
+                      size: 40,
+                    ),
+                  ),
+                  title: Text(
+                    widget.folder.basename(),
                     style: TextStyle(
-                        color:
-                            isDarkMode ? Colors.grey[400] : Colors.grey[800]),
-                  );
-                }
-                return Text('Loading...',
-                    style: TextStyle(
-                        color:
-                            isDarkMode ? Colors.grey[500] : Colors.grey[700]));
-              },
-            ),
-            onTap: () => onNavigate(folder.path),
-            trailing: PopupMenuButton<String>(
-              icon: const Icon(Icons.more_vert),
-              onSelected: (value) {
-                if (value == 'properties') {
-                  _showFolderContextMenu(context);
-                }
-              },
-              itemBuilder: (context) => [
-                const PopupMenuItem<String>(
-                  value: 'properties',
-                  child: Row(
-                    children: [
-                      Icon(Icons.settings),
-                      SizedBox(width: 8),
-                      Text('Folder Properties'),
+                      color: isDarkMode ? Colors.white : Colors.black87,
+                      fontWeight:
+                          _visuallySelected ? FontWeight.bold : FontWeight.w500,
+                    ),
+                  ),
+                  subtitle: FutureBuilder<FileStat>(
+                    future: widget.folder.stat(),
+                    builder: (context, snapshot) {
+                      if (snapshot.hasData) {
+                        return Text(
+                          '${snapshot.data!.modified.toString().split('.')[0]}',
+                          style: TextStyle(
+                              color: isDarkMode
+                                  ? Colors.grey[400]
+                                  : Colors.grey[800]),
+                        );
+                      }
+                      return Text('Loading...',
+                          style: TextStyle(
+                              color: isDarkMode
+                                  ? Colors.grey[500]
+                                  : Colors.grey[700]));
+                    },
+                  ),
+                  onTap: () {
+                    if (widget.isDesktopMode &&
+                        widget.toggleFolderSelection != null) {
+                      // On desktop, use keyboard modifiers for selection
+                      _handleFolderSelection();
+                    } else {
+                      // Navigate to folder
+                      widget.onNavigate(widget.folder.path);
+                    }
+                  },
+                  onLongPress: () => _showFolderContextMenu(context),
+                  trailing: PopupMenuButton<String>(
+                    icon: const Icon(Icons.more_vert),
+                    onSelected: (value) {
+                      if (value == 'properties') {
+                        _showFolderContextMenu(context);
+                      }
+                    },
+                    itemBuilder: (context) => [
+                      const PopupMenuItem<String>(
+                        value: 'properties',
+                        child: Row(
+                          children: [
+                            Icon(Icons.settings),
+                            SizedBox(width: 8),
+                            Text('Folder Properties'),
+                          ],
+                        ),
+                      ),
                     ],
                   ),
                 ),
-              ],
+              ),
             ),
           ),
         ),
@@ -162,8 +430,8 @@ class FolderListItem extends StatelessWidget {
     // Use the shared folder context menu
     showFolderContextMenu(
       context: context,
-      folder: folder,
-      onNavigate: onNavigate,
+      folder: widget.folder,
+      onNavigate: widget.onNavigate,
     );
   }
 }
@@ -417,5 +685,48 @@ class _FolderThumbnailState extends State<FolderThumbnail> {
         ),
       );
     }
+  }
+}
+
+// Helper function to determine if we're on desktop
+bool get isDesktopPlatform =>
+    Platform.isWindows || Platform.isMacOS || Platform.isLinux;
+
+// Class to disable splash effect
+class NoSplashFactory extends InteractiveInkFeatureFactory {
+  @override
+  InteractiveInkFeature create({
+    required MaterialInkController controller,
+    required RenderBox referenceBox,
+    required Offset position,
+    required Color color,
+    required TextDirection textDirection,
+    bool containedInkWell = false,
+    RectCallback? rectCallback,
+    BorderRadius? borderRadius,
+    ShapeBorder? customBorder,
+    double? radius,
+    VoidCallback? onRemoved,
+  }) {
+    return _NoSplash(
+      controller: controller,
+      referenceBox: referenceBox,
+    );
+  }
+}
+
+class _NoSplash extends InteractiveInkFeature {
+  _NoSplash({
+    required MaterialInkController controller,
+    required RenderBox referenceBox,
+  }) : super(
+          controller: controller,
+          referenceBox: referenceBox,
+          color: Colors.transparent,
+        );
+
+  @override
+  void paintFeature(Canvas canvas, Matrix4 transform) {
+    // No painting
   }
 }

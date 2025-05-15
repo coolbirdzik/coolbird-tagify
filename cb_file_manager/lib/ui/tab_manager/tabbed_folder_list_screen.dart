@@ -1,5 +1,7 @@
 import 'dart:io';
 import 'dart:async'; // Add this import for Completer
+import 'dart:async' show scheduleMicrotask;
+import 'dart:math'; // For math operations with drag selection and min/max functions
 
 import 'package:cb_file_manager/helpers/frame_timing_optimizer.dart';
 // Add this import
@@ -28,6 +30,16 @@ import 'components/index.dart' as tab_components;
 import 'tab_data.dart'; // Import TabData explicitly
 import 'package:cb_file_manager/ui/dialogs/open_with_dialog.dart';
 import 'package:cb_file_manager/helpers/external_app_helper.dart';
+import 'package:cb_file_manager/helpers/trash_manager.dart'; // Import for TrashManager
+
+// Add imports for hardware acceleration
+import 'package:flutter/rendering.dart' show RendererBinding;
+import 'package:flutter/scheduler.dart'
+    show SchedulerBinding; // For scheduler and timeDilation
+
+// Helper function to determine if we're on desktop
+bool get isDesktopPlatform =>
+    Platform.isWindows || Platform.isMacOS || Platform.isLinux;
 
 /// A modified version of FolderListScreen that works with the tab system
 class TabbedFolderListScreen extends StatefulWidget {
@@ -54,6 +66,7 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
   String? _currentSearchTag;
   bool _isSelectionMode = false;
   final Set<String> _selectedFilePaths = {};
+  final Set<String> _selectedFolderPaths = {}; // Add set for selected folders
 
   // Trạng thái hiển thị thanh tìm kiếm
   bool _showSearchBar = false;
@@ -77,6 +90,20 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
   // Flag to track if we're handling a path update to avoid duplicate loads
   bool _isHandlingPathUpdate = false;
 
+  // Add these properties to store last selected file for shift-selection
+  String? _lastSelectedFilePath;
+
+  // Add these variables for ultra-fast selection mode
+  Set<String> _pendingFilePaths = {};
+  Set<String> _pendingFolderPaths = {};
+  bool _selectionUpdatePending = false;
+
+  // Variables for drag selection
+  bool _isDragging = false;
+  Offset? _dragStartPosition;
+  Offset? _dragCurrentPosition;
+  Map<String, Rect> _itemPositions = {};
+
   @override
   void initState() {
     super.initState();
@@ -84,6 +111,11 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
     _searchController = TextEditingController();
     _tagController = TextEditingController();
     _pathController = TextEditingController(text: _currentPath);
+
+    // Enable hardware acceleration for smoother animations
+    WidgetsBinding.instance.renderView.automaticSystemUiAdjustment = false;
+    // Replace with platform-optimized settings
+    RendererBinding.instance.ensureSemantics();
 
     // Initialize the bloc
     _folderListBloc = FolderListBloc();
@@ -124,6 +156,9 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
 
   @override
   void dispose() {
+    // Restore default settings
+    WidgetsBinding.instance.renderView.automaticSystemUiAdjustment = true;
+
     _searchController.dispose();
     _tagController.dispose();
     _pathController.dispose();
@@ -208,24 +243,123 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
       _isSelectionMode = !_isSelectionMode;
       if (!_isSelectionMode) {
         _selectedFilePaths.clear();
+        _selectedFolderPaths.clear();
+        _lastSelectedFilePath = null;
       }
     });
   }
 
-  void _toggleFileSelection(String filePath) {
-    setState(() {
-      if (_selectedFilePaths.contains(filePath)) {
-        _selectedFilePaths.remove(filePath);
+  // Completely rewritten selection method to fix issues with both files and folders
+  void _toggleItemSelection(String itemPath, bool isFolder,
+      {bool shiftSelect = false, bool ctrlSelect = false}) {
+    if (!shiftSelect) {
+      // SINGLE ITEM SELECTION LOGIC
+      final isAlreadySelected = isFolder
+          ? _selectedFolderPaths.contains(itemPath)
+          : _selectedFilePaths.contains(itemPath);
+
+      if (isAlreadySelected && ctrlSelect) {
+        // Ctrl+click on selected item should deselect it
+        if (isFolder) {
+          _selectedFolderPaths.remove(itemPath);
+        } else {
+          _selectedFilePaths.remove(itemPath);
+        }
       } else {
-        _selectedFilePaths.add(filePath);
+        // Clear previous selections if not Ctrl+click
+        if (!ctrlSelect) {
+          _selectedFilePaths.clear();
+          _selectedFolderPaths.clear();
+        }
+
+        // Add new selection (if using Ctrl+click on an already selected item, do nothing)
+        if (!isAlreadySelected) {
+          if (isFolder) {
+            _selectedFolderPaths.add(itemPath);
+          } else {
+            _selectedFilePaths.add(itemPath);
+          }
+        }
       }
-    });
+
+      // Store as last selected for Shift+click
+      _lastSelectedFilePath = itemPath;
+    } else if (_lastSelectedFilePath != null) {
+      // SHIFT+CLICK RANGE SELECTION LOGIC
+
+      // Create list of all paths in same order as displayed in UI
+      final List<String> allFolderPaths =
+          _folderListBloc.state.folders.map((f) => f.path).toList();
+      final List<String> allFilePaths =
+          _folderListBloc.state.files.map((f) => f.path).toList();
+      final List<String> allPaths = [...allFolderPaths, ...allFilePaths];
+
+      // Find indices of current and last-selected items
+      final int currentIndex = allPaths.indexOf(itemPath);
+      final int lastIndex = allPaths.indexOf(_lastSelectedFilePath!);
+
+      if (currentIndex >= 0 && lastIndex >= 0) {
+        // Clear previous selections if not Ctrl+click
+        if (!ctrlSelect) {
+          _selectedFilePaths.clear();
+          _selectedFolderPaths.clear();
+        }
+
+        // Determine range boundaries (inclusive)
+        final int startIndex = min(currentIndex, lastIndex);
+        final int endIndex = max(currentIndex, lastIndex);
+
+        // Process all items in range
+        for (int i = startIndex; i <= endIndex; i++) {
+          final String path = allPaths[i];
+
+          // Determine whether path is a folder or file
+          if (allFolderPaths.contains(path)) {
+            _selectedFolderPaths.add(path);
+          } else {
+            _selectedFilePaths.add(path);
+          }
+        }
+      }
+    }
+
+    // Update selection mode
+    _isSelectionMode =
+        _selectedFilePaths.isNotEmpty || _selectedFolderPaths.isNotEmpty;
+
+    // Trigger UI update
+    if (!_selectionUpdatePending) {
+      _selectionUpdatePending = true;
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          setState(() {
+            _selectionUpdatePending = false;
+          });
+        }
+      });
+    }
+  }
+
+  // Update file selection to use the unified selection system
+  void _toggleFileSelection(String filePath,
+      {bool shiftSelect = false, bool ctrlSelect = false}) {
+    _toggleItemSelection(filePath, false,
+        shiftSelect: shiftSelect, ctrlSelect: ctrlSelect);
+  }
+
+  // Update folder selection to use the unified selection system
+  void _toggleFolderSelection(String folderPath,
+      {bool shiftSelect = false, bool ctrlSelect = false}) {
+    _toggleItemSelection(folderPath, true,
+        shiftSelect: shiftSelect, ctrlSelect: ctrlSelect);
   }
 
   void _clearSelection() {
     setState(() {
       _isSelectionMode = false;
       _selectedFilePaths.clear();
+      _selectedFolderPaths.clear();
+      _lastSelectedFilePath = null;
     });
   }
 
@@ -612,9 +746,11 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
                 if (_isSelectionMode) {
                   return Scaffold(
                     appBar: tab_components.SelectionAppBar(
-                      selectedCount: _selectedFilePaths.length,
+                      selectedCount: _selectedFilePaths.length +
+                          _selectedFolderPaths.length,
                       onClearSelection: _clearSelection,
                       selectedFilePaths: _selectedFilePaths.toList(),
+                      selectedFolderPaths: _selectedFolderPaths.toList(),
                       showRemoveTagsDialog: _showRemoveTagsDialog,
                       showManageAllTagsDialog: (context) =>
                           _showManageAllTagsDialog(context),
@@ -845,97 +981,209 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
     FrameTimingOptimizer().optimizeBeforeHeavyOperation();
 
     if (state.viewMode == ViewMode.grid) {
-      return Listener(
-        onPointerSignal: (PointerSignalEvent event) {
-          // Chỉ xử lý khi ở chế độ lưới
-          if (state.viewMode != ViewMode.grid) return;
+      return Stack(
+        children: [
+          GestureDetector(
+            // Exit selection mode when tapping background
+            onTap: () {
+              if (_isSelectionMode) {
+                _clearSelection();
+              }
+            },
+            // Handle drag selection
+            onPanStart: (details) {
+              _startDragSelection(details.localPosition);
+            },
+            onPanUpdate: (details) {
+              _updateDragSelection(details.localPosition);
+            },
+            onPanEnd: (details) {
+              _endDragSelection();
+            },
+            behavior: HitTestBehavior.translucent,
+            child: Listener(
+              onPointerSignal: (PointerSignalEvent event) {
+                // Chỉ xử lý khi ở chế độ lưới
+                if (state.viewMode != ViewMode.grid) return;
 
-          // Xử lý sự kiện cuộn chuột kết hợp với phím Ctrl
-          if (event is PointerScrollEvent) {
-            // Kiểm tra xem phím Ctrl có được nhấn không
-            if (RawKeyboard.instance.keysPressed
-                    .contains(LogicalKeyboardKey.controlLeft) ||
-                RawKeyboard.instance.keysPressed
-                    .contains(LogicalKeyboardKey.controlRight)) {
-              // Xác định hướng cuộn (lên = -1, xuống = 1)
-              final int direction = event.scrollDelta.dy > 0 ? 1 : -1;
+                // Xử lý sự kiện cuộn chuột kết hợp với phím Ctrl
+                if (event is PointerScrollEvent) {
+                  // Kiểm tra xem phím Ctrl có được nhấn không
+                  if (RawKeyboard.instance.keysPressed
+                          .contains(LogicalKeyboardKey.controlLeft) ||
+                      RawKeyboard.instance.keysPressed
+                          .contains(LogicalKeyboardKey.controlRight)) {
+                    // Xác định hướng cuộn (lên = -1, xuống = 1)
+                    final int direction = event.scrollDelta.dy > 0 ? 1 : -1;
 
-              // Gọi phương thức để thay đổi mức zoom
-              _handleZoomLevelChange(direction);
+                    // Gọi phương thức để thay đổi mức zoom
+                    _handleZoomLevelChange(direction);
 
-              // Ngăn chặn sự kiện mặc định
-              GestureBinding.instance.pointerSignalResolver.resolve(event);
-            }
-          }
-        },
-        child: GridView.builder(
-          padding: const EdgeInsets.all(8.0),
-          // Add physics for better scrolling performance
-          physics: const BouncingScrollPhysics(
-            parent: AlwaysScrollableScrollPhysics(),
+                    // Ngăn chặn sự kiện mặc định
+                    GestureBinding.instance.pointerSignalResolver
+                        .resolve(event);
+                  }
+                }
+              },
+              child: GridView.builder(
+                padding: const EdgeInsets.all(8.0),
+                // Add physics for better scrolling performance
+                physics: const BouncingScrollPhysics(
+                  parent: AlwaysScrollableScrollPhysics(),
+                ),
+                // Add caching for better scroll performance
+                cacheExtent: 1000,
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: state.gridZoomLevel,
+                  crossAxisSpacing: 8,
+                  mainAxisSpacing: 8,
+                ),
+                itemCount: state.folders.length + state.files.length,
+                itemBuilder: (context, index) {
+                  // Get path for this item
+                  final String itemPath = index < state.folders.length
+                      ? state.folders[index].path
+                      : state.files[index - state.folders.length].path;
+
+                  // Wrap with LayoutBuilder to capture item positions
+                  return LayoutBuilder(builder:
+                      (BuildContext context, BoxConstraints constraints) {
+                    // Perform post-layout callback to store item position
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      final RenderBox? renderBox =
+                          context.findRenderObject() as RenderBox?;
+                      if (renderBox != null && renderBox.hasSize) {
+                        final position = renderBox.localToGlobal(Offset.zero);
+                        _registerItemPosition(
+                            itemPath,
+                            Rect.fromLTWH(position.dx, position.dy,
+                                renderBox.size.width, renderBox.size.height));
+                      }
+                    });
+
+                    // Build the actual item
+                    return RepaintBoundary(
+                      child: index < state.folders.length
+                          ? tab_components.FolderGridItem(
+                              folder: state.folders[index] as Directory,
+                              onNavigate: _navigateToPath,
+                              isSelected: _selectedFolderPaths
+                                  .contains(state.folders[index].path),
+                              toggleFolderSelection: _toggleFolderSelection,
+                              isDesktopMode: isDesktopPlatform,
+                              lastSelectedPath: _lastSelectedFilePath,
+                            )
+                          : folder_list_components.FileGridItem(
+                              file: state.files[index - state.folders.length]
+                                  as File,
+                              state: state,
+                              isSelectionMode: _isSelectionMode,
+                              isSelected: _selectedFilePaths.contains(state
+                                  .files[index - state.folders.length].path),
+                              toggleFileSelection: _toggleFileSelection,
+                              toggleSelectionMode: _toggleSelectionMode,
+                              onFileTap: _onFileTap,
+                              // Add tag management callbacks to enable context menu functionality
+                              showAddTagToFileDialog: _showAddTagToFileDialog,
+                              showDeleteTagDialog: _showDeleteTagDialog,
+                              isDesktopMode: isDesktopPlatform,
+                              lastSelectedPath: _lastSelectedFilePath,
+                            ),
+                    );
+                  });
+                },
+              ),
+            ),
           ),
-          // Add caching for better scroll performance
-          cacheExtent: 1000,
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: state.gridZoomLevel,
-            crossAxisSpacing: 8,
-            mainAxisSpacing: 8,
-          ),
-          itemCount: state.folders.length + state.files.length,
-          itemBuilder: (context, index) {
-            // Wrap with RepaintBoundary to optimize rendering
-            return RepaintBoundary(
-              child: index < state.folders.length
-                  ? tab_components.FolderGridItem(
-                      folder: state.folders[index] as Directory,
-                      onNavigate: _navigateToPath)
-                  : folder_list_components.FileGridItem(
-                      file: state.files[index - state.folders.length] as File,
-                      state: state,
-                      isSelectionMode: _isSelectionMode,
-                      isSelected: _selectedFilePaths.contains(
-                          state.files[index - state.folders.length].path),
-                      toggleFileSelection: _toggleFileSelection,
-                      toggleSelectionMode: _toggleSelectionMode,
-                      onFileTap: _onFileTap,
-                      // Add tag management callbacks to enable context menu functionality
-                      showAddTagToFileDialog: _showAddTagToFileDialog,
-                      showDeleteTagDialog: _showDeleteTagDialog,
-                    ),
-            );
-          },
-        ),
+          // Add the selection rectangle overlay
+          _buildDragSelectionOverlay(),
+        ],
       );
     } else {
-      return ListView.builder(
-        // Add physics for better scrolling performance
-        physics: const BouncingScrollPhysics(
-          parent: AlwaysScrollableScrollPhysics(),
-        ),
-        // Add caching for better scroll performance
-        cacheExtent: 500,
-        itemCount: state.folders.length + state.files.length,
-        itemBuilder: (context, index) {
-          // Use RepaintBoundary to reduce rendering load
-          return RepaintBoundary(
-            child: index < state.folders.length
-                ? tab_components.FolderListItem(
-                    folder: state.folders[index] as Directory,
-                    onNavigate: _navigateToPath,
-                  )
-                : folder_list_components.FileItem(
-                    file: state.files[index - state.folders.length] as File,
-                    state: state,
-                    isSelectionMode: _isSelectionMode,
-                    isSelected: _selectedFilePaths.contains(
-                        state.files[index - state.folders.length].path),
-                    toggleFileSelection: _toggleFileSelection,
-                    showDeleteTagDialog: _showDeleteTagDialog,
-                    showAddTagToFileDialog: _showAddTagToFileDialog,
-                    onFileTap: _onFileTap,
-                  ),
-          );
-        },
+      return Stack(
+        children: [
+          GestureDetector(
+            // Exit selection mode when tapping background
+            onTap: () {
+              if (_isSelectionMode) {
+                _clearSelection();
+              }
+            },
+            // Handle drag selection
+            onPanStart: (details) {
+              _startDragSelection(details.localPosition);
+            },
+            onPanUpdate: (details) {
+              _updateDragSelection(details.localPosition);
+            },
+            onPanEnd: (details) {
+              _endDragSelection();
+            },
+            behavior: HitTestBehavior.translucent,
+            child: ListView.builder(
+              // Add physics for better scrolling performance
+              physics: const BouncingScrollPhysics(
+                parent: AlwaysScrollableScrollPhysics(),
+              ),
+              // Add caching for better scroll performance
+              cacheExtent: 500,
+              itemCount: state.folders.length + state.files.length,
+              itemBuilder: (context, index) {
+                // Get path for this item
+                final String itemPath = index < state.folders.length
+                    ? state.folders[index].path
+                    : state.files[index - state.folders.length].path;
+
+                // Wrap with LayoutBuilder to capture item positions
+                return LayoutBuilder(builder:
+                    (BuildContext context, BoxConstraints constraints) {
+                  // Perform post-layout callback to store item position
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    final RenderBox? renderBox =
+                        context.findRenderObject() as RenderBox?;
+                    if (renderBox != null && renderBox.hasSize) {
+                      final position = renderBox.localToGlobal(Offset.zero);
+                      _registerItemPosition(
+                          itemPath,
+                          Rect.fromLTWH(position.dx, position.dy,
+                              renderBox.size.width, renderBox.size.height));
+                    }
+                  });
+
+                  // Build the actual item
+                  return RepaintBoundary(
+                    child: index < state.folders.length
+                        ? tab_components.FolderListItem(
+                            folder: state.folders[index] as Directory,
+                            onNavigate: _navigateToPath,
+                            isSelected: _selectedFolderPaths
+                                .contains(state.folders[index].path),
+                            toggleFolderSelection: _toggleFolderSelection,
+                            isDesktopMode: isDesktopPlatform,
+                            lastSelectedPath: _lastSelectedFilePath,
+                          )
+                        : folder_list_components.FileItem(
+                            file: state.files[index - state.folders.length]
+                                as File,
+                            state: state,
+                            isSelectionMode: _isSelectionMode,
+                            isSelected: _selectedFilePaths.contains(
+                                state.files[index - state.folders.length].path),
+                            toggleFileSelection: _toggleFileSelection,
+                            showDeleteTagDialog: _showDeleteTagDialog,
+                            showAddTagToFileDialog: _showAddTagToFileDialog,
+                            onFileTap: _onFileTap,
+                            isDesktopMode: isDesktopPlatform,
+                            lastSelectedPath: _lastSelectedFilePath,
+                          ),
+                  );
+                });
+              },
+            ),
+          ),
+          // Add the selection rectangle overlay
+          _buildDragSelectionOverlay(),
+        ],
       );
     }
   }
@@ -981,10 +1229,19 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
   }
 
   void _showDeleteConfirmationDialog(BuildContext context) {
+    final int fileCount = _selectedFilePaths.length;
+    final int folderCount = _selectedFolderPaths.length;
+    final int totalCount = fileCount + folderCount;
+    final String itemType = fileCount > 0 && folderCount > 0
+        ? 'items'
+        : fileCount > 0
+            ? 'files'
+            : 'folders';
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Move ${_selectedFilePaths.length} items to trash?'),
+        title: Text('Move $totalCount $itemType to trash?'),
         content: const Text(
             'These items will be moved to the trash bin. You can restore them later if needed.'),
         actions: [
@@ -996,8 +1253,33 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
           ),
           TextButton(
             onPressed: () {
-              BlocProvider.of<FolderListBloc>(context)
-                  .add(FolderListDeleteFiles(_selectedFilePaths.toList()));
+              // Delete files
+              if (fileCount > 0) {
+                BlocProvider.of<FolderListBloc>(context)
+                    .add(FolderListDeleteFiles(_selectedFilePaths.toList()));
+              }
+
+              // Delete folders
+              if (folderCount > 0) {
+                // For now, handle folder deletion as multiple file deletions
+                // In the future, implement a specific event for folder deletion
+                for (final folderPath in _selectedFolderPaths) {
+                  final folder = Directory(folderPath);
+                  try {
+                    // Check if folder exists and move to trash
+                    if (folder.existsSync()) {
+                      final trashManager = TrashManager();
+                      trashManager.moveToTrash(folderPath);
+                    }
+                  } catch (e) {
+                    print('Error moving folder to trash: $e');
+                  }
+                }
+
+                // Refresh the folder list after deletion
+                _folderListBloc.add(FolderListLoad(_currentPath));
+              }
+
               Navigator.of(context).pop();
               _clearSelection();
             },
@@ -1169,5 +1451,190 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
       _folderListBloc.add(SetGridZoom(newZoom));
       _saveGridZoomSetting(newZoom);
     }
+  }
+
+  // Add this method to handle drag selection
+  void _startDragSelection(Offset position) {
+    if (_isDragging) return;
+
+    setState(() {
+      _isDragging = true;
+      _dragStartPosition = position;
+      _dragCurrentPosition = position;
+    });
+  }
+
+  void _updateDragSelection(Offset position) {
+    if (!_isDragging) return;
+
+    setState(() {
+      _dragCurrentPosition = position;
+    });
+
+    // Calculate selection rectangle
+    final selectionRect =
+        Rect.fromPoints(_dragStartPosition!, _dragCurrentPosition!);
+
+    // Check which items are inside the selection rect
+    _selectItemsInRect(selectionRect);
+  }
+
+  void _endDragSelection() {
+    setState(() {
+      _isDragging = false;
+      _dragStartPosition = null;
+      _dragCurrentPosition = null;
+    });
+  }
+
+  void _selectItemsInRect(Rect selectionRect) {
+    // Get keyboard state for modifiers
+    final RawKeyboard keyboard = RawKeyboard.instance;
+    final bool isCtrlPressed =
+        keyboard.keysPressed.contains(LogicalKeyboardKey.control) ||
+            keyboard.keysPressed.contains(LogicalKeyboardKey.controlLeft) ||
+            keyboard.keysPressed.contains(LogicalKeyboardKey.controlRight) ||
+            keyboard.keysPressed.contains(LogicalKeyboardKey.meta) ||
+            keyboard.keysPressed.contains(LogicalKeyboardKey.metaLeft) ||
+            keyboard.keysPressed.contains(LogicalKeyboardKey.metaRight);
+
+    final bool isShiftPressed =
+        keyboard.keysPressed.contains(LogicalKeyboardKey.shift) ||
+            keyboard.keysPressed.contains(LogicalKeyboardKey.shiftLeft) ||
+            keyboard.keysPressed.contains(LogicalKeyboardKey.shiftRight);
+
+    // Create sets for newly selected items
+    final Set<String> newSelectedFolderPaths = {};
+    final Set<String> newSelectedFilePaths = {};
+
+    // Check which items are inside the selection rect
+    _itemPositions.forEach((path, itemRect) {
+      if (selectionRect.overlaps(itemRect)) {
+        // Check if it's a folder or file
+        if (_folderListBloc.state.folders
+            .any((folder) => folder.path == path)) {
+          newSelectedFolderPaths.add(path);
+        } else {
+          newSelectedFilePaths.add(path);
+        }
+      }
+    });
+
+    // Handle selection based on keyboard modifiers
+    if (isShiftPressed && _lastSelectedFilePath != null) {
+      // With Shift, maintain existing selection and add the current range
+      // Only clear previous selection if Ctrl is not pressed
+      if (!isCtrlPressed) {
+        _selectedFilePaths.clear();
+        _selectedFolderPaths.clear();
+      }
+
+      // If we have a last selected path, try to add range selection logic
+      // We'll need a list of all paths in UI order
+      final List<String> allFolderPaths =
+          _folderListBloc.state.folders.map((f) => f.path).toList();
+      final List<String> allFilePaths =
+          _folderListBloc.state.files.map((f) => f.path).toList();
+      final List<String> allPaths = [...allFolderPaths, ...allFilePaths];
+
+      // Find indices
+      final int lastIndex = allPaths.indexOf(_lastSelectedFilePath!);
+
+      // For each item in the drag selection, find the range between it and last selected
+      if (lastIndex >= 0) {
+        // For each selected item, find its index and select the range
+        final Set<String> pathsToSelect = {};
+
+        for (final String path in [
+          ...newSelectedFolderPaths,
+          ...newSelectedFilePaths
+        ]) {
+          final int currentIndex = allPaths.indexOf(path);
+          if (currentIndex >= 0) {
+            // Determine range boundaries (inclusive)
+            final int startIndex = min(currentIndex, lastIndex);
+            final int endIndex = max(currentIndex, lastIndex);
+
+            // Add all paths in range
+            for (int i = startIndex; i <= endIndex; i++) {
+              pathsToSelect.add(allPaths[i]);
+            }
+          }
+        }
+
+        // Add all paths from the range to the appropriate collections
+        for (final String path in pathsToSelect) {
+          if (allFolderPaths.contains(path)) {
+            _selectedFolderPaths.add(path);
+          } else {
+            _selectedFilePaths.add(path);
+          }
+        }
+      }
+    } else {
+      // Normal selection behavior (no Shift key)
+      if (!isCtrlPressed) {
+        // If not holding Ctrl, clear previous selection
+        _selectedFilePaths.clear();
+        _selectedFolderPaths.clear();
+      }
+
+      // Update selection sets
+      _selectedFolderPaths.addAll(newSelectedFolderPaths);
+      _selectedFilePaths.addAll(newSelectedFilePaths);
+
+      // If something was selected, update last selected path
+      if (newSelectedFilePaths.isNotEmpty) {
+        _lastSelectedFilePath = newSelectedFilePaths.last;
+      } else if (newSelectedFolderPaths.isNotEmpty) {
+        _lastSelectedFilePath = newSelectedFolderPaths.last;
+      }
+    }
+
+    // Update selection mode
+    _isSelectionMode =
+        _selectedFilePaths.isNotEmpty || _selectedFolderPaths.isNotEmpty;
+
+    // Force UI update
+    if (!_selectionUpdatePending) {
+      _selectionUpdatePending = true;
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          setState(() {
+            _selectionUpdatePending = false;
+          });
+        }
+      });
+    }
+  }
+
+  // Method to store item positions for drag selection
+  void _registerItemPosition(String path, Rect position) {
+    _itemPositions[path] = position;
+  }
+
+  // Method for building the drag selection rectangle overlay
+  Widget _buildDragSelectionOverlay() {
+    if (!_isDragging ||
+        _dragStartPosition == null ||
+        _dragCurrentPosition == null) {
+      return const SizedBox.shrink();
+    }
+
+    final selectionRect =
+        Rect.fromPoints(_dragStartPosition!, _dragCurrentPosition!);
+
+    return Positioned.fromRect(
+      rect: selectionRect,
+      child: Container(
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.primary.withOpacity(0.2),
+          border: Border.all(
+            color: Theme.of(context).colorScheme.primary.withOpacity(0.8),
+            width: 1.0,
+          ),
+        ),
+      ),
+    );
   }
 }

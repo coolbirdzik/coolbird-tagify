@@ -22,18 +22,23 @@ import 'package:cb_file_manager/helpers/file_icon_helper.dart';
 import 'package:cb_file_manager/config/app_theme.dart';
 import 'package:cb_file_manager/widgets/tag_chip.dart';
 import 'package:cb_file_manager/ui/components/shared_file_context_menu.dart';
+import 'package:flutter/services.dart'; // Import for keyboard key detection
 
 class FileGridItem extends StatefulWidget {
   final File file;
   final FolderListState state;
   final bool isSelectionMode;
   final bool isSelected;
-  final Function(String) toggleFileSelection;
+  final Function(String, {bool shiftSelect, bool ctrlSelect})
+      toggleFileSelection;
   final Function() toggleSelectionMode;
   final Function(File, bool)? onFileTap;
   final Function()? onThumbnailGenerated;
   final Function(BuildContext, String)? showAddTagToFileDialog;
   final Function(BuildContext, String, List<String>)? showDeleteTagDialog;
+  final bool isDesktopMode;
+  final String?
+      lastSelectedPath; // Add parameter to track last selected file for shift-selection
 
   const FileGridItem({
     Key? key,
@@ -47,6 +52,8 @@ class FileGridItem extends StatefulWidget {
     this.onThumbnailGenerated,
     this.showAddTagToFileDialog,
     this.showDeleteTagDialog,
+    this.isDesktopMode = false,
+    this.lastSelectedPath,
   }) : super(key: key);
 
   @override
@@ -56,19 +63,17 @@ class FileGridItem extends StatefulWidget {
 class _FileGridItemState extends State<FileGridItem> {
   late List<String> _fileTags;
   StreamSubscription? _tagChangeSubscription;
+  bool _isHovering = false;
+  bool _isVisuallySelected = false;
 
   @override
   void initState() {
     super.initState();
+    _isVisuallySelected = widget.isSelected;
     _fileTags = widget.state.getTagsForFile(widget.file.path);
 
+    // Setup tag change subscription
     _tagChangeSubscription = TagManager.onTagChanged.listen(_onTagChanged);
-  }
-
-  @override
-  void dispose() {
-    _tagChangeSubscription?.cancel();
-    super.dispose();
   }
 
   void _onTagChanged(String changedFilePath) {
@@ -84,6 +89,31 @@ class _FileGridItemState extends State<FileGridItem> {
     }
   }
 
+  @override
+  void dispose() {
+    _tagChangeSubscription?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(FileGridItem oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Update visual selection state when isSelected changes
+    if (widget.isSelected != oldWidget.isSelected) {
+      setState(() {
+        _isVisuallySelected = widget.isSelected;
+      });
+    }
+
+    // Update tags if they've changed
+    final newTags = widget.state.getTagsForFile(widget.file.path);
+    if (!_areTagListsEqual(newTags, _fileTags)) {
+      setState(() {
+        _fileTags = newTags;
+      });
+    }
+  }
+
   bool _areTagListsEqual(List<String> list1, List<String> list2) {
     if (list1.length != list2.length) return false;
     for (int i = 0; i < list1.length; i++) {
@@ -92,15 +122,45 @@ class _FileGridItemState extends State<FileGridItem> {
     return true;
   }
 
-  @override
-  void didUpdateWidget(FileGridItem oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    final newTags = widget.state.getTagsForFile(widget.file.path);
-    if (!_areTagListsEqual(newTags, _fileTags)) {
+  // Handle file selection based on keyboard modifiers
+  void _handleFileSelection() {
+    // Get keyboard state
+    final RawKeyboard keyboard = RawKeyboard.instance;
+
+    // Check for Shift key
+    final bool isShiftPressed =
+        keyboard.keysPressed.contains(LogicalKeyboardKey.shift) ||
+            keyboard.keysPressed.contains(LogicalKeyboardKey.shiftLeft) ||
+            keyboard.keysPressed.contains(LogicalKeyboardKey.shiftRight);
+
+    // Check for Ctrl key (Control on Windows/Linux, Command on Mac)
+    final bool isCtrlPressed =
+        keyboard.keysPressed.contains(LogicalKeyboardKey.control) ||
+            keyboard.keysPressed.contains(LogicalKeyboardKey.controlLeft) ||
+            keyboard.keysPressed.contains(LogicalKeyboardKey.controlRight) ||
+            keyboard.keysPressed
+                .contains(LogicalKeyboardKey.meta) || // Command key on Mac
+            keyboard.keysPressed.contains(LogicalKeyboardKey.metaLeft) ||
+            keyboard.keysPressed.contains(LogicalKeyboardKey.metaRight);
+
+    // Visual update for immediate feedback
+    if (!isShiftPressed) {
       setState(() {
-        _fileTags = newTags;
+        if (!isCtrlPressed) {
+          // Single selection without Ctrl: this item will be selected, others will be deselected
+          _isVisuallySelected = true;
+        } else {
+          // Ctrl+click: toggle this item's selection
+          _isVisuallySelected = !_isVisuallySelected;
+        }
       });
     }
+    // For Shift+click, we don't update visually here since the parent will handle
+    // the range selection and update all items in the range
+
+    // Call the selection handler with the appropriate modifiers
+    widget.toggleFileSelection(widget.file.path,
+        shiftSelect: isShiftPressed, ctrlSelect: isCtrlPressed);
   }
 
   @override
@@ -164,199 +224,262 @@ class _FileGridItemState extends State<FileGridItem> {
       iconColor = Colors.grey;
     }
 
+    // Màu sắc và hiệu ứng giống Windows Explorer
+    final Color itemBackgroundColor = _isVisuallySelected
+        ? Theme.of(context).colorScheme.primaryContainer.withOpacity(0.7)
+        : _isHovering && widget.isDesktopMode
+            ? Theme.of(context).hoverColor
+            : Theme.of(context).cardColor;
+
+    // Border mặc định hoặc khi hover/chọn
+    final Border itemBorder = _isVisuallySelected
+        ? Border.all(color: Theme.of(context).primaryColor, width: 1.5)
+        : _isHovering && widget.isDesktopMode
+            ? Border.all(
+                color: Theme.of(context).primaryColor.withOpacity(0.5),
+                width: 1.0)
+            : Border.all(color: Colors.grey.shade300);
+
     return GestureDetector(
       onSecondaryTap: () => _showFileContextMenu(context, isVideo),
-      child: Container(
-        decoration: BoxDecoration(
-          color: widget.isSelected
-              ? Colors.blue.shade50
-              : Theme.of(context).cardColor,
-          border: Border.all(color: Colors.grey.shade300),
-          borderRadius: BorderRadius.circular(8.0),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: () {
-            if (widget.isSelectionMode) {
-              widget.toggleFileSelection(widget.file.path);
-            } else if (widget.onFileTap != null) {
-              widget.onFileTap!(widget.file, isVideo);
-            } else if (isVideo) {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) =>
-                      VideoPlayerFullScreen(file: widget.file),
-                ),
-              );
-            } else if (isImage) {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => ImageViewerScreen(file: widget.file),
-                ),
-              );
-            } else {
-              // Open other file types with external app
-              ExternalAppHelper.openFileWithApp(
-                widget.file.path,
-                'shell_open',
-              ).then((success) {
-                if (!success && context.mounted) {
-                  // If that fails, show the open with dialog
-                  showDialog(
-                    context: context,
-                    builder: (context) =>
-                        OpenWithDialog(filePath: widget.file.path),
-                  );
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _isHovering = true),
+        onExit: (_) => setState(() => _isHovering = false),
+        cursor: SystemMouseCursors.click,
+        child: Container(
+          decoration: BoxDecoration(
+            color: itemBackgroundColor,
+            border: itemBorder,
+            borderRadius: BorderRadius.circular(8.0),
+            boxShadow: _isVisuallySelected
+                ? [
+                    BoxShadow(
+                      color: Theme.of(context).primaryColor.withOpacity(0.3),
+                      blurRadius: 4,
+                      offset: Offset(0, 1),
+                    )
+                  ]
+                : _isHovering && widget.isDesktopMode
+                    ? [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 4,
+                          offset: Offset(0, 1),
+                        )
+                      ]
+                    : null,
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: () {
+              if (widget.isSelectionMode) {
+                // Kiểm tra phím bấm khi ở chế độ selection
+                final RawKeyboard keyboard = RawKeyboard.instance;
+
+                final bool isShiftPressed =
+                    keyboard.keysPressed.contains(LogicalKeyboardKey.shift) ||
+                        keyboard.keysPressed
+                            .contains(LogicalKeyboardKey.shiftLeft) ||
+                        keyboard.keysPressed
+                            .contains(LogicalKeyboardKey.shiftRight);
+
+                final bool isCtrlPressed = keyboard.keysPressed
+                        .contains(LogicalKeyboardKey.control) ||
+                    keyboard.keysPressed
+                        .contains(LogicalKeyboardKey.controlLeft) ||
+                    keyboard.keysPressed
+                        .contains(LogicalKeyboardKey.controlRight) ||
+                    keyboard.keysPressed.contains(LogicalKeyboardKey.meta) ||
+                    keyboard.keysPressed
+                        .contains(LogicalKeyboardKey.metaLeft) ||
+                    keyboard.keysPressed.contains(LogicalKeyboardKey.metaRight);
+
+                // Gọi toggleFileSelection với các modifier
+                widget.toggleFileSelection(widget.file.path,
+                    shiftSelect: isShiftPressed, ctrlSelect: isCtrlPressed);
+
+                // Cập nhật trạng thái hiển thị ngay lập tức
+                if (!isShiftPressed) {
+                  setState(() {
+                    if (!isCtrlPressed) {
+                      _isVisuallySelected = true;
+                    } else {
+                      _isVisuallySelected = !_isVisuallySelected;
+                    }
+                  });
                 }
-              });
-            }
-          },
-          onLongPress: () {
-            if (!widget.isSelectionMode) {
-              _showFileContextMenu(context, isVideo);
-            } else {
-              widget.toggleFileSelection(widget.file.path);
-            }
-          },
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                flex: 3,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    isPreviewable || isVideo
-                        ? _buildThumbnail(widget.file)
-                        : Center(
-                            child: FutureBuilder<Widget>(
-                              future: FileIconHelper.getIconForFile(
-                                widget.file,
-                                size: 48,
-                              ),
-                              builder: (context, snapshot) {
-                                if (snapshot.connectionState ==
-                                    ConnectionState.waiting) {
-                                  // Return a generic icon while loading
-                                  return Icon(icon, size: 48, color: iconColor);
-                                }
+              } else if (widget.isDesktopMode) {
+                // On desktop, use keyboard modifiers for selection
+                _handleFileSelection();
+              } else {
+                // On mobile, single click opens the file
+                _openFile(isVideo, isImage);
+              }
+            },
+            onDoubleTap: () {
+              if (widget.isDesktopMode && !widget.isSelectionMode) {
+                // On desktop, double click opens the file
+                _openFile(isVideo, isImage);
+              }
+            },
+            onLongPress: () {
+              if (!widget.isSelectionMode) {
+                widget.toggleSelectionMode();
+                widget.toggleFileSelection(widget.file.path);
+              } else {
+                // Kiểm tra phím bấm khi ở chế độ selection
+                final RawKeyboard keyboard = RawKeyboard.instance;
 
-                                if (snapshot.hasData) {
-                                  return snapshot.data!;
-                                }
+                final bool isShiftPressed =
+                    keyboard.keysPressed.contains(LogicalKeyboardKey.shift) ||
+                        keyboard.keysPressed
+                            .contains(LogicalKeyboardKey.shiftLeft) ||
+                        keyboard.keysPressed
+                            .contains(LogicalKeyboardKey.shiftRight);
 
-                                // Fallback to generic icon
-                                return Icon(icon, size: 48, color: iconColor);
-                              },
-                            ),
-                          ),
-                    if (widget.isSelectionMode)
-                      Positioned(
-                        right: 6,
-                        top: 6,
-                        child: Container(
-                          width: 24,
-                          height: 24,
-                          decoration: BoxDecoration(
-                            color:
-                                widget.isSelected ? Colors.blue : Colors.white,
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Colors.grey.shade400),
-                          ),
-                          child: Center(
-                            child: widget.isSelected
-                                ? const Icon(
-                                    EvaIcons.checkmark,
-                                    size: 16,
-                                    color: Colors.white,
-                                  )
-                                : null,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              Flexible(
-                flex: 2,
-                child: Container(
-                  padding: const EdgeInsets.all(8.0),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                final bool isCtrlPressed = keyboard.keysPressed
+                        .contains(LogicalKeyboardKey.control) ||
+                    keyboard.keysPressed
+                        .contains(LogicalKeyboardKey.controlLeft) ||
+                    keyboard.keysPressed
+                        .contains(LogicalKeyboardKey.controlRight) ||
+                    keyboard.keysPressed.contains(LogicalKeyboardKey.meta) ||
+                    keyboard.keysPressed
+                        .contains(LogicalKeyboardKey.metaLeft) ||
+                    keyboard.keysPressed.contains(LogicalKeyboardKey.metaRight);
+
+                widget.toggleFileSelection(widget.file.path,
+                    shiftSelect: isShiftPressed, ctrlSelect: isCtrlPressed);
+              }
+            },
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: Stack(
+                    fit: StackFit.expand,
                     children: [
-                      Text(
-                        _basename(widget.file),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      FutureBuilder<FileStat>(
-                        future: widget.file.stat(),
-                        builder: (context, snapshot) {
-                          if (snapshot.hasData) {
-                            return Text(
-                              _formatFileSize(snapshot.data!.size),
-                              style: const TextStyle(fontSize: 10),
-                            );
-                          }
-                          return const Text(
-                            'Loading...',
-                            style: TextStyle(fontSize: 10),
-                          );
-                        },
-                      ),
-                      if (_fileTags.isNotEmpty)
-                        Flexible(
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                EvaIcons.bookmarkOutline,
-                                size: 12,
-                                color: AppTheme.primaryBlue,
+                      Container(
+                        decoration: _isVisuallySelected
+                            ? BoxDecoration(
+                                border: Border.all(
+                                  color: Theme.of(context).primaryColor,
+                                  width: 2,
+                                ),
+                              )
+                            : null,
+                        child: isPreviewable || isVideo
+                            ? _buildThumbnail(widget.file)
+                            : Center(
+                                child: FutureBuilder<Widget>(
+                                  future: FileIconHelper.getIconForFile(
+                                    widget.file,
+                                    size: 48,
+                                  ),
+                                  builder: (context, snapshot) {
+                                    if (snapshot.connectionState ==
+                                        ConnectionState.waiting) {
+                                      // Return a generic icon while loading
+                                      return Icon(icon,
+                                          size: 48, color: iconColor);
+                                    }
+
+                                    if (snapshot.hasData) {
+                                      return snapshot.data!;
+                                    }
+
+                                    // Fallback to generic icon
+                                    return Icon(icon,
+                                        size: 48, color: iconColor);
+                                  },
+                                ),
                               ),
-                              const SizedBox(width: 4),
-                              Flexible(
-                                child: _fileTags.length == 1
-                                    ? TagChip(
-                                        tag: _fileTags.first,
-                                        isCompact: true,
-                                        onTap: () {
-                                          // Search by tag functionality
-                                          final bloc =
-                                              BlocProvider.of<FolderListBloc>(
-                                            context,
-                                          );
-                                          bloc.add(
-                                            SearchByTag(_fileTags.first),
-                                          );
-                                        },
-                                      )
-                                    : Text(
-                                        '${_fileTags.length} ${_fileTags.length == 1 ? 'tag' : 'tags'}',
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          fontSize: 10,
-                                          color: AppTheme.primaryBlue,
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                      ),
-                              ),
-                            ],
-                          ),
-                        ),
+                      ),
                     ],
                   ),
                 ),
-              ),
-            ],
+                Flexible(
+                  flex: 2,
+                  child: Container(
+                    padding: const EdgeInsets.all(8.0),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _basename(widget.file),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: _isVisuallySelected
+                                ? FontWeight.bold
+                                : FontWeight.normal,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        FutureBuilder<FileStat>(
+                          future: widget.file.stat(),
+                          builder: (context, snapshot) {
+                            if (snapshot.hasData) {
+                              return Text(
+                                _formatFileSize(snapshot.data!.size),
+                                style: const TextStyle(fontSize: 10),
+                              );
+                            }
+                            return const Text(
+                              'Loading...',
+                              style: TextStyle(fontSize: 10),
+                            );
+                          },
+                        ),
+                        if (_fileTags.isNotEmpty)
+                          Flexible(
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  EvaIcons.bookmarkOutline,
+                                  size: 12,
+                                  color: AppTheme.primaryBlue,
+                                ),
+                                const SizedBox(width: 4),
+                                Flexible(
+                                  child: _fileTags.length == 1
+                                      ? TagChip(
+                                          tag: _fileTags.first,
+                                          isCompact: true,
+                                          onTap: () {
+                                            // Search by tag functionality
+                                            final bloc =
+                                                BlocProvider.of<FolderListBloc>(
+                                              context,
+                                            );
+                                            bloc.add(
+                                              SearchByTag(_fileTags.first),
+                                            );
+                                          },
+                                        )
+                                      : Text(
+                                          '${_fileTags.length} ${_fileTags.length == 1 ? 'tag' : 'tags'}',
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            color: AppTheme.primaryBlue,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -549,5 +672,40 @@ class _FileGridItemState extends State<FileGridItem> {
         ],
       ),
     );
+  }
+
+  // Function to open file
+  void _openFile(bool isVideo, bool isImage) {
+    if (widget.onFileTap != null) {
+      widget.onFileTap!(widget.file, isVideo);
+    } else if (isVideo) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => VideoPlayerFullScreen(file: widget.file),
+        ),
+      );
+    } else if (isImage) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ImageViewerScreen(file: widget.file),
+        ),
+      );
+    } else {
+      // Open other file types with external app
+      ExternalAppHelper.openFileWithApp(
+        widget.file.path,
+        'shell_open',
+      ).then((success) {
+        if (!success && context.mounted) {
+          // If that fails, show the open with dialog
+          showDialog(
+            context: context,
+            builder: (context) => OpenWithDialog(filePath: widget.file.path),
+          );
+        }
+      });
+    }
   }
 }

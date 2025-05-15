@@ -40,7 +40,6 @@ dependencies:
   shared_preferences: ^2.2.2
   window_manager: ^0.4.3 # Added for desktop window management
   eva_icons_flutter: ^3.1.0 # Eva Icons package
-  ffmpeg_helper: ^1.0.1 # Updated to available version
   visibility_detector: ^0.4.0+2 # Added for detecting visible thumbnails
 
   # ObjectBox database dependencies

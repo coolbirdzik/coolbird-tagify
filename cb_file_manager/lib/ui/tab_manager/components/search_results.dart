@@ -10,7 +10,8 @@ class SearchResultsView extends StatelessWidget {
   final FolderListState state;
   final bool isSelectionMode;
   final List<String> selectedFiles;
-  final Function(String) toggleFileSelection;
+  final Function(String, {bool shiftSelect, bool ctrlSelect})
+      toggleFileSelection;
   final VoidCallback toggleSelectionMode;
   final Function(BuildContext, String, List<String>) showDeleteTagDialog;
   final Function(BuildContext, String) showAddTagToFileDialog;

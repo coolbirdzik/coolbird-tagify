@@ -1,5 +1,7 @@
 import 'dart:io';
 import 'dart:async'; // Thêm import cho StreamSubscription
+import 'dart:ui'; // For lerpDouble
+import 'package:flutter/scheduler.dart'; // For more responsive animations
 
 import 'package:cb_file_manager/ui/screens/folder_list/file_details_screen.dart';
 import 'package:cb_file_manager/ui/screens/folder_list/folder_list_state.dart';
@@ -21,16 +23,61 @@ import 'package:cb_file_manager/widgets/tag_chip.dart'; // Import the new TagChi
 import 'package:cb_file_manager/ui/tab_manager/components/tag_dialogs.dart';
 import 'package:cb_file_manager/ui/components/shared_file_context_menu.dart';
 import 'package:cb_file_manager/widgets/lazy_video_thumbnail.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/services.dart'; // Import for keyboard key detection
+
+// Add this class to disable ripple effects
+class NoSplashFactory extends InteractiveInkFeatureFactory {
+  @override
+  InteractiveInkFeature create({
+    required MaterialInkController controller,
+    required RenderBox referenceBox,
+    required Offset position,
+    required Color color,
+    required TextDirection textDirection,
+    bool containedInkWell = false,
+    RectCallback? rectCallback,
+    BorderRadius? borderRadius,
+    ShapeBorder? customBorder,
+    double? radius,
+    VoidCallback? onRemoved,
+  }) {
+    return _NoSplash(
+      controller: controller,
+      referenceBox: referenceBox,
+    );
+  }
+}
+
+class _NoSplash extends InteractiveInkFeature {
+  _NoSplash({
+    required MaterialInkController controller,
+    required RenderBox referenceBox,
+  }) : super(
+          controller: controller,
+          referenceBox: referenceBox,
+          color: Colors.transparent,
+        );
+
+  @override
+  void paintFeature(Canvas canvas, Matrix4 transform) {
+    // No painting needed
+  }
+}
 
 class FileItem extends StatefulWidget {
   final File file;
   final FolderListState state;
   final bool isSelectionMode;
   final bool isSelected;
-  final Function(String) toggleFileSelection;
+  final Function(String, {bool shiftSelect, bool ctrlSelect})
+      toggleFileSelection;
   final Function(BuildContext, String, List<String>) showDeleteTagDialog;
   final Function(BuildContext, String) showAddTagToFileDialog;
   final Function(File, bool)? onFileTap;
+  final bool isDesktopMode;
+  final String?
+      lastSelectedPath; // Add parameter to track last selected file for shift-selection
 
   const FileItem({
     Key? key,
@@ -42,6 +89,8 @@ class FileItem extends StatefulWidget {
     required this.showDeleteTagDialog,
     required this.showAddTagToFileDialog,
     this.onFileTap,
+    this.isDesktopMode = false,
+    this.lastSelectedPath,
   }) : super(key: key);
 
   @override
@@ -51,11 +100,15 @@ class FileItem extends StatefulWidget {
 class _FileItemState extends State<FileItem> {
   late List<String> _fileTags;
   StreamSubscription? _tagChangeSubscription;
+  bool _isHovering = false;
+  // Local visual selection state for instant feedback
+  bool _visuallySelected = false;
 
   @override
   void initState() {
     super.initState();
     _fileTags = widget.state.getTagsForFile(widget.file.path);
+    _visuallySelected = widget.isSelected;
 
     // Đăng ký lắng nghe thay đổi tag
     _tagChangeSubscription = TagManager.onTagChanged.listen(_onTagChanged);
@@ -66,6 +119,24 @@ class _FileItemState extends State<FileItem> {
     // Hủy đăng ký lắng nghe khi widget bị hủy
     _tagChangeSubscription?.cancel();
     super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(FileItem oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    // Update visual state when external selection changes
+    if (widget.isSelected != oldWidget.isSelected) {
+      _visuallySelected = widget.isSelected;
+    }
+
+    // Vẫn giữ mã này để cập nhật từ state khi state thay đổi
+    final newTags = widget.state.getTagsForFile(widget.file.path);
+    if (!_areTagListsEqual(newTags, _fileTags)) {
+      setState(() {
+        _fileTags = newTags;
+      });
+    }
   }
 
   // Xử lý sự kiện thay đổi tag
@@ -106,18 +177,6 @@ class _FileItemState extends State<FileItem> {
       if (!list2.contains(list1[i])) return false;
     }
     return true;
-  }
-
-  @override
-  void didUpdateWidget(FileItem oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    // Vẫn giữ mã này để cập nhật từ state khi state thay đổi
-    final newTags = widget.state.getTagsForFile(widget.file.path);
-    if (!_areTagListsEqual(newTags, _fileTags)) {
-      setState(() {
-        _fileTags = newTags;
-      });
-    }
   }
 
   // Hàm xóa tag trực tiếp, không reload tab
@@ -163,6 +222,80 @@ class _FileItemState extends State<FileItem> {
         );
       }
     }
+  }
+
+  // Mở file
+  void _openFile(bool isVideo, bool isImage) {
+    if (widget.onFileTap != null) {
+      widget.onFileTap!(widget.file, isVideo);
+    } else if (isVideo) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => VideoPlayerFullScreen(file: widget.file),
+        ),
+      );
+    } else if (isImage) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ImageViewerScreen(file: widget.file),
+        ),
+      );
+    } else {
+      // Open other file types with external app
+      ExternalAppHelper.openFileWithApp(
+        widget.file.path,
+        'shell_open',
+      ).then((success) {
+        if (!success && context.mounted) {
+          // If that fails, show the open with dialog
+          showDialog(
+            context: context,
+            builder: (context) => OpenWithDialog(filePath: widget.file.path),
+          );
+        }
+      });
+    }
+  }
+
+  // Handle file selection with instant visual feedback
+  void _handleFileSelection() {
+    // Get keyboard state
+    final RawKeyboard keyboard = RawKeyboard.instance;
+
+    final bool isShiftPressed =
+        keyboard.keysPressed.contains(LogicalKeyboardKey.shift) ||
+            keyboard.keysPressed.contains(LogicalKeyboardKey.shiftLeft) ||
+            keyboard.keysPressed.contains(LogicalKeyboardKey.shiftRight);
+
+    final bool isCtrlPressed =
+        keyboard.keysPressed.contains(LogicalKeyboardKey.control) ||
+            keyboard.keysPressed.contains(LogicalKeyboardKey.controlLeft) ||
+            keyboard.keysPressed.contains(LogicalKeyboardKey.controlRight) ||
+            keyboard.keysPressed.contains(LogicalKeyboardKey.meta) ||
+            keyboard.keysPressed.contains(LogicalKeyboardKey.metaLeft) ||
+            keyboard.keysPressed.contains(LogicalKeyboardKey.metaRight);
+
+    // Visual update for immediate feedback
+    if (!isShiftPressed) {
+      // For single selection or Ctrl+click, update this item
+      setState(() {
+        if (!isCtrlPressed) {
+          // Single selection without Ctrl: this item will be selected, others will be deselected
+          _visuallySelected = true;
+        } else {
+          // Ctrl+click: toggle this item's selection
+          _visuallySelected = !_visuallySelected;
+        }
+      });
+    }
+    // For Shift+click, we don't update visually here since the parent will handle
+    // the range selection and update all items in the range
+
+    // Call parent handler with the appropriate modifiers
+    widget.toggleFileSelection(widget.file.path,
+        shiftSelect: isShiftPressed, ctrlSelect: isCtrlPressed);
   }
 
   @override
@@ -227,153 +360,235 @@ class _FileItemState extends State<FileItem> {
       );
     }
 
+    // DIRECT RENDERING - no animations for maximum performance
+    final Color itemBackgroundColor = _visuallySelected
+        ? Theme.of(context).colorScheme.primaryContainer.withOpacity(0.7)
+        : _isHovering && widget.isDesktopMode
+            ? Theme.of(context).hoverColor
+            : Theme.of(context).cardColor;
+
+    final Color borderColor = _visuallySelected
+        ? Theme.of(context).primaryColor
+        : _isHovering && widget.isDesktopMode
+            ? Theme.of(context).primaryColor.withOpacity(0.5)
+            : Colors.grey.shade300;
+
+    final List<BoxShadow>? boxShadow =
+        _visuallySelected || (_isHovering && widget.isDesktopMode)
+            ? [
+                BoxShadow(
+                  color: _visuallySelected
+                      ? Theme.of(context).primaryColor.withOpacity(0.3)
+                      : Colors.black.withOpacity(0.1),
+                  blurRadius: 4,
+                  offset: Offset(0, 1),
+                )
+              ]
+            : null;
+
     return GestureDetector(
       onSecondaryTap: () => _showFileContextMenu(context, isVideo, isImage),
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
-        decoration: BoxDecoration(
-          color: widget.isSelected
-              ? Colors.blue.shade50
-              : Theme.of(context).cardColor,
-          border: Border.all(color: Colors.grey.shade300),
-          borderRadius: BorderRadius.circular(8.0),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            ListTile(
-              leading: widget.isSelectionMode
-                  ? Checkbox(
-                      value: widget.isSelected,
-                      onChanged: (bool? value) {
-                        widget.toggleFileSelection(widget.file.path);
-                      },
-                    )
-                  : _buildLeadingWidget(isVideo, icon, iconColor),
-              title: Text(_basename(widget.file)),
-              subtitle: FutureBuilder<FileStat>(
-                future: widget.file.stat(),
-                builder: (context, snapshot) {
-                  if (snapshot.hasData) {
-                    String sizeText = _formatFileSize(snapshot.data!.size);
-                    return Text(
-                      '${snapshot.data!.modified.toString().split('.')[0]} • $sizeText',
-                    );
-                  }
-                  return const Text('Loading...');
-                },
-              ),
-              onTap: () {
-                if (widget.isSelectionMode) {
-                  widget.toggleFileSelection(widget.file.path);
-                } else if (widget.onFileTap != null) {
-                  widget.onFileTap!(widget.file, isVideo);
-                } else if (isVideo) {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) =>
-                          VideoPlayerFullScreen(file: widget.file),
-                    ),
-                  );
-                } else if (isImage) {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) =>
-                          ImageViewerScreen(file: widget.file),
-                    ),
-                  );
-                } else {
-                  // Open other file types with external app
-                  ExternalAppHelper.openFileWithApp(
-                    widget.file.path,
-                    'shell_open',
-                  ).then((success) {
-                    if (!success && context.mounted) {
-                      // If that fails, show the open with dialog
-                      showDialog(
-                        context: context,
-                        builder: (context) =>
-                            OpenWithDialog(filePath: widget.file.path),
-                      );
-                    }
-                  });
-                }
-              },
-              onLongPress: () {
-                if (widget.isSelectionMode) {
-                  widget.toggleFileSelection(widget.file.path);
-                } else {
-                  _showFileContextMenu(context, isVideo, isImage);
-                }
-              },
-              trailing: widget.isSelectionMode
-                  ? null
-                  : PopupMenuButton<String>(
-                      icon: const Icon(Icons.more_vert),
-                      onSelected: (String value) {
-                        if (value == 'tag') {
-                          widget.showAddTagToFileDialog(
-                            context,
-                            widget.file.path,
-                          );
-                        } else if (value == 'delete_tag') {
-                          widget.showDeleteTagDialog(
-                            context,
-                            widget.file.path,
-                            _fileTags,
-                          );
-                        } else if (value == 'details') {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) =>
-                                  FileDetailsScreen(file: widget.file),
-                            ),
-                          );
-                        } else if (value == 'trash') {
-                          _moveToTrash(context);
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _isHovering = true),
+        onExit: (_) => setState(() => _isHovering = false),
+        cursor: SystemMouseCursors.click,
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+          decoration: BoxDecoration(
+            color: itemBackgroundColor,
+            border: Border.all(color: borderColor, width: 1.0),
+            borderRadius: BorderRadius.circular(8.0),
+            boxShadow: boxShadow,
+          ),
+          child: Theme(
+            // Apply no splash theme to remove ripple effect
+            data: Theme.of(context).copyWith(
+              splashFactory: NoSplashFactory(),
+              highlightColor: Colors.transparent,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                GestureDetector(
+                  onDoubleTap: widget.isDesktopMode && !widget.isSelectionMode
+                      ? () => _openFile(isVideo, isImage)
+                      : null,
+                  child: Material(
+                    type: MaterialType.transparency,
+                    child: ListTile(
+                      leading: _buildLeadingWidget(isVideo, icon, iconColor),
+                      title: Text(
+                        _basename(widget.file),
+                        style: TextStyle(
+                          fontWeight: _visuallySelected
+                              ? FontWeight.bold
+                              : FontWeight.normal,
+                        ),
+                      ),
+                      subtitle: FutureBuilder<FileStat>(
+                        future: widget.file.stat(),
+                        builder: (context, snapshot) {
+                          if (snapshot.hasData) {
+                            String sizeText =
+                                _formatFileSize(snapshot.data!.size);
+                            return Text(
+                              '${snapshot.data!.modified.toString().split('.')[0]} • $sizeText',
+                            );
+                          }
+                          return const Text('Loading...');
+                        },
+                      ),
+                      onTap: () {
+                        if (widget.isSelectionMode) {
+                          // Kiểm tra phím bấm khi ở chế độ selection
+                          final RawKeyboard keyboard = RawKeyboard.instance;
+
+                          final bool isShiftPressed = keyboard.keysPressed
+                                  .contains(LogicalKeyboardKey.shift) ||
+                              keyboard.keysPressed
+                                  .contains(LogicalKeyboardKey.shiftLeft) ||
+                              keyboard.keysPressed
+                                  .contains(LogicalKeyboardKey.shiftRight);
+
+                          final bool isCtrlPressed = keyboard.keysPressed
+                                  .contains(LogicalKeyboardKey.control) ||
+                              keyboard.keysPressed
+                                  .contains(LogicalKeyboardKey.controlLeft) ||
+                              keyboard.keysPressed
+                                  .contains(LogicalKeyboardKey.controlRight) ||
+                              keyboard.keysPressed
+                                  .contains(LogicalKeyboardKey.meta) ||
+                              keyboard.keysPressed
+                                  .contains(LogicalKeyboardKey.metaLeft) ||
+                              keyboard.keysPressed
+                                  .contains(LogicalKeyboardKey.metaRight);
+
+                          // Gọi toggleFileSelection với các modifier
+                          widget.toggleFileSelection(widget.file.path,
+                              shiftSelect: isShiftPressed,
+                              ctrlSelect: isCtrlPressed);
+
+                          // Cập nhật trạng thái hiển thị ngay lập tức
+                          if (!isShiftPressed) {
+                            setState(() {
+                              if (!isCtrlPressed) {
+                                _visuallySelected = true;
+                              } else {
+                                _visuallySelected = !_visuallySelected;
+                              }
+                            });
+                          }
+                        } else if (widget.isDesktopMode) {
+                          // On desktop, use keyboard modifiers for selection with instant feedback
+                          _handleFileSelection();
+                        } else {
+                          // On mobile, single click opens the file
+                          _openFile(isVideo, isImage);
                         }
                       },
-                      itemBuilder: (BuildContext context) => [
-                        const PopupMenuItem(
-                          value: 'tag',
-                          child: Text('Add Tag'),
-                        ),
-                        if (_fileTags.isNotEmpty)
+                      onLongPress: () {
+                        if (widget.isSelectionMode) {
+                          // Kiểm tra phím bấm khi ở chế độ selection
+                          final RawKeyboard keyboard = RawKeyboard.instance;
+
+                          final bool isShiftPressed = keyboard.keysPressed
+                                  .contains(LogicalKeyboardKey.shift) ||
+                              keyboard.keysPressed
+                                  .contains(LogicalKeyboardKey.shiftLeft) ||
+                              keyboard.keysPressed
+                                  .contains(LogicalKeyboardKey.shiftRight);
+
+                          final bool isCtrlPressed = keyboard.keysPressed
+                                  .contains(LogicalKeyboardKey.control) ||
+                              keyboard.keysPressed
+                                  .contains(LogicalKeyboardKey.controlLeft) ||
+                              keyboard.keysPressed
+                                  .contains(LogicalKeyboardKey.controlRight) ||
+                              keyboard.keysPressed
+                                  .contains(LogicalKeyboardKey.meta) ||
+                              keyboard.keysPressed
+                                  .contains(LogicalKeyboardKey.metaLeft) ||
+                              keyboard.keysPressed
+                                  .contains(LogicalKeyboardKey.metaRight);
+
+                          widget.toggleFileSelection(widget.file.path,
+                              shiftSelect: isShiftPressed,
+                              ctrlSelect: isCtrlPressed);
+                        } else {
+                          _showFileContextMenu(context, isVideo, isImage);
+                        }
+                      },
+                      // Remove the ripple effect by setting the enable property to false
+                      enabled: true,
+                      trailing: PopupMenuButton<String>(
+                        icon: const Icon(Icons.more_vert),
+                        onSelected: (String value) {
+                          if (value == 'tag') {
+                            widget.showAddTagToFileDialog(
+                              context,
+                              widget.file.path,
+                            );
+                          } else if (value == 'delete_tag') {
+                            widget.showDeleteTagDialog(
+                              context,
+                              widget.file.path,
+                              _fileTags,
+                            );
+                          } else if (value == 'details') {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) =>
+                                    FileDetailsScreen(file: widget.file),
+                              ),
+                            );
+                          } else if (value == 'trash') {
+                            _moveToTrash(context);
+                          }
+                        },
+                        itemBuilder: (BuildContext context) => [
                           const PopupMenuItem(
-                            value: 'delete_tag',
-                            child: Text('Manage Tags'),
+                            value: 'tag',
+                            child: Text('Add Tag'),
                           ),
-                        const PopupMenuItem(
-                          value: 'details',
-                          child: Text('Properties'),
-                        ),
-                        const PopupMenuItem(
-                          value: 'trash',
-                          child: Text(
-                            'Move to Trash',
-                            style: TextStyle(color: Colors.red),
+                          if (_fileTags.isNotEmpty)
+                            const PopupMenuItem(
+                              value: 'delete_tag',
+                              child: Text('Manage Tags'),
+                            ),
+                          const PopupMenuItem(
+                            value: 'details',
+                            child: Text('Properties'),
                           ),
-                        ),
-                      ],
+                          const PopupMenuItem(
+                            value: 'trash',
+                            child: Text(
+                              'Move to Trash',
+                              style: TextStyle(color: Colors.red),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
+                  ),
+                ),
+                if (_fileTags.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(
+                      left: 16.0,
+                      bottom: 8.0,
+                      right: 16.0,
+                    ),
+                    child: Wrap(
+                      spacing: 8.0,
+                      runSpacing: 4.0,
+                      children:
+                          _fileTags.map((tag) => _buildTagChip(tag)).toList(),
+                    ),
+                  ),
+              ],
             ),
-            if (_fileTags.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(
-                  left: 16.0,
-                  bottom: 8.0,
-                  right: 16.0,
-                ),
-                child: Wrap(
-                  spacing: 8.0,
-                  runSpacing: 4.0,
-                  children: _fileTags.map((tag) => _buildTagChip(tag)).toList(),
-                ),
-              ),
-          ],
+          ),
         ),
       ),
     );

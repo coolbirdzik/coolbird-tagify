@@ -10,7 +10,7 @@ import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
 import 'package:path/path.dart' as path;
-import 'package:ffmpeg_helper/ffmpeg_helper.dart';
+// import 'package:ffmpeg_helper/ffmpeg_helper.dart';
 import 'package:cb_file_manager/helpers/user_preferences.dart';
 
 import 'fc_native_video_thumbnail.dart';
@@ -384,36 +384,6 @@ class VideoThumbnailHelper {
     _log(
         'VideoThumbnail: Canceled $canceledCount thumbnails for other directories',
         forceShow: true);
-  }
-
-  static Future<bool> initializeFFmpeg() async {
-    if (_ffmpegInitialized) return true;
-
-    try {
-      debugPrint('VideoThumbnailHelper: Initializing FFmpeg...');
-
-      await FFMpegHelper.instance.initialize();
-
-      if (_isWindows) {
-        final isInstalled = await FFMpegHelper.instance.isFFMpegPresent();
-        if (!isInstalled) {
-          bool success = await FFMpegHelper.instance.setupFFMpegOnWindows(
-            onProgress: (progress) {
-              debugPrint('FFmpeg download progress: ${progress}%');
-            },
-          );
-
-          if (!success) {
-            return false;
-          }
-        }
-      }
-
-      _ffmpegInitialized = true;
-      return true;
-    } catch (_) {
-      return false;
-    }
   }
 
   static bool isSupportedVideoFormat(String filePath) {

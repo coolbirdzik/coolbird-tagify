@@ -225,22 +225,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.7.11"
-  dio:
-    dependency: transitive
-    description:
-      name: dio
-      sha256: "253a18bbd4851fecba42f7343a1df3a9a4c1d31a2c1b37e221086b4fa8c8dbc9"
-      url: "https://pub.dev"
-    source: hosted
-    version: "5.8.0+1"
-  dio_web_adapter:
-    dependency: transitive
-    description:
-      name: dio_web_adapter
-      sha256: "7586e476d70caecaf1686d21eee7247ea43ef5c345eab9e0cc3583ff13378d78"
-      url: "https://pub.dev"
-    source: hosted
-    version: "2.1.1"
   equatable:
     dependency: "direct main"
     description:
@@ -273,30 +257,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.1.4"
-  ffmpeg_helper:
-    dependency: "direct main"
-    description:
-      name: ffmpeg_helper
-      sha256: "9652adb5aa14ef014a677a85a55ceef2fdbe07c3cffe04ebab0b73f979eca952"
-      url: "https://pub.dev"
-    source: hosted
-    version: "1.0.1"
-  ffmpeg_kit_flutter_min_gpl:
-    dependency: transitive
-    description:
-      name: ffmpeg_kit_flutter_min_gpl
-      sha256: ca3dc2330c176c8ef96fb512e7a1a37ab369e15685d2e72a52ec1d50726360a0
-      url: "https://pub.dev"
-    source: hosted
-    version: "5.1.0"
-  ffmpeg_kit_flutter_platform_interface:
-    dependency: transitive
-    description:
-      name: ffmpeg_kit_flutter_platform_interface
-      sha256: addf046ae44e190ad0101b2fde2ad909a3cd08a2a109f6106d2f7048b7abedee
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.2.1"
   file:
     dependency: transitive
     description:

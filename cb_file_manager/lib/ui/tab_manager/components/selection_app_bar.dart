@@ -4,12 +4,14 @@ import 'package:eva_icons_flutter/eva_icons_flutter.dart';
 import '../../screens/folder_list/folder_list_bloc.dart';
 import '../../screens/folder_list/folder_list_event.dart';
 import 'tag_dialogs.dart';
+import 'package:cb_file_manager/ui/tab_manager/components/tag_dialogs.dart';
 
 /// AppBar component displayed when in selection mode
 class SelectionAppBar extends StatelessWidget implements PreferredSizeWidget {
   final int selectedCount;
   final VoidCallback onClearSelection;
   final List<String> selectedFilePaths;
+  final List<String> selectedFolderPaths;
   final Function(BuildContext, List<String>) showRemoveTagsDialog;
   final Function(BuildContext) showManageAllTagsDialog;
   final Function(BuildContext) showDeleteConfirmationDialog;
@@ -19,28 +21,39 @@ class SelectionAppBar extends StatelessWidget implements PreferredSizeWidget {
     required this.selectedCount,
     required this.onClearSelection,
     required this.selectedFilePaths,
+    this.selectedFolderPaths = const [],
     required this.showRemoveTagsDialog,
     required this.showManageAllTagsDialog,
     required this.showDeleteConfirmationDialog,
   }) : super(key: key);
 
   @override
+  Size get preferredSize => const Size.fromHeight(kToolbarHeight);
+
+  @override
   Widget build(BuildContext context) {
+    final hasSelectedItems = selectedCount > 0;
+    final hasSelectedFiles = selectedFilePaths.isNotEmpty;
+    final hasSelectedFolders = selectedFolderPaths.isNotEmpty;
+
     return AppBar(
-      title: Text('$selectedCount selected'),
       leading: IconButton(
         icon: const Icon(EvaIcons.close),
         onPressed: onClearSelection,
       ),
+      title: Text('Selected: $selectedCount'),
       actions: [
-        if (selectedFilePaths.isNotEmpty) ...[
+        // Show tag management for files only
+        if (hasSelectedFiles) ...[
           // Tag management dropdown menu
           PopupMenuButton<String>(
             icon: const Icon(EvaIcons.shoppingBag),
-            tooltip: 'Quản lý thẻ',
+            tooltip: 'Manage Tags',
             onSelected: (value) {
               if (value == 'add_tag') {
                 showBatchAddTagDialog(context, selectedFilePaths);
+              } else if (value == 'remove_tags') {
+                showRemoveTagsDialog(context, selectedFilePaths);
               } else if (value == 'manage_all_tags') {
                 showManageAllTagsDialog(context);
               }
@@ -52,34 +65,34 @@ class SelectionAppBar extends StatelessWidget implements PreferredSizeWidget {
                   children: [
                     Icon(EvaIcons.plusCircleOutline),
                     SizedBox(width: 8),
-                    Text('Thêm thẻ'),
+                    Text('Add Tags'),
                   ],
                 ),
               ),
               const PopupMenuItem<String>(
-                value: 'manage_all_tags',
+                value: 'remove_tags',
                 child: Row(
                   children: [
-                    Icon(EvaIcons.settings2Outline),
+                    Icon(EvaIcons.minusCircleOutline),
                     SizedBox(width: 8),
-                    Text('Xóa thẻ'),
+                    Text('Remove Tags'),
                   ],
                 ),
-              ),
+              )
             ],
           ),
+        ],
+
+        // Delete option (works for both files and folders)
+        if (hasSelectedItems)
           IconButton(
             icon: const Icon(EvaIcons.trash2Outline),
-            tooltip: 'Delete selected',
+            tooltip: 'Move to Trash',
             onPressed: () {
               showDeleteConfirmationDialog(context);
             },
           ),
-        ],
       ],
     );
   }
-
-  @override
-  Size get preferredSize => const Size.fromHeight(kToolbarHeight);
 }

@@ -143,12 +143,6 @@ void main() async {
     // Initialize folder thumbnail service
     await FolderThumbnailService().initialize();
 
-    // Initialize FFmpeg for video thumbnails (especially important for Windows)
-    if (Platform.isWindows) {
-      debugPrint('Initializing FFmpeg for Windows');
-      await VideoThumbnailHelper.initializeFFmpeg();
-    }
-
     // Initialize video thumbnail cache system
     debugPrint('Initializing video thumbnail cache system');
     await VideoThumbnailHelper.initializeCache();

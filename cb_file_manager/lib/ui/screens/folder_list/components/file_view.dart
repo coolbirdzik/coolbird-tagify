@@ -19,7 +19,8 @@ class FileView extends StatelessWidget {
   final bool isSelectionMode;
   final bool isGridView;
   final List<String> selectedFiles;
-  final Function(String) toggleFileSelection;
+  final Function(String, {bool shiftSelect, bool ctrlSelect})
+      toggleFileSelection;
   final Function() toggleSelectionMode;
   final Function(BuildContext, String, List<String>) showDeleteTagDialog;
   final Function(BuildContext, String) showAddTagToFileDialog;
@@ -27,6 +28,8 @@ class FileView extends StatelessWidget {
   final Function(File, bool)? onFileTap;
   final Function()? onThumbnailGenerated;
   final Function(int)? onZoomChanged; // Thêm callback mới cho thay đổi zoom
+  final bool isDesktopMode;
+  final String? lastSelectedPath;
 
   const FileView({
     Key? key,
@@ -44,6 +47,8 @@ class FileView extends StatelessWidget {
     this.onFileTap,
     this.onThumbnailGenerated,
     this.onZoomChanged, // Thêm parameter
+    this.isDesktopMode = false,
+    this.lastSelectedPath,
   }) : super(key: key);
 
   @override
@@ -85,6 +90,8 @@ class FileView extends StatelessWidget {
                   showDeleteTagDialog: showDeleteTagDialog,
                   showAddTagToFileDialog: showAddTagToFileDialog,
                   onFileTap: onFileTap,
+                  isDesktopMode: isDesktopMode,
+                  lastSelectedPath: lastSelectedPath,
                 ),
         );
       },
@@ -151,8 +158,9 @@ class FileView extends StatelessWidget {
                     toggleFileSelection: toggleFileSelection,
                     toggleSelectionMode: toggleSelectionMode,
                     onFileTap: onFileTap,
-                    onThumbnailGenerated:
-                        onThumbnailGenerated, // Pass the callback
+                    onThumbnailGenerated: onThumbnailGenerated,
+                    isDesktopMode: isDesktopMode,
+                    lastSelectedPath: lastSelectedPath,
                   ),
           );
         },
