@@ -272,7 +272,7 @@ class FileView extends StatelessWidget {
               final bool isEvenRow = index % 2 == 0;
               final Color rowColor = isEvenRow
                   ? Colors.transparent
-                  : Colors.grey.withOpacity(0.03);
+                  : const Color.fromRGBO(128, 128, 128, 0.03);
 
               // Generate a stable key to help Flutter reuse widgets
               final String itemKey = index < folders.length

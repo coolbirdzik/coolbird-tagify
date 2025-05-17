@@ -9,7 +9,7 @@ import 'package:cb_file_manager/ui/screens/folder_list/folder_list_state.dart';
 import 'package:cb_file_manager/ui/components/shared_action_bar.dart';
 import 'package:cb_file_manager/ui/components/video_player/custom_video_player.dart';
 import 'package:cb_file_manager/ui/widgets/lazy_video_thumbnail.dart';
-import 'package:cb_file_manager/helpers/thumbnail_isolate_manager.dart';
+import 'package:cb_file_manager/helpers/video_thumbnail_helper.dart';
 import 'package:cb_file_manager/helpers/frame_timing_optimizer.dart';
 import 'dart:async';
 import 'dart:math';
@@ -161,31 +161,20 @@ class _VideoGalleryScreenState extends State<VideoGalleryScreen>
         });
 
         if (videos.isNotEmpty) {
-          // Sử dụng ThumbnailIsolateManager thay vì VideoThumbnailHelper
+          // Sử dụng VideoThumbnailHelper
           final videoPaths = videos.map((file) => file.path).toList();
 
-          // Khởi chạy ThumbnailIsolateManager nếu chưa được khởi tạo
-          _initializeIsolateManager().then((_) {
-            // Tải trước thumbnail với Isolate Manager
-            ThumbnailIsolateManager.instance
-                .prefetchThumbnails(videoPaths)
-                .then((_) {
-              if (_isMounted) {
-                setState(() {
-                  _isLoadingThumbnails = false;
-                });
-              }
-            });
+          // Tải trước thumbnail với VideoThumbnailHelper
+          VideoThumbnailHelper.optimizedBatchPreload(videoPaths).then((_) {
+            if (_isMounted) {
+              setState(() {
+                _isLoadingThumbnails = false;
+              });
+            }
           });
         }
       }
     });
-  }
-
-  Future<void> _initializeIsolateManager() async {
-    if (!ThumbnailIsolateManager.instance.isInitialized) {
-      await ThumbnailIsolateManager.instance.initialize();
-    }
   }
 
   void _sortVideoFiles() {
@@ -544,8 +533,7 @@ class _VideoGalleryScreenState extends State<VideoGalleryScreen>
                     height: 16,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      valueColor:
-                          AlwaysStoppedAnimation<Color>(Colors.white),
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                     ),
                   ),
                   SizedBox(width: 8),

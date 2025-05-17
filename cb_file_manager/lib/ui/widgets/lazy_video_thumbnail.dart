@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import '../../helpers/video_thumbnail_helper.dart';
-import '../../helpers/thumbnail_isolate_manager.dart';
 import '../../helpers/frame_timing_optimizer.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
@@ -59,14 +58,9 @@ class _LazyVideoThumbnailState extends State<LazyVideoThumbnail>
 
   // State tracking
   bool _isLoading = false;
-  bool _isError = false;
   bool _wasAttempted = false;
   bool _isThumbnailGenerated = false;
-  // Add a new flag to prevent regeneration when path hasn't changed
   bool _shouldRegenerateThumbnail = true;
-
-  // Thumbnail generation manager
-  final _isolateManager = ThumbnailIsolateManager.instance;
 
   // Progress simulation timer
   Timer? _progressTimer;
@@ -118,23 +112,23 @@ class _LazyVideoThumbnailState extends State<LazyVideoThumbnail>
         '[Thumbnail] Cache cleared notification received for ${widget.videoPath}');
     if (!mounted) return;
 
-    // Reset thumbnail path
-    final hadThumbnail = _thumbnailPathNotifier.value != null;
     _thumbnailPathNotifier.value = null;
     _isThumbnailGenerated = false;
     _shouldRegenerateThumbnail = true;
+    _wasAttempted = false;
 
     // Only reload immediately if the widget is visible
     if (_visibilityNotifier.value) {
       debugPrint(
           '[Thumbnail] Widget is visible, reloading thumbnail after cache clear for ${widget.videoPath}');
-      // Reset error state if there was one
-      if (_isError) {
-        _isError = false;
-      }
 
-      // If we had a thumbnail before, force regeneration
-      _loadThumbnail(forceRegenerate: hadThumbnail, isPriority: true);
+      // Use a small delay to allow other operations to complete first
+      Future.delayed(const Duration(milliseconds: 50), () {
+        if (!mounted) return;
+
+        // Request with high priority and force regeneration
+        _loadThumbnail(forceRegenerate: true, isPriority: true);
+      });
     }
   }
 
@@ -201,14 +195,12 @@ class _LazyVideoThumbnailState extends State<LazyVideoThumbnail>
     // Start progress simulation for better UX
     _simulateProgressUpdates();
 
-    // Attempt to generate the thumbnail
-    _isolateManager
-        .generateThumbnail(
+    // Use VideoThumbnailHelper directly instead of ThumbnailIsolateManager
+    VideoThumbnailHelper.generateThumbnail(
       widget.videoPath,
-      priority: isPriority ? 150 : 100,
+      isPriority: isPriority,
       forceRegenerate: forceRegenerate,
-    )
-        .then((path) {
+    ).then((path) {
       if (!mounted) return;
 
       _progressTimer?.cancel();
@@ -225,7 +217,6 @@ class _LazyVideoThumbnailState extends State<LazyVideoThumbnail>
         debugPrint(
             '[Thumbnail] Failed to generate thumbnail for ${widget.videoPath}');
         _thumbnailPathNotifier.value = null;
-        _isError = true;
 
         // Call onError callback if provided
         if (widget.onError != null) {
@@ -246,7 +237,6 @@ class _LazyVideoThumbnailState extends State<LazyVideoThumbnail>
           '[Thumbnail] Error generating thumbnail for ${widget.videoPath}: $error');
       _thumbnailPathNotifier.value = null;
       _isLoading = false;
-      _isError = true;
       _progressNotifier.value = 0.0;
 
       // Call onError callback if provided
@@ -360,9 +350,6 @@ class _LazyVideoThumbnailState extends State<LazyVideoThumbnail>
             children: [
               // The fallback widget provided by the consumer
               widget.fallbackBuilder(),
-
-              // Show loading indicator if loading
-              if (_isLoading) Center(child: _buildProgressIndicator()),
             ],
           ),
         );
@@ -370,7 +357,7 @@ class _LazyVideoThumbnailState extends State<LazyVideoThumbnail>
     );
   }
 
-  /// Build circular progress indicator
+  /// Build circular progress indicator - kept for potential future use
   Widget _buildProgressIndicator() {
     return ValueListenableBuilder<double>(
       valueListenable: _progressNotifier,
@@ -392,9 +379,6 @@ class _LazyVideoThumbnailState extends State<LazyVideoThumbnail>
 
   /// Build the actual thumbnail image
   Widget _buildThumbnailImage(String thumbnailPath) {
-    debugPrint(
-        '[Thumbnail] Building thumbnail image for ${widget.videoPath} with path: $thumbnailPath');
-
     return RepaintBoundary(
       child: SizedBox(
         width: widget.width,
@@ -412,7 +396,6 @@ class _LazyVideoThumbnailState extends State<LazyVideoThumbnail>
                 '[Thumbnail] Error loading thumbnail image for ${widget.videoPath}: $error');
             _thumbnailPathNotifier.value = null;
             _isLoading = false;
-            _isError = true;
             _isThumbnailGenerated = false;
             _shouldRegenerateThumbnail = true;
             VideoThumbnailHelper.removeFromCache(widget.videoPath);
@@ -463,212 +446,5 @@ class _LazyVideoThumbnailState extends State<LazyVideoThumbnail>
         ),
       ),
     );
-  }
-}
-
-/// A grid item that displays a video thumbnail with lazy loading
-/// For use in GridView to display video files
-class LazyVideoGridItem extends StatelessWidget {
-  final File file;
-  final VoidCallback onTap;
-  final double width;
-  final double height;
-
-  const LazyVideoGridItem({
-    Key? key,
-    required this.file,
-    required this.onTap,
-    this.width = 160,
-    this.height = 120,
-  }) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    // Sử dụng RepaintBoundary để giảm việc vẽ lại khi scroll
-    return RepaintBoundary(
-      child: GestureDetector(
-        onTap: onTap,
-        child: Card(
-          clipBehavior: Clip.antiAlias,
-          elevation: 2,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(
-                child: LazyVideoThumbnail(
-                  videoPath: file.path,
-                  width: width,
-                  height: height,
-                  fallbackBuilder: () => Container(
-                    color: Colors.black12,
-                    child: Center(
-                      child: Icon(
-                        Icons.movie_outlined,
-                        size: 48,
-                        color: Colors.grey.shade700,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: Text(
-                  file.path.split('/').last,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 12),
-                ),
-              )
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// A list item that displays a video thumbnail with lazy loading
-/// For use in ListView to display video files
-class LazyVideoListItem extends StatelessWidget {
-  final File file;
-  final VoidCallback onTap;
-  final double thumbnailWidth;
-  final double thumbnailHeight;
-
-  const LazyVideoListItem({
-    Key? key,
-    required this.file,
-    required this.onTap,
-    this.thumbnailWidth = 120,
-    this.thumbnailHeight = 80,
-  }) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    final fileName = file.path.split('/').last;
-    final fileExt = fileName.split('.').last.toUpperCase();
-
-    // Dùng RepaintBoundary để giảm việc vẽ lại khi scroll
-    return RepaintBoundary(
-      child: ListTile(
-        onTap: onTap,
-        leading: SizedBox(
-          width: thumbnailWidth,
-          height: thumbnailHeight,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: LazyVideoThumbnail(
-              videoPath: file.path,
-              width: thumbnailWidth,
-              height: thumbnailHeight,
-              fallbackBuilder: () => Container(
-                color: Colors.black12,
-                child: Center(
-                  child: Text(
-                    fileExt,
-                    style: TextStyle(
-                      color: Colors.grey.shade700,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-        title: Text(fileName),
-        // Thay FutureBuilder bằng cách lưu trữ thông tin file
-        subtitle: _FileInfoWidget(file: file),
-        trailing: PopupMenuButton(
-          itemBuilder: (context) => [
-            const PopupMenuItem(
-              value: 'play',
-              child: Row(
-                children: [
-                  Icon(Icons.play_arrow),
-                  SizedBox(width: 8),
-                  Text('Play'),
-                ],
-              ),
-            ),
-            const PopupMenuItem(
-              value: 'info',
-              child: Row(
-                children: [
-                  Icon(Icons.info_outline),
-                  SizedBox(width: 8),
-                  Text('Properties'),
-                ],
-              ),
-            ),
-          ],
-          onSelected: (value) {
-            if (value == 'play') {
-              onTap();
-            } else if (value == 'info') {
-              // Show file properties dialog
-            }
-          },
-        ),
-      ),
-    );
-  }
-}
-
-// Widget riêng để hiển thị thông tin file, tránh rebuild ListTile khi loading thông tin
-class _FileInfoWidget extends StatefulWidget {
-  final File file;
-
-  const _FileInfoWidget({required this.file});
-
-  @override
-  _FileInfoWidgetState createState() => _FileInfoWidgetState();
-}
-
-class _FileInfoWidgetState extends State<_FileInfoWidget> {
-  String? _fileInfo;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadFileInfo();
-  }
-
-  Future<void> _loadFileInfo() async {
-    try {
-      final fileStat = await widget.file.stat();
-      final size = _formatFileSize(fileStat.size);
-      final modified = _formatDate(fileStat.modified);
-      if (mounted) {
-        setState(() {
-          _fileInfo = '$size • $modified';
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _fileInfo = 'Error loading info';
-        });
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(_fileInfo ?? 'Loading...');
-  }
-
-  String _formatFileSize(int bytes) {
-    if (bytes < 1024) return '$bytes B';
-    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    if (bytes < 1024 * 1024 * 1024) {
-      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
-    }
-    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
-  }
-
-  String _formatDate(DateTime dateTime) {
-    return '${dateTime.day}/${dateTime.month}/${dateTime.year}';
   }
 }

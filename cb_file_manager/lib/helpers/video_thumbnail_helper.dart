@@ -1060,10 +1060,15 @@ class VideoThumbnailHelper {
     // Set a flag to prevent new thumbnail requests during cache clearing
     final bool wasProcessing = _isProcessingQueue;
     _isProcessingQueue = true;
+    _shouldStopProcessing = true;
 
     try {
+      // Clear in-memory caches first
       _fileCache.clear();
       _inMemoryPathCache.clear();
+
+      // Don't clear _attemptedPaths here, we want to regenerate all thumbnails
+      // including those that previously failed
       _attemptedPaths.clear();
 
       // Cancel all pending thumbnail requests first
@@ -1081,7 +1086,7 @@ class VideoThumbnailHelper {
       }
 
       // Wait briefly for any ongoing compute operations to finish
-      await Future.delayed(const Duration(milliseconds: 50));
+      await Future.delayed(const Duration(milliseconds: 100));
 
       // Cancel all processing requests
       final processingRequests = List<_ThumbnailRequest>.from(_processingQueue);
@@ -1101,7 +1106,7 @@ class VideoThumbnailHelper {
       _initializing = false;
       _initCompleter = Completer<void>();
 
-      // Clear Flutter's image cache to prevent memory leaks
+      // Clear Flutter's image cache to prevent memory leaks and old thumbnail display
       try {
         PaintingBinding.instance.imageCache.clear();
         PaintingBinding.instance.imageCache.clearLiveImages();
@@ -1159,8 +1164,9 @@ class VideoThumbnailHelper {
       // Notify listeners that cache has been cleared
       _notifyCacheChanged();
     } finally {
-      // Restore processing flag to previous state if it wasn't already processing
+      // Reset processing flags and allow new requests
       _isProcessingQueue = wasProcessing;
+      _shouldStopProcessing = false;
     }
   }
 
@@ -1340,13 +1346,37 @@ class VideoThumbnailHelper {
           'VideoThumbnail: Found ${videoPaths.length} video files to regenerate thumbnails',
           forceShow: true);
 
-      // Use the optimized batch preload to regenerate thumbnails
-      await optimizedBatchPreload(videoPaths,
-          maxConcurrent: 2, visibleCount: 10);
+      // Clear the attempted paths to force regeneration
+      for (final videoPath in videoPaths) {
+        _attemptedPaths.remove(videoPath);
+      }
+
+      // Use the optimized batch preload with explicit forceRegenerate flag
+      // First process the first 10 visible files with higher priority
+      final visibleFiles = videoPaths.take(10).toList();
+      final remainingFiles = videoPaths.skip(10).toList();
+
+      // Process visible files first with higher priority
+      for (final videoPath in visibleFiles) {
+        await _requestThumbnail(videoPath,
+            priority: _visiblePriority, forceRegenerate: true);
+
+        // Small delay between each request to prevent system overload
+        await Future.delayed(const Duration(milliseconds: 10));
+      }
+
+      // Then process remaining files with normal priority
+      if (remainingFiles.isNotEmpty) {
+        await optimizedBatchPreload(remainingFiles,
+            maxConcurrent: 2, visibleCount: 20);
+      }
 
       _log(
           'VideoThumbnail: Regeneration queued for ${videoPaths.length} videos',
           forceShow: true);
+
+      // Notify listeners that cache has changed (thumbnails are being regenerated)
+      _notifyCacheChanged();
     } catch (e) {
       _log('VideoThumbnail: Error regenerating thumbnails: $e',
           forceShow: true);

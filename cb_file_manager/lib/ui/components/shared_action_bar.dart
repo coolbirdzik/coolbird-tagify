@@ -49,48 +49,52 @@ class SharedActionBar {
     showDialog(
       context: context,
       builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Điều chỉnh kích thước lưới'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Slider(
-                value: size.toDouble(),
-                min: UserPreferences.minGridZoomLevel.toDouble(),
-                max: UserPreferences.maxGridZoomLevel.toDouble(),
-                divisions: UserPreferences.maxGridZoomLevel -
-                    UserPreferences.minGridZoomLevel,
-                label: '${size.round()} ô trên mỗi hàng',
-                onChanged: (double value) {
-                  size = value.round();
-                },
-              ),
-              const Text(
-                'Di chuyển thanh trượt để chọn số lượng ô hiển thị trên mỗi hàng',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey,
+        return StatefulBuilder(builder: (context, setState) {
+          return AlertDialog(
+            title: const Text('Điều chỉnh kích thước lưới'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Slider(
+                  value: size.toDouble(),
+                  min: UserPreferences.minGridZoomLevel.toDouble(),
+                  max: UserPreferences.maxGridZoomLevel.toDouble(),
+                  divisions: UserPreferences.maxGridZoomLevel -
+                      UserPreferences.minGridZoomLevel,
+                  label: '${size.round()} ô trên mỗi hàng',
+                  onChanged: (double value) {
+                    setState(() {
+                      size = value.round();
+                    });
+                  },
                 ),
-                textAlign: TextAlign.center,
+                const Text(
+                  'Di chuyển thanh trượt để chọn số lượng ô hiển thị trên mỗi hàng',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                },
+                child: const Text('HỦY'),
+              ),
+              TextButton(
+                onPressed: () {
+                  onApply(size);
+                  Navigator.pop(context);
+                },
+                child: const Text('ÁP DỤNG'),
               ),
             ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-              },
-              child: const Text('HỦY'),
-            ),
-            TextButton(
-              onPressed: () {
-                onApply(size);
-                Navigator.pop(context);
-              },
-              child: const Text('ÁP DỤNG'),
-            ),
-          ],
-        );
+          );
+        });
       },
     );
   }

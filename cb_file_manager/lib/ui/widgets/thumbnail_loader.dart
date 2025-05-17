@@ -129,6 +129,8 @@ class _ThumbnailLoaderState extends State<ThumbnailLoader>
     // Listen for cache changes
     _cacheChangedSubscription = VideoThumbnailHelper.onCacheChanged.listen((_) {
       if (_widgetMounted) {
+        // Reset cache and force reload of thumbnails
+        _cache.clearCache();
         _invalidateThumbnail();
       }
     });
@@ -154,7 +156,12 @@ class _ThumbnailLoaderState extends State<ThumbnailLoader>
   void _invalidateThumbnail() {
     _isLoadingNotifier.value = true;
     _hasErrorNotifier.value = false;
-    _loadThumbnail();
+    // Use a small delay to prevent multiple reloads in quick succession
+    Future.delayed(const Duration(milliseconds: 10), () {
+      if (_widgetMounted) {
+        _loadThumbnail();
+      }
+    });
   }
 
   @override
