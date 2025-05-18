@@ -124,15 +124,29 @@ class DriveView extends StatelessWidget {
                                 children: [
                                   const Icon(Icons.storage, size: 36),
                                   const SizedBox(width: 12),
-                                  Text(
-                                    drive.path,
-                                    style: TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.bold,
-                                      color: headerTextColor,
-                                    ),
+                                  FutureBuilder<String>(
+                                    future: getDriveLabel(drive.path),
+                                    builder: (context, labelSnapshot) {
+                                      String displayText = drive.path;
+                                      if (labelSnapshot.hasData &&
+                                          labelSnapshot.data!.isNotEmpty) {
+                                        displayText =
+                                            '${drive.path} (${labelSnapshot.data})';
+                                      }
+                                      return Expanded(
+                                        child: Text(
+                                          displayText,
+                                          style: TextStyle(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.bold,
+                                            color: headerTextColor,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      );
+                                    },
                                   ),
-                                  const Spacer(),
                                   const Icon(Icons.arrow_forward_ios, size: 16),
                                 ],
                               ),

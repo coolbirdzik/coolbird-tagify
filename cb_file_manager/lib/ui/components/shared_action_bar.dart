@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cb_file_manager/ui/screens/folder_list/folder_list_state.dart';
 import 'package:cb_file_manager/helpers/user_preferences.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
+import 'package:cb_file_manager/config/app_theme.dart';
 
 class SharedActionBar {
   /// Tạo popup menu item cho các tùy chọn sắp xếp
@@ -133,7 +134,7 @@ class SharedActionBar {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Colors.grey.shade100,
+                        color: AppTheme.primaryBlue,
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(color: Colors.grey.shade300),
                       ),
@@ -255,6 +256,7 @@ class SharedActionBar {
     return PopupMenuButton<String>(
       icon: const Icon(EvaIcons.moreVerticalOutline),
       tooltip: 'Thêm tùy chọn',
+      offset: const Offset(0, 50),
       itemBuilder: (context) {
         List<PopupMenuEntry<String>> items = [
           const PopupMenuItem<String>(
@@ -374,6 +376,7 @@ class SharedActionBar {
       PopupMenuButton<SortOption>(
         icon: const Icon(EvaIcons.options2Outline),
         tooltip: 'Sắp xếp theo',
+        offset: const Offset(0, 50),
         initialValue: currentSortOption,
         onSelected: onSortOptionSelected,
         itemBuilder: (context) => [
@@ -457,6 +460,7 @@ class SharedActionBar {
       PopupMenuButton<ViewMode>(
         icon: const Icon(EvaIcons.eyeOutline),
         tooltip: 'Chế độ xem',
+        offset: const Offset(0, 50),
         initialValue: viewMode,
         itemBuilder: (context) => [
           PopupMenuItem<ViewMode>(
@@ -464,7 +468,7 @@ class SharedActionBar {
             child: Row(
               children: [
                 Icon(
-                  EvaIcons.listOutline,
+                  EvaIcons.menu2Outline,
                   size: 20,
                   color: viewMode == ViewMode.list ? Colors.blue : null,
                 ),

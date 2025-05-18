@@ -1,6 +1,7 @@
 // dart
 import 'dart:async';
 import 'dart:io';
+import 'dart:ffi';
 
 // packages
 import 'package:flutter/services.dart';
@@ -8,6 +9,9 @@ import 'package:flutter/widgets.dart';
 import 'package:path/path.dart' as pathlib;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:flutter/material.dart';
+import 'package:win32/win32.dart' as win32;
+import 'package:ffi/ffi.dart';
 
 // local files
 import 'io_extensions.dart';
@@ -245,7 +249,7 @@ Future<List<FileSystemEntity>> sort(List<FileSystemEntity> elements, Sorting by,
 
 /// Get all available drives on Windows systems
 /// Returns a list of directories representing each drive
-/// Now also detects drives that require admin privileges
+/// Now also detects drives that require admin privileges and includes drive labels
 Future<List<Directory>> getAllWindowsDrives() async {
   if (!Platform.isWindows) {
     return [];
@@ -275,7 +279,12 @@ Future<List<Directory>> getAllWindowsDrives() async {
 
           // If we reach here, we have access
           drives.add(drive);
-          debugPrint('Found accessible drive: $drivePath');
+
+          // Get drive label and store it in the directory metadata
+          String driveLabel = await getDriveLabel(drivePath);
+          drive.setProperty('driveLabel', driveLabel);
+
+          debugPrint('Found accessible drive: $drivePath - Label: $driveLabel');
         } catch (permissionError) {
           // Drive exists but we don't have permission
           // Create a special metadata property to mark as protected
@@ -283,7 +292,16 @@ Future<List<Directory>> getAllWindowsDrives() async {
           drives.add(drive);
           // Add a "tag" to mark this as a protected drive
           drive.setProperty('requiresAdmin', true);
-          debugPrint('Found protected drive: $drivePath (requires admin)');
+
+          // Get drive label when possible and store it
+          try {
+            String driveLabel = await getDriveLabel(drivePath);
+            drive.setProperty('driveLabel', driveLabel);
+            debugPrint(
+                'Found protected drive: $drivePath - Label: $driveLabel (requires admin)');
+          } catch (e) {
+            debugPrint('Found protected drive: $drivePath (requires admin)');
+          }
         }
       }
     } catch (e) {
@@ -293,6 +311,64 @@ Future<List<Directory>> getAllWindowsDrives() async {
   }
 
   return drives;
+}
+
+/// Get the volume label for a Windows drive
+Future<String> getDriveLabel(String drivePath) async {
+  if (!Platform.isWindows) {
+    return '';
+  }
+
+  try {
+    // Make sure path ends with backslash
+    final drive = drivePath.endsWith('\\') ? drivePath : '$drivePath\\';
+
+    // Allocate memory for the buffers
+    final volumeNameBuffer = calloc<Uint16>(win32.MAX_PATH + 1).cast<Utf16>();
+    final fileSystemNameBuffer =
+        calloc<Uint16>(win32.MAX_PATH + 1).cast<Utf16>();
+
+    // Volume serial number
+    final volumeSerialNumber = calloc<Uint32>(1);
+
+    // Maximum component length
+    final maximumComponentLength = calloc<Uint32>(1);
+
+    // File system flags
+    final fileSystemFlags = calloc<Uint32>(1);
+
+    try {
+      // Get volume information
+      final result = win32.GetVolumeInformation(
+        drive.toNativeUtf16(),
+        volumeNameBuffer,
+        win32.MAX_PATH + 1,
+        volumeSerialNumber,
+        maximumComponentLength,
+        fileSystemFlags,
+        fileSystemNameBuffer,
+        win32.MAX_PATH + 1,
+      );
+
+      String label = '';
+      if (result != 0) {
+        // Convert the buffer to a Dart string
+        label = volumeNameBuffer.toDartString();
+      }
+
+      return label;
+    } finally {
+      // Free allocated memory
+      calloc.free(volumeNameBuffer.cast<Uint16>());
+      calloc.free(fileSystemNameBuffer.cast<Uint16>());
+      calloc.free(volumeSerialNumber);
+      calloc.free(maximumComponentLength);
+      calloc.free(fileSystemFlags);
+    }
+  } catch (e) {
+    debugPrint('Error getting drive label: $e');
+    return '';
+  }
 }
 
 /// Get additional Android storage locations

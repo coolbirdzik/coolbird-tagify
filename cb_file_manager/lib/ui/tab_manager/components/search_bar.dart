@@ -5,6 +5,7 @@ import 'package:eva_icons_flutter/eva_icons_flutter.dart';
 import 'package:cb_file_manager/helpers/tag_manager.dart';
 import 'package:cb_file_manager/ui/screens/folder_list/folder_list_bloc.dart';
 import 'package:cb_file_manager/ui/screens/folder_list/folder_list_event.dart';
+import 'package:cb_file_manager/ui/tab_manager/tab_manager.dart'; // Add TabManager import
 import 'dart:io';
 import 'package:path/path.dart' as pathlib;
 
@@ -12,11 +13,13 @@ import 'package:path/path.dart' as pathlib;
 class SearchBar extends StatefulWidget {
   final String currentPath;
   final VoidCallback onCloseSearch;
+  final String tabId; // Add tabId property
 
   const SearchBar({
     Key? key,
     required this.currentPath,
     required this.onCloseSearch,
+    required this.tabId, // Include tabId in constructor
   }) : super(key: key);
 
   @override
@@ -29,6 +32,7 @@ class _SearchBarState extends State<SearchBar> {
   bool _isSearchingTags = false;
   List<String> _suggestedTags = [];
   bool _isGlobalSearch = false;
+  bool _quickAction = false; // Add missing property
 
   // Biến để lưu trữ overlay entry
   OverlayEntry? _overlayEntry;
@@ -349,67 +353,72 @@ class _SearchBarState extends State<SearchBar> {
   }
 
   void _performSearch() {
-    final query = _searchController.text.trim();
-
-    if (query.isEmpty) {
+    if (_searchController.text.isEmpty) {
       return;
     }
 
+    // Get the current path before performing search
+    final currentPath = widget.currentPath;
+
+    final query = _searchController.text;
     final folderListBloc = BlocProvider.of<FolderListBloc>(context);
-    debugPrint('Performing search with query: "$query"');
+    final tabBloc = BlocProvider.of<TabManagerBloc>(context);
 
-    // Kiểm tra xem có đang tìm kiếm theo tag không
-    if (query.contains('#')) {
-      final int hashPosition = query.lastIndexOf('#');
-      String tagQuery = query.substring(hashPosition + 1).trim();
+    // Check if it's a tag search (starts with # or in tag search mode)
+    if (_isSearchingTags || query.startsWith('#')) {
+      String tagQuery = query;
+      // If user just typed #, treat as empty tag query
+      if (tagQuery == '#') {
+        return;
+      }
 
-      debugPrint('Detected tag search. Tag query: "$tagQuery"');
+      // Remove the '#' prefix if present
+      if (tagQuery.startsWith('#')) {
+        tagQuery = tagQuery.substring(1);
+      }
 
-      if (tagQuery.isNotEmpty) {
-        // Xóa cache để đảm bảo dữ liệu mới nhất
-        TagManager.clearCache();
+      // Trim any whitespace
+      tagQuery = tagQuery.trim();
 
-        // Thông báo trạng thái tìm kiếm
+      // If tag query is empty after trimming, don't search
+      if (tagQuery.isEmpty) {
+        return;
+      }
+
+      // Add the current path to tab history before performing the search
+      // This will allow back button to return to the normal view
+      tabBloc.add(AddToTabHistory(widget.tabId, currentPath));
+
+      // Check if user wants a global search using the shift key or global checkbox
+      if (_isGlobalSearch) {
+        // Show a message for longer searches
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(_isGlobalSearch
-                ? 'Đang tìm kiếm tag "$tagQuery" trên toàn hệ thống...'
-                : 'Đang tìm kiếm tag "$tagQuery" trong thư mục hiện tại...'),
-            duration: const Duration(seconds: 1),
+            content: Row(
+              children: [
+                const CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  strokeWidth: 2,
+                ),
+                const SizedBox(width: 12),
+                Text('Đang tìm kiếm tag "$tagQuery" trên toàn hệ thống...'),
+              ],
+            ),
+            duration: const Duration(seconds: 3),
           ),
         );
 
-        // Thực hiện tìm kiếm theo tag
-        if (_isGlobalSearch) {
-          debugPrint('Searching for tag globally: "$tagQuery"');
-          folderListBloc.add(SearchByTagGlobally(tagQuery));
-
-          // Show loading indicator for global search (which takes longer)
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Row(
-                children: [
-                  SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Text('Đang tìm kiếm tag "$tagQuery" trên toàn hệ thống...'),
-                ],
-              ),
-              duration: const Duration(seconds: 3),
-            ),
-          );
-        } else {
-          debugPrint('Searching for tag in current directory: "$tagQuery"');
-          folderListBloc.add(SearchByTag(tagQuery));
-        }
+        debugPrint('Searching for tag globally: "$tagQuery"');
+        folderListBloc.add(SearchByTagGlobally(tagQuery));
+      } else {
+        debugPrint('Searching for tag in current directory: "$tagQuery"');
+        folderListBloc.add(SearchByTag(tagQuery));
       }
     } else {
+      // Add the current path to tab history before performing the search
+      // This will allow back button to return to the normal view
+      tabBloc.add(AddToTabHistory(widget.tabId, currentPath));
+
       // Tìm kiếm theo tên file
       debugPrint('Searching by filename: "$query"');
       folderListBloc.add(SearchByFileName(query));

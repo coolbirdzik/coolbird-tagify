@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cb_file_manager/helpers/io_extensions.dart';
 import 'package:cb_file_manager/ui/components/shared_file_context_menu.dart';
+import 'package:eva_icons_flutter/eva_icons_flutter.dart';
 
 class FolderItem extends StatefulWidget {
   final Directory folder;
@@ -28,23 +29,13 @@ class FolderItem extends StatefulWidget {
 }
 
 class _FolderItemState extends State<FolderItem> {
-  bool _isHovering = false;
-  bool _visuallySelected = false;
+  // Use ValueNotifier for hover state to reduce rebuilds
+  final ValueNotifier<bool> _isHovering = ValueNotifier<bool>(false);
 
   @override
-  void initState() {
-    super.initState();
-    _visuallySelected = widget.isSelected;
-  }
-
-  @override
-  void didUpdateWidget(FolderItem oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.isSelected != oldWidget.isSelected) {
-      setState(() {
-        _visuallySelected = widget.isSelected;
-      });
-    }
+  void dispose() {
+    _isHovering.dispose();
+    super.dispose();
   }
 
   void _handleFolderSelection() {
@@ -55,19 +46,6 @@ class _FolderItemState extends State<FolderItem> {
     final bool isShiftPressed = keyboard.isShiftPressed;
     final bool isCtrlPressed =
         keyboard.isControlPressed || keyboard.isMetaPressed;
-
-    // Visual update for immediate feedback
-    if (!isShiftPressed) {
-      setState(() {
-        if (!isCtrlPressed) {
-          // Single selection without Ctrl: this item will be selected
-          _visuallySelected = true;
-        } else {
-          // Ctrl+click: toggle this item's selection
-          _visuallySelected = !_visuallySelected;
-        }
-      });
-    }
 
     // Call toggleFolderSelection with appropriate parameters
     widget.toggleFolderSelection!(widget.folder.path,
@@ -86,60 +64,150 @@ class _FolderItemState extends State<FolderItem> {
 
   @override
   Widget build(BuildContext context) {
-    final Color itemBackgroundColor = _visuallySelected
-        ? Theme.of(context).colorScheme.primaryContainer.withOpacity(0.7)
-        : _isHovering && widget.isDesktopMode
-            ? Theme.of(context).hoverColor
-            : Theme.of(context).cardColor;
+    return ValueListenableBuilder<bool>(
+      valueListenable: _isHovering,
+      builder: (context, isHovering, _) {
+        final Color backgroundColor = widget.isSelected
+            ? Theme.of(context).colorScheme.primaryContainer
+            : isHovering && widget.isDesktopMode
+                ? Theme.of(context).colorScheme.surface.withOpacity(0.6)
+                : Colors.transparent;
 
-    return MouseRegion(
-      onEnter: (_) => setState(() => _isHovering = true),
-      onExit: (_) => setState(() => _isHovering = false),
-      cursor: SystemMouseCursors.click,
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 2.0),
-        decoration: BoxDecoration(
-          color: itemBackgroundColor,
-          borderRadius: BorderRadius.circular(4.0),
-        ),
-        child: GestureDetector(
+        return GestureDetector(
           onSecondaryTap: () => _showFolderContextMenu(context),
           onDoubleTap: widget.isDesktopMode
               ? () => widget.onTap?.call(widget.folder.path)
               : null,
-          child: ListTile(
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 12.0, vertical: 0),
-            leading: const Icon(Icons.folder, color: Colors.amber),
-            title: Text(
-              widget.folder.basename(),
-              style: TextStyle(
-                fontWeight:
-                    _visuallySelected ? FontWeight.bold : FontWeight.normal,
+          child: MouseRegion(
+            onEnter: (_) => _isHovering.value = true,
+            onExit: (_) => _isHovering.value = false,
+            cursor: SystemMouseCursors.click,
+            child: Container(
+              margin:
+                  const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+              decoration: BoxDecoration(
+                color: backgroundColor,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Stack(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                        vertical: 12.0, horizontal: 16.0),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            color: Colors.amber.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Center(
+                            child: Icon(
+                              EvaIcons.folderOutline,
+                              color: Colors.amber[600],
+                              size: 28,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                widget.folder.basename(),
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .titleMedium
+                                    ?.copyWith(
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 4),
+                              FutureBuilder<FileStat>(
+                                future: widget.folder.stat(),
+                                builder: (context, snapshot) {
+                                  if (snapshot.hasData) {
+                                    return Text(
+                                      snapshot.data!.modified
+                                          .toString()
+                                          .split('.')[0],
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall
+                                          ?.copyWith(
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .onSurface
+                                                .withOpacity(0.7),
+                                          ),
+                                    );
+                                  }
+                                  return Text(
+                                    'Loading...',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodySmall
+                                        ?.copyWith(
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .onSurface
+                                              .withOpacity(0.5),
+                                        ),
+                                  );
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Interactive layer
+                  Positioned.fill(
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        splashColor: Colors.transparent,
+                        highlightColor: Colors.transparent,
+                        onTap: () {
+                          if (widget.isDesktopMode &&
+                              widget.toggleFolderSelection != null) {
+                            _handleFolderSelection();
+                          } else if (widget.onTap != null) {
+                            widget.onTap!(widget.folder.path);
+                          }
+                        },
+                      ),
+                    ),
+                  ),
+                  // Selection indicator
+                  if (widget.isSelected)
+                    Positioned(
+                      left: 0,
+                      top: 0,
+                      bottom: 0,
+                      width: 3,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.primary,
+                          borderRadius: const BorderRadius.horizontal(
+                            left: Radius.circular(12),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
-            subtitle: FutureBuilder<FileStat>(
-              future: widget.folder.stat(),
-              builder: (context, snapshot) {
-                if (snapshot.hasData) {
-                  return Text(
-                    snapshot.data!.modified.toString().split('.')[0],
-                  );
-                }
-                return const Text('Loading...');
-              },
-            ),
-            onTap: () {
-              if (widget.isDesktopMode &&
-                  widget.toggleFolderSelection != null) {
-                _handleFolderSelection();
-              } else if (widget.onTap != null) {
-                widget.onTap!(widget.folder.path);
-              }
-            },
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }

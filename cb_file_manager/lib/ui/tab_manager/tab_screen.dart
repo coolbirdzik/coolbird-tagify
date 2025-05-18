@@ -217,6 +217,8 @@ class _TabScreenState extends State<TabScreen> with TickerProviderStateMixin {
 
     // Xác định xem thiết bị có phải là tablet hay không
     final isTablet = _isTablet(context);
+    final theme = Theme.of(context);
+    final isDarkMode = theme.brightness == Brightness.dark;
 
     return BlocBuilder<TabManagerBloc, TabManagerState>(
       builder: (context, state) {
@@ -314,17 +316,22 @@ class _TabScreenState extends State<TabScreen> with TickerProviderStateMixin {
                 },
                 child: Scaffold(
                   key: _scaffoldKey,
-                  // AppBar chỉ hiển thị ở giao diện tablet
+                  // Modern AppBar only for tablet interface
                   appBar: isTablet
                       ? AppBar(
                           elevation: 0,
-                          backgroundColor:
-                              Theme.of(context).brightness == Brightness.dark
-                                  ? const Color(0xFF292A2D)
-                                  : const Color(0xFFDEE1E6),
+                          backgroundColor: theme.scaffoldBackgroundColor,
                           // Move TabBar to the title area instead of using bottom
                           title: state.tabs.isEmpty
-                              ? Text(context.tr.appTitle)
+                              ? Text(
+                                  context.tr.appTitle,
+                                  style: TextStyle(
+                                    color: isDarkMode
+                                        ? Colors.white
+                                        : theme.colorScheme.primary,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                )
                               : ScrollConfiguration(
                                   // Apply custom scroll behavior that supports mouse wheel scrolling
                                   behavior: TabBarMouseScrollBehavior(),
@@ -358,29 +365,34 @@ class _TabScreenState extends State<TabScreen> with TickerProviderStateMixin {
                                     // Keep the add tab button functionality
                                     onAddTabPressed: _handleAddNewTab,
                                     tabs: [
-                                      // Generate Chrome-style tabs without the close button (now handled by ScrollableTabBar)
+                                      // Generate modern-style tabs
                                       ...state.tabs.map((tab) {
                                         return Tab(
                                           height: 38,
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Icon(
-                                                tab.isPinned
-                                                    ? EvaIcons.pin
-                                                    : tab.icon ??
-                                                        EvaIcons.folderOutline,
-                                                size: 16,
-                                              ),
-                                              const SizedBox(width: 8),
-                                              Flexible(
-                                                child: Text(
-                                                  tab.name,
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
+                                          child: Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 4),
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Icon(
+                                                  tab.isPinned
+                                                      ? EvaIcons.pin
+                                                      : tab.icon ??
+                                                          EvaIcons
+                                                              .folderOutline,
+                                                  size: 16,
                                                 ),
-                                              ),
-                                            ],
+                                                const SizedBox(width: 8),
+                                                Flexible(
+                                                  child: Text(
+                                                    tab.name,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
                                           ),
                                         );
                                       }).toList(),
@@ -388,23 +400,32 @@ class _TabScreenState extends State<TabScreen> with TickerProviderStateMixin {
                                   ),
                                 ),
                           actions: [
-                            // Chrome-style menu button
+                            // Modern menu button
                             Padding(
                               padding: const EdgeInsets.only(right: 8.0),
                               child: IconButton(
                                 icon: Icon(
                                   EvaIcons.moreVertical,
-                                  color: Theme.of(context).brightness ==
-                                          Brightness.dark
-                                      ? Colors.white70
-                                      : Colors.black54,
+                                  color: isDarkMode
+                                      ? Colors.white.withOpacity(0.8)
+                                      : theme.colorScheme.primary,
+                                  size: 22,
+                                ),
+                                style: IconButton.styleFrom(
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  backgroundColor: isDarkMode
+                                      ? Colors.white.withOpacity(0.03)
+                                      : theme.colorScheme.primary
+                                          .withOpacity(0.05),
                                 ),
                                 onPressed: () => _showTabOptions(context),
                               ),
                             ),
                           ],
                         )
-                      : null, // Không hiển thị AppBar cho giao diện mobile
+                      : null, // No AppBar for mobile interface
                   drawer: !_isDrawerPinned
                       ? CBDrawer(
                           context,
@@ -428,9 +449,24 @@ class _TabScreenState extends State<TabScreen> with TickerProviderStateMixin {
                             },
                           ),
                         ),
-                      // Main content area
+                      // Main content area with subtle container styling
                       Expanded(
-                        child: _buildContent(context, state, isTablet),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: theme.scaffoldBackgroundColor,
+                            borderRadius: const BorderRadius.only(
+                              topLeft: Radius.circular(16),
+                              bottomLeft: Radius.circular(16),
+                            ),
+                          ),
+                          child: ClipRRect(
+                            borderRadius: const BorderRadius.only(
+                              topLeft: Radius.circular(16),
+                              bottomLeft: Radius.circular(16),
+                            ),
+                            child: _buildContent(context, state, isTablet),
+                          ),
+                        ),
                       ),
                     ],
                   ),
@@ -438,7 +474,15 @@ class _TabScreenState extends State<TabScreen> with TickerProviderStateMixin {
                       ? FloatingActionButton(
                           onPressed: _handleAddNewTab,
                           tooltip: context.tr.newFolder,
-                          child: const Icon(EvaIcons.plus),
+                          elevation: 2,
+                          backgroundColor: theme.colorScheme.primary,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: const Icon(
+                            EvaIcons.plus,
+                            size: 24,
+                          ),
                         )
                       : null,
                 ),
@@ -469,32 +513,77 @@ class _TabScreenState extends State<TabScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildEmptyTabsView(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDarkMode = theme.brightness == Brightness.dark;
+
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(
-            EvaIcons.fileOutline,
-            size: 64,
-            color: Colors.grey,
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            'No tabs open',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Open a new tab to get started',
-            style: TextStyle(color: Colors.grey),
-          ),
-          const SizedBox(height: 24),
-          ElevatedButton.icon(
-            icon: const Icon(EvaIcons.plus),
-            label: Text(context.tr.newFolder),
-            onPressed: _handleAddNewTab,
-          ),
-        ],
+      child: Container(
+        padding: const EdgeInsets.all(32),
+        decoration: BoxDecoration(
+          color: isDarkMode
+              ? theme.colorScheme.surface.withOpacity(0.4)
+              : theme.colorScheme.surface.withOpacity(0.7),
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.03),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        constraints: const BoxConstraints(maxWidth: 400),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              EvaIcons.folderOutline,
+              size: 64,
+              color: theme.colorScheme.primary.withOpacity(0.8),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              'No tabs open',
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w600,
+                color: theme.textTheme.titleLarge?.color,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Open a new tab to start browsing your files',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 15,
+                color: theme.textTheme.bodyMedium?.color?.withOpacity(0.7),
+              ),
+            ),
+            const SizedBox(height: 32),
+            ElevatedButton.icon(
+              icon: const Icon(EvaIcons.plus, size: 18),
+              label: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                child: Text(
+                  context.tr.newFolder,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+              style: ElevatedButton.styleFrom(
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              onPressed: _handleAddNewTab,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -582,97 +671,94 @@ class _TabScreenState extends State<TabScreen> with TickerProviderStateMixin {
   void _showTabOptions(BuildContext context) {
     final theme = Theme.of(context);
     final isDarkMode = theme.brightness == Brightness.dark;
-    final backgroundColor = isDarkMode ? const Color(0xFF292A2D) : Colors.white;
-    final textColor = isDarkMode ? Colors.white70 : Colors.black87;
+    final backgroundColor =
+        isDarkMode ? theme.colorScheme.surface : theme.colorScheme.surface;
+    final textColor = isDarkMode
+        ? theme.textTheme.bodyMedium?.color
+        : theme.textTheme.bodyMedium?.color;
 
     showDialog(
       context: context,
       builder: (context) => Dialog(
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(16),
         ),
-        elevation: 5,
+        elevation: 0,
         backgroundColor: backgroundColor,
         child: Container(
           width: 320,
-          padding: const EdgeInsets.symmetric(vertical: 8),
+          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 4),
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Dialog title
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                child: Text(
-                  context.tr.settings,
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: textColor,
-                  ),
+                padding: const EdgeInsets.only(left: 20, right: 20, bottom: 16),
+                child: Row(
+                  children: [
+                    Text(
+                      'Tab options',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: textColor,
+                      ),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      icon: Icon(
+                        EvaIcons.close,
+                        size: 20,
+                        color: textColor?.withOpacity(0.7),
+                      ),
+                      onPressed: () => Navigator.of(context).pop(),
+                      iconSize: 20,
+                      style: IconButton.styleFrom(
+                        backgroundColor: isDarkMode
+                            ? Colors.white.withOpacity(0.05)
+                            : Colors.black.withOpacity(0.05),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              _buildTabOptionItem(
-                context: context,
-                icon: EvaIcons.plus,
-                title: 'New Tab',
-                isDarkMode: isDarkMode,
+
+              // Option items
+              _buildOptionItem(
+                context,
+                icon: EvaIcons.plusCircleOutline,
+                text: 'New tab',
                 onTap: () {
-                  Navigator.pop(context);
+                  Navigator.of(context).pop();
                   _handleAddNewTab();
                 },
               ),
-              _buildTabOptionItem(
-                context: context,
-                icon: EvaIcons.refresh,
-                title: context.tr.refresh,
-                isDarkMode: isDarkMode,
+              _buildOptionItem(
+                context,
+                icon: EvaIcons.close,
+                text: 'Close current tab',
                 onTap: () {
-                  Navigator.pop(context);
-                  // Get the current tab and refresh its content
-                  final state = context.read<TabManagerBloc>().state;
-                  final activeTab = state.activeTab;
-                  if (activeTab != null) {
-                    // This will trigger a rebuild of the active tab
-                    context
-                        .read<TabManagerBloc>()
-                        .add(UpdateTabPath(activeTab.id, activeTab.path));
-                  }
+                  Navigator.of(context).pop();
+                  _handleCloseCurrentTab();
                 },
               ),
-              _buildTabOptionItem(
-                context: context,
+              _buildOptionItem(
+                context,
                 icon: EvaIcons.settings2Outline,
-                title: context.tr.settings,
-                isDarkMode: isDarkMode,
+                text: 'Settings',
                 onTap: () {
-                  Navigator.pop(context);
+                  Navigator.of(context).pop();
                   Navigator.push(
                     context,
                     MaterialPageRoute(
                       builder: (context) => const SettingsScreen(),
                     ),
-                  ).then((_) {
-                    // Force rebuild when returning from settings to apply theme changes
-                    if (mounted) setState(() {});
-                  });
+                  );
                 },
               ),
-              _buildTabOptionItem(
-                context: context,
-                icon: EvaIcons.close,
-                title: context.tr.close,
-                isDarkMode: isDarkMode,
-                onTap: () {
-                  Navigator.pop(context);
-                  // Get all tabs and close them one by one
-                  final tabBloc = context.read<TabManagerBloc>();
-                  final tabs = List<TabData>.from(tabBloc.state.tabs);
-                  for (var tab in tabs) {
-                    tabBloc.add(CloseTab(tab.id));
-                  }
-                },
-              ),
-              const SizedBox(height: 8),
             ],
           ),
         ),
@@ -680,36 +766,48 @@ class _TabScreenState extends State<TabScreen> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildTabOptionItem({
-    required BuildContext context,
+  // Helper method to build menu options
+  Widget _buildOptionItem(
+    BuildContext context, {
     required IconData icon,
-    required String title,
-    required bool isDarkMode,
+    required String text,
     required VoidCallback onTap,
   }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          child: Row(
-            children: [
-              Icon(
+    final theme = Theme.of(context);
+    final isDarkMode = theme.brightness == Brightness.dark;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: isDarkMode
+                    ? theme.colorScheme.primary.withOpacity(0.1)
+                    : theme.colorScheme.primary.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
                 icon,
-                size: 20,
-                color: isDarkMode ? Colors.white70 : Colors.black87,
+                size: 18,
+                color: theme.colorScheme.primary,
               ),
-              const SizedBox(width: 16),
-              Text(
-                title,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: isDarkMode ? Colors.white : Colors.black87,
-                ),
+            ),
+            const SizedBox(width: 16),
+            Text(
+              text,
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w500,
+                color: theme.textTheme.bodyLarge?.color,
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

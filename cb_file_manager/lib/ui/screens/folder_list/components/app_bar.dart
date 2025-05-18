@@ -5,6 +5,7 @@ import 'package:cb_file_manager/ui/screens/folder_list/folder_list_event.dart';
 import 'package:cb_file_manager/ui/screens/media_gallery/image_gallery_screen.dart';
 import 'package:cb_file_manager/ui/screens/media_gallery/video_gallery_screen.dart';
 import 'package:cb_file_manager/ui/tab_manager/components/tag_dialogs.dart';
+import 'package:eva_icons_flutter/eva_icons_flutter.dart';
 
 class FolderListAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String currentPath;
@@ -38,80 +39,128 @@ class FolderListAppBar extends StatelessWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Get the last part of the path for the title
+    final String title = isSelectionMode
+        ? '${selectedFiles.length} selected'
+        : currentPath.split(RegExp(r'[/\\]')).where((s) => s.isNotEmpty).last;
+
     return AppBar(
       title: Text(
-        isSelectionMode ? '${selectedFiles.length} selected' : 'Files',
+        title,
+        style: TextStyle(
+          fontWeight: FontWeight.w500,
+          fontSize: 18,
+        ),
       ),
+      centerTitle: false,
+      elevation: 0,
       actions: _buildAppBarActions(context),
     );
   }
 
   List<Widget> _buildAppBarActions(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+
     if (isSelectionMode) {
       return [
-        PopupMenuButton<String>(
-          onSelected: (value) {
-            switch (value) {
-              case 'add_tag':
-                showBatchAddTagDialog(context, selectedFiles);
-                break;
-              case 'delete':
-                BlocProvider.of<FolderListBloc>(context)
-                    .add(FolderListDeleteFiles(selectedFiles));
-                toggleSelectionMode();
-                break;
-            }
+        // Grid size slider when in grid view and selection mode
+        if (isGridView)
+          Container(
+            width: 150,
+            padding: const EdgeInsets.symmetric(horizontal: 8.0),
+            child: SliderTheme(
+              data: SliderTheme.of(context).copyWith(
+                trackHeight: 2.0,
+                thumbShape:
+                    const RoundSliderThumbShape(enabledThumbRadius: 6.0),
+                overlayShape:
+                    const RoundSliderOverlayShape(overlayRadius: 14.0),
+                valueIndicatorShape: const PaddleSliderValueIndicatorShape(),
+                valueIndicatorTextStyle: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12.0,
+                ),
+              ),
+              child: Slider(
+                value: currentGridZoomLevel.toDouble(),
+                min: 2,
+                max: 5,
+                divisions: 3,
+                onChanged: (value) => setGridZoomLevel(value.toInt()),
+              ),
+            ),
+          ),
+        // Action buttons for selection mode
+        TextButton.icon(
+          icon: Icon(EvaIcons.plusCircleOutline, size: 18),
+          label: const Text('Tag'),
+          onPressed: () => showBatchAddTagDialog(context, selectedFiles),
+        ),
+        TextButton.icon(
+          icon: Icon(EvaIcons.trash2Outline, size: 18),
+          label: const Text('Delete'),
+          style: TextButton.styleFrom(
+            foregroundColor: Colors.red[400],
+          ),
+          onPressed: () {
+            BlocProvider.of<FolderListBloc>(context)
+                .add(FolderListDeleteFiles(selectedFiles));
+            toggleSelectionMode();
           },
-          itemBuilder: (context) => [
-            PopupMenuItem(
-              value: 'add_tag',
-              child: Row(
-                children: [
-                  Icon(Icons.local_offer,
-                      color: Theme.of(context).iconTheme.color),
-                  const SizedBox(width: 8),
-                  const Text('Add Tag'),
-                ],
-              ),
-            ),
-            PopupMenuItem(
-              value: 'delete',
-              child: Row(
-                children: [
-                  Icon(Icons.delete, color: Colors.red[400]),
-                  const SizedBox(width: 8),
-                  const Text('Delete', style: TextStyle(color: Colors.red)),
-                ],
-              ),
-            ),
-          ],
         ),
         IconButton(
-          icon: const Icon(Icons.close),
+          icon: Icon(EvaIcons.close, size: 24),
           tooltip: 'Cancel selection',
           onPressed: clearSelection,
         ),
+        const SizedBox(width: 8),
       ];
     } else {
       return [
-        if (!isGridView)
-          IconButton(
-            icon: const Icon(Icons.grid_view),
-            tooltip: 'Switch to grid view',
-            onPressed: toggleViewMode,
-          )
-        else
-          IconButton(
-            icon: const Icon(Icons.view_list),
-            tooltip: 'Switch to list view',
-            onPressed: toggleViewMode,
-          ),
+        // View toggle button
         IconButton(
-          icon: const Icon(Icons.search),
+          icon: Icon(
+            isGridView ? EvaIcons.listOutline : EvaIcons.gridOutline,
+            size: 24,
+          ),
+          tooltip: isGridView ? 'Switch to list view' : 'Switch to grid view',
+          onPressed: toggleViewMode,
+        ),
+        // Grid size slider when in grid view
+        if (isGridView)
+          Container(
+            width: 120,
+            padding: const EdgeInsets.symmetric(horizontal: 4.0),
+            child: SliderTheme(
+              data: SliderTheme.of(context).copyWith(
+                trackHeight: 2.0,
+                thumbShape:
+                    const RoundSliderThumbShape(enabledThumbRadius: 6.0),
+                overlayShape:
+                    const RoundSliderOverlayShape(overlayRadius: 14.0),
+              ),
+              child: Slider(
+                value: currentGridZoomLevel.toDouble(),
+                min: 2,
+                max: 5,
+                divisions: 3,
+                onChanged: (value) => setGridZoomLevel(value.toInt()),
+              ),
+            ),
+          ),
+        // Search button
+        IconButton(
+          icon: Icon(EvaIcons.searchOutline, size: 24),
           tooltip: 'Search',
           onPressed: showSearchScreen,
         ),
+        // More actions menu
         PopupMenuButton<String>(
+          icon: Icon(EvaIcons.moreVerticalOutline, size: 24),
+          elevation: 2,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
           onSelected: (value) {
             switch (value) {
               case 'refresh':
@@ -146,8 +195,9 @@ class FolderListAppBar extends StatelessWidget implements PreferredSizeWidget {
               value: 'refresh',
               child: Row(
                 children: [
-                  Icon(Icons.refresh, color: Theme.of(context).iconTheme.color),
-                  const SizedBox(width: 8),
+                  Icon(EvaIcons.refreshOutline,
+                      size: 20, color: theme.iconTheme.color),
+                  const SizedBox(width: 12),
                   const Text('Refresh'),
                 ],
               ),
@@ -156,9 +206,9 @@ class FolderListAppBar extends StatelessWidget implements PreferredSizeWidget {
               value: 'select_all',
               child: Row(
                 children: [
-                  Icon(Icons.select_all,
-                      color: Theme.of(context).iconTheme.color),
-                  const SizedBox(width: 8),
+                  Icon(EvaIcons.checkmarkSquare2Outline,
+                      size: 20, color: theme.iconTheme.color),
+                  const SizedBox(width: 12),
                   const Text('Select All'),
                 ],
               ),
@@ -167,9 +217,9 @@ class FolderListAppBar extends StatelessWidget implements PreferredSizeWidget {
               value: 'manage_tags',
               child: Row(
                 children: [
-                  Icon(Icons.local_offer,
-                      color: Theme.of(context).iconTheme.color),
-                  const SizedBox(width: 8),
+                  Icon(EvaIcons.pricetags,
+                      size: 20, color: theme.iconTheme.color),
+                  const SizedBox(width: 12),
                   const Text('Manage Tags'),
                 ],
               ),
@@ -178,9 +228,9 @@ class FolderListAppBar extends StatelessWidget implements PreferredSizeWidget {
               value: 'photo_gallery',
               child: Row(
                 children: [
-                  Icon(Icons.photo_library,
-                      color: Theme.of(context).iconTheme.color),
-                  const SizedBox(width: 8),
+                  Icon(EvaIcons.imageOutline,
+                      size: 20, color: theme.iconTheme.color),
+                  const SizedBox(width: 12),
                   const Text('Photo Gallery'),
                 ],
               ),
@@ -189,15 +239,16 @@ class FolderListAppBar extends StatelessWidget implements PreferredSizeWidget {
               value: 'video_gallery',
               child: Row(
                 children: [
-                  Icon(Icons.video_library,
-                      color: Theme.of(context).iconTheme.color),
-                  const SizedBox(width: 8),
+                  Icon(EvaIcons.videoOutline,
+                      size: 20, color: theme.iconTheme.color),
+                  const SizedBox(width: 12),
                   const Text('Video Gallery'),
                 ],
               ),
             ),
           ],
         ),
+        const SizedBox(width: 4),
       ];
     }
   }

@@ -272,9 +272,9 @@ class _FileItemState extends State<FileItem> {
 
         // Calculate colors based on selection and hover state
         final Color backgroundColor = isSelected
-            ? Theme.of(context).primaryColor.withOpacity(0.15)
+            ? Theme.of(context).colorScheme.primaryContainer
             : isHovering && widget.isDesktopMode
-                ? Theme.of(context).hoverColor
+                ? Theme.of(context).colorScheme.surface.withOpacity(0.6)
                 : Colors.transparent;
 
         return RepaintBoundary(
@@ -291,14 +291,11 @@ class _FileItemState extends State<FileItem> {
               onExit: (_) => _isHoveringNotifier.value = false,
               cursor: SystemMouseCursors.click,
               child: Container(
+                margin:
+                    const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
                 decoration: BoxDecoration(
                   color: backgroundColor,
-                  border: Border(
-                    bottom: BorderSide(
-                      color: Theme.of(context).dividerColor,
-                      width: 0.5,
-                    ),
-                  ),
+                  borderRadius: BorderRadius.circular(12),
                 ),
                 child: Stack(
                   children: [
@@ -336,9 +333,14 @@ class _FileItemState extends State<FileItem> {
                         left: 0,
                         top: 0,
                         bottom: 0,
-                        width: 4,
+                        width: 3,
                         child: Container(
-                          color: Theme.of(context).primaryColor,
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.primary,
+                            borderRadius: const BorderRadius.horizontal(
+                              left: Radius.circular(12),
+                            ),
+                          ),
                         ),
                       ),
                   ],
@@ -399,7 +401,7 @@ class _FileItemContent extends StatelessWidget {
         ['jpg', 'jpeg', 'png', 'gif', 'webp'].contains(extension);
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
+      padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 16.0),
       child: Row(
         children: [
           _buildThumbnail(isVideo, isImage),
@@ -410,7 +412,9 @@ class _FileItemContent extends StatelessWidget {
               children: [
                 Text(
                   file.path.split(Platform.pathSeparator).last,
-                  style: Theme.of(context).textTheme.titleMedium,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w500,
+                      ),
                 ),
                 const SizedBox(height: 4),
                 _buildFileDetails(context),
@@ -431,38 +435,48 @@ class _FileItemContent extends StatelessWidget {
           future: FileIconHelper.getIconForFile(file),
           builder: (context, snapshot) {
             if (isVideo) {
-              return ThumbnailLoader(
-                filePath: file.path,
-                isVideo: true,
-                isImage: false,
-                width: 48,
-                height: 48,
-                borderRadius: BorderRadius.circular(4),
-                fallbackBuilder: () => const Icon(
-                  EvaIcons.videoOutline,
-                  size: 36,
-                  color: Colors.red,
+              return ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: ThumbnailLoader(
+                  filePath: file.path,
+                  isVideo: true,
+                  isImage: false,
+                  width: 48,
+                  height: 48,
+                  borderRadius: BorderRadius.circular(8),
+                  fallbackBuilder: () => const Icon(
+                    EvaIcons.videoOutline,
+                    size: 36,
+                    color: Colors.red,
+                  ),
                 ),
               );
             } else if (isImage) {
-              return ThumbnailLoader(
-                filePath: file.path,
-                isVideo: false,
-                isImage: true,
-                width: 48,
-                height: 48,
-                borderRadius: BorderRadius.circular(4),
-                fallbackBuilder: () => const Icon(
-                  EvaIcons.imageOutline,
-                  size: 36,
-                  color: Colors.blue,
+              return ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: ThumbnailLoader(
+                  filePath: file.path,
+                  isVideo: false,
+                  isImage: true,
+                  width: 48,
+                  height: 48,
+                  borderRadius: BorderRadius.circular(8),
+                  fallbackBuilder: () => const Icon(
+                    EvaIcons.imageOutline,
+                    size: 36,
+                    color: Colors.blue,
+                  ),
                 ),
               );
             } else if (snapshot.hasData) {
               return snapshot.data!;
             } else {
-              return const Icon(EvaIcons.fileOutline,
-                  size: 36, color: Colors.grey);
+              // Returns a placeholder while the future is loading
+              return const Icon(
+                EvaIcons.fileOutline,
+                size: 36,
+                color: Colors.grey,
+              );
             }
           },
         ),
@@ -498,7 +512,8 @@ class _FileItemContent extends StatelessWidget {
         ),
         if (fileTags.isNotEmpty) ...[
           const SizedBox(width: 16),
-          const Icon(EvaIcons.bookmarkOutline, size: 14, color: AppTheme.primaryBlue),
+          const Icon(EvaIcons.bookmarkOutline,
+              size: 14, color: AppTheme.primaryBlue),
           const SizedBox(width: 4),
           if (fileTags.length == 1)
             TagChip(

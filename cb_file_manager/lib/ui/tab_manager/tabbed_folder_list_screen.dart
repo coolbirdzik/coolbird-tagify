@@ -683,6 +683,15 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
     // Stop any ongoing thumbnail processing when navigating
     VideoThumbnailHelper.stopAllProcessing();
 
+    // First check if we're currently showing search results
+    final folderListState = _folderListBloc.state;
+    if (folderListState.isSearchActive) {
+      // Clear search results and reload current directory
+      _folderListBloc.add(const ClearSearchAndFilters());
+      _folderListBloc.add(FolderListLoad(_currentPath));
+      return false; // Don't exit app, we cleared the search
+    }
+
     // Check if we can navigate back in the folder hierarchy
     final tabManagerBloc = context.read<TabManagerBloc>();
     if (tabManagerBloc.canTabNavigateBack(widget.tabId)) {
@@ -915,6 +924,7 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
                 title: _showSearchBar
                     ? tab_components.SearchBar(
                         currentPath: _currentPath,
+                        tabId: widget.tabId,
                         onCloseSearch: () {
                           setState(() {
                             _showSearchBar = false;
@@ -1618,6 +1628,15 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
 
   // Method to handle mouse back button press
   void _handleMouseBackButton() {
+    // First check if we're currently showing search results
+    final folderListState = _folderListBloc.state;
+    if (folderListState.isSearchActive) {
+      // Clear search results and reload current directory
+      _folderListBloc.add(const ClearSearchAndFilters());
+      _folderListBloc.add(FolderListLoad(_currentPath));
+      return; // Don't navigate back, we're just clearing the search
+    }
+
     final tabManagerBloc = context.read<TabManagerBloc>();
     if (tabManagerBloc.canTabNavigateBack(widget.tabId)) {
       // Get previous path
