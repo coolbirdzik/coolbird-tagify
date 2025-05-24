@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:cb_file_manager/helpers/io_extensions.dart';
 import 'package:cb_file_manager/ui/components/shared_file_context_menu.dart';
 import 'folder_thumbnail.dart';
+import 'package:cb_file_manager/ui/components/optimized_interaction_handler.dart';
 
 class FolderGridItem extends StatefulWidget {
   final Directory folder;
@@ -13,6 +14,7 @@ class FolderGridItem extends StatefulWidget {
       toggleFolderSelection;
   final bool isDesktopMode;
   final String? lastSelectedPath;
+  final Function()? clearSelectionMode;
 
   const FolderGridItem({
     Key? key,
@@ -22,6 +24,7 @@ class FolderGridItem extends StatefulWidget {
     this.toggleFolderSelection,
     this.isDesktopMode = false,
     this.lastSelectedPath,
+    this.clearSelectionMode,
   }) : super(key: key);
 
   @override
@@ -115,25 +118,9 @@ class _FolderGridItemState extends State<FolderGridItem> {
               width: 1.0,
             ),
           ),
-          child: Material(
-            color: Colors.transparent,
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () {
-                if (widget.isDesktopMode &&
-                    widget.toggleFolderSelection != null) {
-                  // On desktop, use keyboard modifiers for selection
-                  _handleFolderSelection();
-                } else {
-                  // Navigate to folder
-                  widget.onNavigate(widget.folder.path);
-                }
-              },
-              onDoubleTap: widget.isDesktopMode
-                  ? () => widget.onNavigate(widget.folder.path)
-                  : null,
-              onLongPress: () => _showFolderContextMenu(context),
-              child: Column(
+          child: Stack(
+            children: [
+              Column(
                 children: [
                   // Thumbnail/Icon section
                   Expanded(
@@ -163,7 +150,29 @@ class _FolderGridItemState extends State<FolderGridItem> {
                   ),
                 ],
               ),
-            ),
+              Positioned.fill(
+                child: OptimizedInteractionLayer(
+                  onTap: () {
+                    if (widget.isDesktopMode &&
+                        widget.toggleFolderSelection != null) {
+                      // On desktop, use keyboard modifiers for selection
+                      _handleFolderSelection();
+                    } else {
+                      // Navigate to folder
+                      widget.onNavigate(widget.folder.path);
+                    }
+                  },
+                  onDoubleTap: () {
+                    // Clear selection mode when navigating via double click
+                    if (widget.clearSelectionMode != null) {
+                      widget.clearSelectionMode!();
+                    }
+                    widget.onNavigate(widget.folder.path);
+                  },
+                  onLongPress: () => _showFolderContextMenu(context),
+                ),
+              ),
+            ],
           ),
         ),
       ),

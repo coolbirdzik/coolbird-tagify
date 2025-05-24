@@ -11,3 +11,4 @@ export 'tag_search_dialog.dart'; // Added tag search dialog
 export 'error_view.dart';
 export 'selection_app_bar.dart';
 export 'search_bar.dart'; // Added inline search bar
+export 'folder_context_menu.dart'; // Export the new component

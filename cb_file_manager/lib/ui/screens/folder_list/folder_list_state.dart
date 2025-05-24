@@ -88,42 +88,6 @@ class ColumnVisibility {
 // Define media types for search
 enum MediaType { image, video, audio, document }
 
-// Extension to provide Vietnamese display names for SortOption enum
-extension SortOptionDisplayName on SortOption {
-  String get displayName {
-    switch (this) {
-      case SortOption.nameAsc:
-        return 'Tên (A → Z)';
-      case SortOption.nameDesc:
-        return 'Tên (Z → A)';
-      case SortOption.dateAsc:
-        return 'Ngày sửa (Cũ nhất trước)';
-      case SortOption.dateDesc:
-        return 'Ngày sửa (Mới nhất trước)';
-      case SortOption.sizeAsc:
-        return 'Kích thước (Nhỏ nhất trước)';
-      case SortOption.sizeDesc:
-        return 'Kích thước (Lớn nhất trước)';
-      case SortOption.typeAsc:
-        return 'Loại tệp (A → Z)';
-      case SortOption.typeDesc:
-        return 'Loại tệp (Z → A)';
-      case SortOption.dateCreatedAsc:
-        return 'Ngày tạo (Cũ nhất trước)';
-      case SortOption.dateCreatedDesc:
-        return 'Ngày tạo (Mới nhất trước)';
-      case SortOption.extensionAsc:
-        return 'Đuôi tệp (A → Z)';
-      case SortOption.extensionDesc:
-        return 'Đuôi tệp (Z → A)';
-      case SortOption.attributesAsc:
-        return 'Thuộc tính (A → Z)';
-      case SortOption.attributesDesc:
-        return 'Thuộc tính (Z → A)';
-    }
-  }
-}
-
 class FolderListState extends Equatable {
   final bool isLoading;
   final String? error;

@@ -21,6 +21,14 @@ class FolderSortManager {
   // Cache of sort options for each folder
   final Map<String, SortOption> _folderSortCache = {};
 
+  // In-memory database for system paths
+  final Map<String, Map<String, dynamic>> _systemPathConfigs = {};
+
+  // Detect if a path is a system/virtual path (starts with #)
+  bool _isSystemPath(String path) {
+    return path.startsWith('#');
+  }
+
   /// Get the sort option for a specific folder
   /// If a folder-specific option is found, it's returned
   /// Otherwise returns null (fallback to global preference)
@@ -32,7 +40,10 @@ class FolderSortManager {
 
     SortOption? sortOption;
 
-    if (isWindows) {
+    // For system paths like #tags or #tag:xyz, always use the mobile approach
+    if (_isSystemPath(folderPath)) {
+      sortOption = await _getMobileSortOption(folderPath);
+    } else if (isWindows) {
       sortOption = await _getWindowsSortOption(folderPath);
     } else {
       sortOption = await _getMobileSortOption(folderPath);
@@ -51,7 +62,14 @@ class FolderSortManager {
       String folderPath, SortOption sortOption) async {
     bool success = false;
 
-    if (isWindows) {
+    // For system paths like #tags or #tag:xyz, always use the mobile approach
+    if (_isSystemPath(folderPath)) {
+      // For system paths, we'll just store in memory
+      _folderSortCache[folderPath] = sortOption;
+      success = true;
+      debugPrint(
+          'Saved sort option for system path: $folderPath (in memory only)');
+    } else if (isWindows) {
       success = await _saveWindowsSortOption(folderPath, sortOption);
     } else {
       success = await _saveMobileSortOption(folderPath, sortOption);
@@ -69,7 +87,12 @@ class FolderSortManager {
   Future<bool> clearFolderSortOption(String folderPath) async {
     bool success = false;
 
-    if (isWindows) {
+    // For system paths, just remove from cache
+    if (_isSystemPath(folderPath)) {
+      _folderSortCache.remove(folderPath);
+      success = true;
+      debugPrint('Cleared sort option for system path: $folderPath');
+    } else if (isWindows) {
       success = await _clearWindowsSortOption(folderPath);
     } else {
       success = await _clearMobileSortOption(folderPath);
@@ -434,6 +457,19 @@ class FolderSortManager {
   /// Get sorting option from cbfile_config.json file
   Future<SortOption?> _getMobileSortOption(String folderPath) async {
     try {
+      // For system paths, use in-memory database
+      if (_isSystemPath(folderPath)) {
+        final config = _systemPathConfigs[folderPath];
+        if (config != null && config.containsKey('sortOption')) {
+          int sortIndex = config['sortOption'];
+          if (sortIndex >= 0 && sortIndex < SortOption.values.length) {
+            return SortOption.values[sortIndex];
+          }
+        }
+        return null;
+      }
+
+      // Normal path - use file-based approach
       final configPath = pathlib.join(folderPath, '.cbfile_config.json');
       final configFile = File(configPath);
 
@@ -453,7 +489,7 @@ class FolderSortManager {
 
       return null;
     } catch (e) {
-      debugPrint('Error reading cbfile_config.json: $e');
+      debugPrint('Error reading sort option: $e');
       return null;
     }
   }
@@ -462,6 +498,16 @@ class FolderSortManager {
   Future<bool> _saveMobileSortOption(
       String folderPath, SortOption sortOption) async {
     try {
+      // For system paths, use in-memory database
+      if (_isSystemPath(folderPath)) {
+        Map<String, dynamic> config = _systemPathConfigs[folderPath] ?? {};
+        config['sortOption'] = sortOption.index;
+        _systemPathConfigs[folderPath] = config;
+        debugPrint('Saved sort option for system path in memory: $folderPath');
+        return true;
+      }
+
+      // Normal path - use file-based approach
       final configPath = pathlib.join(folderPath, '.cbfile_config.json');
       final configFile = File(configPath);
 
@@ -495,7 +541,7 @@ class FolderSortManager {
 
       return true;
     } catch (e) {
-      debugPrint('Error saving cbfile_config.json: $e');
+      debugPrint('Error saving sort option: $e');
       return false;
     }
   }
@@ -503,6 +549,15 @@ class FolderSortManager {
   /// Clear mobile sort settings
   Future<bool> _clearMobileSortOption(String folderPath) async {
     try {
+      // For system paths, use in-memory database
+      if (_isSystemPath(folderPath)) {
+        _systemPathConfigs.remove(folderPath);
+        debugPrint(
+            'Cleared sort option for system path from memory: $folderPath');
+        return true;
+      }
+
+      // Normal path - use file-based approach
       final configPath = pathlib.join(folderPath, '.cbfile_config.json');
       final configFile = File(configPath);
 
@@ -529,7 +584,7 @@ class FolderSortManager {
 
       return true;
     } catch (e) {
-      debugPrint('Error clearing cbfile_config.json sort settings: $e');
+      debugPrint('Error clearing sort settings: $e');
       return false;
     }
   }

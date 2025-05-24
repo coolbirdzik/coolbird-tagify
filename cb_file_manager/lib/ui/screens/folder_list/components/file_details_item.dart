@@ -8,6 +8,7 @@ import 'package:cb_file_manager/helpers/file_type_helper.dart';
 import 'package:cb_file_manager/helpers/file_icon_helper.dart';
 import 'package:cb_file_manager/ui/widgets/lazy_video_thumbnail.dart';
 import 'package:path/path.dart' as path;
+import 'package:cb_file_manager/ui/components/optimized_interaction_handler.dart';
 
 class FileDetailsItem extends StatefulWidget {
   final File file;
@@ -166,150 +167,160 @@ class _FileDetailsItemState extends State<FileDetailsItem> {
         onEnter: (_) => setState(() => _isHovering = true),
         onExit: (_) => setState(() => _isHovering = false),
         cursor: SystemMouseCursors.click,
-        child: GestureDetector(
-          onTap: () {
-            if (widget.isDesktopMode) {
-              _handleFileSelection();
-            } else if (widget.onTap != null) {
-              widget.onTap!(widget.file, false);
-            }
-          },
-          onDoubleTap: widget.isDesktopMode
-              ? () {
+        child: Stack(
+          children: [
+            Container(
+              decoration: boxDecoration,
+              child: Row(
+                children: [
+                  // Name column (always visible)
+                  Expanded(
+                    flex: 3,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12.0, vertical: 10.0),
+                      child: Row(
+                        children: [
+                          // Use a dedicated widget for file icon with a key to prevent rebuilds
+                          _OptimizedFileIcon(
+                            key: _thumbnailKey,
+                            file: widget.file,
+                            isVideo: isVideo,
+                            isImage: isImage,
+                            icon: fileIcon,
+                            color: iconColor,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              path.basename(widget.file.path),
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontWeight: _visuallySelected
+                                    ? FontWeight.bold
+                                    : FontWeight.normal,
+                              ),
+                            ),
+                          ),
+
+                          // Show file tags if available
+                          if (widget.state.fileTags[widget.file.path]
+                                  ?.isNotEmpty ??
+                              false)
+                            Padding(
+                              padding: const EdgeInsets.only(left: 4.0),
+                              child: Icon(
+                                EvaIcons.bookmarkOutline,
+                                size: 16,
+                                color: Theme.of(context).colorScheme.secondary,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  // Type column
+                  if (widget.columnVisibility.type)
+                    Expanded(
+                      flex: 2,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12.0, vertical: 10.0),
+                        child: Text(
+                          _getFileTypeLabel(fileExtension),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
+
+                  // Size column
+                  if (widget.columnVisibility.size)
+                    Expanded(
+                      flex: 1,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12.0, vertical: 10.0),
+                        child: Text(
+                          _fileStat != null
+                              ? _formatFileSize(_fileStat!.size)
+                              : 'Loading...',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
+
+                  // Date modified column
+                  if (widget.columnVisibility.dateModified)
+                    Expanded(
+                      flex: 2,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12.0, vertical: 10.0),
+                        child: Text(
+                          _fileStat != null
+                              ? _fileStat!.modified.toString().split('.')[0]
+                              : 'Loading...',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
+
+                  // Date created column
+                  if (widget.columnVisibility.dateCreated)
+                    Expanded(
+                      flex: 2,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12.0, vertical: 10.0),
+                        child: Text(
+                          _fileStat != null
+                              ? _fileStat!.changed.toString().split('.')[0]
+                              : 'Loading...',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
+
+                  // Attributes column
+                  if (widget.columnVisibility.attributes)
+                    Expanded(
+                      flex: 1,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12.0, vertical: 10.0),
+                        child: Text(
+                          _getAttributes(_fileStat),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            // Add optimized interaction layer on top
+            Positioned.fill(
+              child: OptimizedInteractionLayer(
+                onTap: () {
+                  if (widget.isDesktopMode) {
+                    _handleFileSelection();
+                  } else if (widget.onTap != null) {
+                    widget.onTap!(widget.file, false);
+                  }
+                },
+                onDoubleTap: () {
                   if (widget.onTap != null) {
                     widget.onTap!(widget.file, true);
                   }
-                }
-              : null,
-          child: Container(
-            decoration: boxDecoration,
-            child: Row(
-              children: [
-                // Name column (always visible)
-                Expanded(
-                  flex: 3,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12.0, vertical: 10.0),
-                    child: Row(
-                      children: [
-                        // Use a dedicated widget for file icon with a key to prevent rebuilds
-                        _OptimizedFileIcon(
-                          key: _thumbnailKey,
-                          file: widget.file,
-                          isVideo: isVideo,
-                          isImage: isImage,
-                          icon: fileIcon,
-                          color: iconColor,
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            path.basename(widget.file.path),
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontWeight: _visuallySelected
-                                  ? FontWeight.bold
-                                  : FontWeight.normal,
-                            ),
-                          ),
-                        ),
-
-                        // Show file tags if available
-                        if (widget
-                                .state.fileTags[widget.file.path]?.isNotEmpty ??
-                            false)
-                          Padding(
-                            padding: const EdgeInsets.only(left: 4.0),
-                            child: Icon(
-                              EvaIcons.bookmarkOutline,
-                              size: 16,
-                              color: Theme.of(context).colorScheme.secondary,
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
-
-                // Type column
-                if (widget.columnVisibility.type)
-                  Expanded(
-                    flex: 2,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12.0, vertical: 10.0),
-                      child: Text(
-                        _getFileTypeLabel(fileExtension),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ),
-
-                // Size column
-                if (widget.columnVisibility.size)
-                  Expanded(
-                    flex: 1,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12.0, vertical: 10.0),
-                      child: Text(
-                        _fileStat != null
-                            ? _formatFileSize(_fileStat!.size)
-                            : 'Loading...',
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ),
-
-                // Date modified column
-                if (widget.columnVisibility.dateModified)
-                  Expanded(
-                    flex: 2,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12.0, vertical: 10.0),
-                      child: Text(
-                        _fileStat != null
-                            ? _fileStat!.modified.toString().split('.')[0]
-                            : 'Loading...',
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ),
-
-                // Date created column
-                if (widget.columnVisibility.dateCreated)
-                  Expanded(
-                    flex: 2,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12.0, vertical: 10.0),
-                      child: Text(
-                        _fileStat != null
-                            ? _fileStat!.changed.toString().split('.')[0]
-                            : 'Loading...',
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ),
-
-                // Attributes column
-                if (widget.columnVisibility.attributes)
-                  Expanded(
-                    flex: 1,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12.0, vertical: 10.0),
-                      child: Text(
-                        _getAttributes(_fileStat),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ),
-              ],
+                },
+                onLongPress: () {
+                  if (!_visuallySelected) {
+                    _handleFileSelection();
+                  }
+                },
+              ),
             ),
-          ),
+          ],
         ),
       ),
     );
@@ -356,15 +367,7 @@ class _FileDetailsItemState extends State<FileDetailsItem> {
   }
 
   String _formatFileSize(int size) {
-    if (size < 1024) {
-      return '$size B';
-    } else if (size < 1024 * 1024) {
-      return '${(size / 1024).toStringAsFixed(1)} KB';
-    } else if (size < 1024 * 1024 * 1024) {
-      return '${(size / (1024 * 1024)).toStringAsFixed(1)} MB';
-    } else {
-      return '${(size / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
-    }
+    return FileUtils.formatFileSize(size);
   }
 
   String _getAttributes(FileStat? stat) {
@@ -381,7 +384,10 @@ class _FileDetailsItemState extends State<FileDetailsItem> {
   }
 }
 
-// Optimized file icon widget that keeps its own state separate from parent
+// Replace the _FileInteractionLayer class (remove it)
+// Remove entire _FileInteractionLayer class and its state class
+
+// Replace the _OptimizedFileIcon class with this:
 class _OptimizedFileIcon extends StatefulWidget {
   final File file;
   final bool isVideo;
@@ -404,85 +410,20 @@ class _OptimizedFileIcon extends StatefulWidget {
 
 class _OptimizedFileIconState extends State<_OptimizedFileIcon>
     with AutomaticKeepAliveClientMixin {
-  // Add this to make sure the state is preserved when selection changes
   @override
   bool get wantKeepAlive => true;
-
-  // Track if we've already drawn the thumbnail to prevent regeneration
 
   @override
   Widget build(BuildContext context) {
     super.build(context);
-
-    // Use RepaintBoundary to prevent repainting when parent changes
-    return RepaintBoundary(
-      child: _buildOptimizedIcon(),
+    return OptimizedFileIcon(
+      file: widget.file,
+      isVideo: widget.isVideo,
+      isImage: widget.isImage,
+      size: 24,
+      fallbackIcon: widget.icon,
+      fallbackColor: widget.color,
+      borderRadius: BorderRadius.circular(2),
     );
-  }
-
-  Widget _buildOptimizedIcon() {
-    if (widget.isVideo) {
-      return SizedBox(
-        width: 24,
-        height: 24,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(2),
-          child: LazyVideoThumbnail(
-            videoPath: widget.file.path,
-            width: 24,
-            height: 24,
-            fallbackBuilder: () =>
-                Icon(widget.icon, size: 24, color: widget.color),
-            // Pass key to prevent regeneration when selection changes
-            key: ValueKey('video-thumbnail-${widget.file.path}'),
-          ),
-        ),
-      );
-    } else if (widget.isImage) {
-      return SizedBox(
-        width: 24,
-        height: 24,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(2),
-          child: Image.file(
-            widget.file,
-            width: 24,
-            height: 24,
-            fit: BoxFit.cover,
-            cacheWidth: 48, // Cache at 2x for better quality
-            filterQuality: FilterQuality.medium,
-            // Pass key to prevent regeneration when selection changes
-            key: ValueKey('image-${widget.file.path}'),
-            errorBuilder: (context, error, stackTrace) =>
-                Icon(widget.icon, size: 24, color: widget.color),
-          ),
-        ),
-      );
-    } else {
-      return FutureBuilder<Widget>(
-        // Use a cached key to prevent rebuilding when selection changes
-        key: ValueKey('file-icon-${widget.file.path}'),
-        future: FileIconHelper.getIconForFile(widget.file, size: 24),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return Icon(widget.icon, size: 24, color: widget.color);
-          }
-          if (snapshot.hasData) {
-            return snapshot.data!;
-          }
-          return Icon(widget.icon, size: 24, color: widget.color);
-        },
-      );
-    }
-  }
-
-  @override
-  void didUpdateWidget(_OptimizedFileIcon oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    // Only mark for rebuild if the fundamental properties changed
-    // This prevents rebuilds when only selection state changes in parent
-    if (widget.file.path != oldWidget.file.path ||
-        widget.isVideo != oldWidget.isVideo ||
-        widget.isImage != oldWidget.isImage) {}
   }
 }

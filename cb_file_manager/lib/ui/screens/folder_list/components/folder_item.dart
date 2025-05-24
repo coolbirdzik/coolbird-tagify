@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:cb_file_manager/helpers/io_extensions.dart';
 import 'package:cb_file_manager/ui/components/shared_file_context_menu.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
+import 'package:cb_file_manager/ui/components/optimized_interaction_handler.dart';
 
 class FolderItem extends StatefulWidget {
   final Directory folder;
@@ -13,6 +14,7 @@ class FolderItem extends StatefulWidget {
       toggleFolderSelection;
   final bool isDesktopMode;
   final String? lastSelectedPath;
+  final Function()? clearSelectionMode;
 
   const FolderItem({
     Key? key,
@@ -22,6 +24,7 @@ class FolderItem extends StatefulWidget {
     this.toggleFolderSelection,
     this.isDesktopMode = false,
     this.lastSelectedPath,
+    this.clearSelectionMode,
   }) : super(key: key);
 
   @override
@@ -75,9 +78,6 @@ class _FolderItemState extends State<FolderItem> {
 
         return GestureDetector(
           onSecondaryTap: () => _showFolderContextMenu(context),
-          onDoubleTap: widget.isDesktopMode
-              ? () => widget.onTap?.call(widget.folder.path)
-              : null,
           child: MouseRegion(
             onEnter: (_) => _isHovering.value = true,
             onExit: (_) => _isHovering.value = false,
@@ -169,21 +169,28 @@ class _FolderItemState extends State<FolderItem> {
                   ),
                   // Interactive layer
                   Positioned.fill(
-                    child: Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(12),
-                        splashColor: Colors.transparent,
-                        highlightColor: Colors.transparent,
-                        onTap: () {
-                          if (widget.isDesktopMode &&
-                              widget.toggleFolderSelection != null) {
-                            _handleFolderSelection();
-                          } else if (widget.onTap != null) {
-                            widget.onTap!(widget.folder.path);
-                          }
-                        },
-                      ),
+                    child: OptimizedInteractionLayer(
+                      onTap: () {
+                        if (widget.isDesktopMode &&
+                            widget.toggleFolderSelection != null) {
+                          _handleFolderSelection();
+                        } else if (widget.onTap != null) {
+                          widget.onTap!(widget.folder.path);
+                        }
+                      },
+                      onDoubleTap: widget.isDesktopMode
+                          ? () {
+                              if (widget.clearSelectionMode != null) {
+                                widget.clearSelectionMode!();
+                              }
+                              widget.onTap?.call(widget.folder.path);
+                            }
+                          : null,
+                      onLongPress: () {
+                        if (widget.toggleFolderSelection != null) {
+                          _handleFolderSelection();
+                        }
+                      },
                     ),
                   ),
                   // Selection indicator

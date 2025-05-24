@@ -89,7 +89,7 @@ class AppTheme {
         borderRadius: BorderRadius.circular(16),
       ),
     ),
-    cardTheme: CardTheme(
+    cardTheme: CardThemeData(
       elevation: 0, // No shadow
       color: surfaceLight,
       margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
@@ -135,7 +135,7 @@ class AppTheme {
       onSurface: darkBlue,
       background: lightBackground,
     ),
-    dialogTheme: DialogTheme(
+    dialogTheme: DialogThemeData(
       backgroundColor: surfaceLight,
       elevation: 0, // No shadow
       shape: RoundedRectangleBorder(
@@ -150,7 +150,7 @@ class AppTheme {
       ),
       elevation: 0, // No shadow
     ),
-    tabBarTheme: TabBarTheme(
+    tabBarTheme: TabBarThemeData(
       labelColor: primaryBlue,
       unselectedLabelColor: Colors.grey,
       indicator: BoxDecoration(
@@ -219,7 +219,7 @@ class AppTheme {
         borderRadius: BorderRadius.circular(16),
       ),
     ),
-    cardTheme: CardTheme(
+    cardTheme: CardThemeData(
       elevation: 0, // No shadow
       color: surfaceDark,
       margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
@@ -260,12 +260,12 @@ class AppTheme {
       primary: primaryBlue,
       secondary: lightBlue,
       onPrimary: Colors.white,
-      primaryContainer: darkBlue.withOpacity(0.3),
+      primaryContainer: primaryBlue.withOpacity(0.3),
       surface: surfaceDark,
       onSurface: Colors.white,
       background: darkBackground,
     ),
-    dialogTheme: DialogTheme(
+    dialogTheme: DialogThemeData(
       backgroundColor: surfaceDark,
       elevation: 0, // No shadow
       shape: RoundedRectangleBorder(
@@ -280,13 +280,13 @@ class AppTheme {
       ),
       elevation: 0, // No shadow
     ),
-    tabBarTheme: TabBarTheme(
-      labelColor: lightBlue,
-      unselectedLabelColor: Colors.grey,
-      indicator: BoxDecoration(
+    tabBarTheme: TabBarThemeData(
+      labelColor: Colors.white,
+      unselectedLabelColor: Colors.grey[400],
+      indicator: const BoxDecoration(
         border: Border(
           bottom: BorderSide(
-            color: lightBlue,
+            color: Colors.white,
             width: 2,
           ),
         ),

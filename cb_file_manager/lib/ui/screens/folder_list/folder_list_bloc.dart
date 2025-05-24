@@ -8,6 +8,7 @@ import 'package:path/path.dart' as pathlib;
 import 'package:cb_file_manager/helpers/video_thumbnail_helper.dart';
 import 'dart:async'; // Thêm import cho StreamSubscription
 import 'package:cb_file_manager/helpers/folder_sort_manager.dart';
+import 'package:cb_file_manager/models/database/database_manager.dart';
 
 import 'folder_list_event.dart';
 import 'folder_list_state.dart';
@@ -1239,23 +1240,56 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
 
       debugPrint('Searching for files with tag "${event.tag}" globally');
 
+      // Get results from both sources to ensure we find all files
       final List<FileSystemEntity> results =
           await TagManager.findFilesByTagGlobally(event.tag);
 
       // Log the search results for debugging
       debugPrint(
           'Found ${results.length} global results for tag: ${event.tag}');
-      for (var entity in results.take(10)) {
-        // Log just the first 10 to avoid spamming
-        debugPrint('  - ${entity.path}');
+
+      // Filter out any non-existent files or directories
+      final List<FileSystemEntity> validResults = [];
+      for (var entity in results) {
+        try {
+          if (entity is File && entity.existsSync()) {
+            validResults.add(entity);
+            debugPrint('  - ${entity.path}');
+          }
+        } catch (e) {
+          debugPrint('Error checking file existence: ${entity.path} - $e');
+        }
+      }
+
+      // If no results from TagManager, try directly from database
+      if (validResults.isEmpty) {
+        debugPrint(
+            'No valid results from TagManager, trying database directly');
+        try {
+          final dbResults =
+              await DatabaseManager.getInstance().findFilesByTag(event.tag);
+          for (var path in dbResults) {
+            try {
+              final file = File(path);
+              if (file.existsSync()) {
+                validResults.add(file);
+                debugPrint('  - (From DB) ${file.path}');
+              }
+            } catch (e) {
+              debugPrint('Error checking file from DB: $path - $e');
+            }
+          }
+        } catch (e) {
+          debugPrint('Error querying database: $e');
+        }
       }
 
       emit(state.copyWith(
         isLoading: false,
-        searchResults: results,
+        searchResults: validResults,
         currentSearchTag: event.tag,
         currentSearchQuery: null, // Clear any previous text search
-        error: results.isEmpty
+        error: validResults.isEmpty
             ? 'No files found with tag "${event.tag}" globally'
             : null,
       ));

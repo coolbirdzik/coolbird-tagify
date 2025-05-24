@@ -52,7 +52,7 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
 
   // Pagination variables
   int _currentPage = 0;
-  final int _tagsPerPage = 20;
+  int _tagsPerPage = 60; // Increased from 40 to 60 as default
   int _totalPages = 0;
   List<String> _currentPageTags = [];
 
@@ -184,6 +184,11 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
 
   // Update pagination calculation and current page content
   void _updatePagination() {
+    // Dynamically calculate tags per page based on screen height
+    final screenHeight = MediaQuery.of(context).size.height;
+    // Calculate how many tags can fit (assuming approximately 40 pixels per tag instead of 70)
+    _tagsPerPage = (screenHeight ~/ 40).clamp(40, 200);
+
     _totalPages = (_filteredTags.length / _tagsPerPage).ceil();
     if (_totalPages == 0) _totalPages = 1;
 
@@ -268,7 +273,6 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
       return;
     }
 
-    // Traditional direct search for non-tab environments
     setState(() {
       _isLoading = true;
       _selectedTag = tag;
@@ -289,27 +293,80 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
       // Xóa cache để đảm bảo kết quả mới nhất
       TagManager.clearCache();
 
-      // Gọi trực tiếp API tìm kiếm tag từ TagManager
-      final results = await TagManager.findFilesByTagGlobally(tag);
-      debugPrint('Tìm thấy ${results.length} file với tag "$tag"');
-
-      // Chuyển đổi kết quả
+      // Kết hợp cả hai nguồn dữ liệu để đảm bảo có kết quả
       final fileInfoList = <Map<String, dynamic>>[];
 
-      for (var entity in results) {
-        if (entity is File) {
-          fileInfoList.add({
-            'path': entity.path,
-            'name': pathlib.basename(entity.path),
-          });
-          debugPrint('Thêm file: ${entity.path}');
+      // 1. Try TagManager first
+      try {
+        final results = await TagManager.findFilesByTagGlobally(tag);
+        debugPrint(
+            'TagManager: Tìm thấy ${results.length} file với tag "$tag"');
+
+        // Process results from TagManager
+        for (var entity in results) {
+          if (entity is File) {
+            try {
+              final path = entity.path;
+              // Use synchronous check for simplicity and to avoid too many async operations
+              if (entity.existsSync()) {
+                fileInfoList.add({
+                  'path': path,
+                  'name': pathlib.basename(path),
+                });
+                debugPrint('Thêm file từ TagManager: $path');
+              }
+            } catch (e) {
+              // Just log errors and continue
+              debugPrint('Lỗi khi kiểm tra file từ TagManager: $e');
+            }
+          }
         }
+      } catch (e) {
+        debugPrint('Lỗi khi tìm kiếm với TagManager: $e');
+      }
+
+      // 2. Try database directly
+      try {
+        final taggedFiles = await _database.findFilesByTag(tag);
+        debugPrint(
+            'Database: Tìm thấy ${taggedFiles.length} file với tag "$tag"');
+
+        for (var path in taggedFiles) {
+          // Skip if we already have this path from TagManager
+          if (fileInfoList.any((item) => item['path'] == path)) {
+            continue;
+          }
+
+          try {
+            final file = File(path);
+            // Use synchronous check for consistency
+            if (file.existsSync()) {
+              fileInfoList.add({
+                'path': path,
+                'name': pathlib.basename(path),
+              });
+              debugPrint('Thêm file từ Database: $path');
+            }
+          } catch (e) {
+            // Just log errors and continue
+            debugPrint('Lỗi khi kiểm tra file từ Database: $e');
+          }
+        }
+      } catch (e) {
+        debugPrint('Lỗi khi tìm kiếm trong Database: $e');
+      }
+
+      // Log detailed file info list for debugging
+      debugPrint('Kết quả cuối cùng: ${fileInfoList.length} files');
+      for (var file in fileInfoList) {
+        debugPrint('  - ${file['path']}');
       }
 
       // Cập nhật UI
       if (mounted) {
         setState(() {
-          _filesBySelectedTag = fileInfoList;
+          _filesBySelectedTag = List.from(
+              fileInfoList); // Create a new list to ensure state update
           _isLoading = false;
         });
 
@@ -324,17 +381,19 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
       }
     } catch (e) {
       debugPrint('Error trong tìm kiếm trực tiếp: $e');
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Lỗi khi tìm kiếm: $e'),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 3),
-        ),
-      );
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lỗi khi tìm kiếm: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
     }
   }
 

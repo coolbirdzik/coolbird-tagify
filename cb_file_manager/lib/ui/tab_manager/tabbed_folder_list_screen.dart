@@ -40,6 +40,8 @@ import 'package:flutter/rendering.dart' show RendererBinding;
 // Add import for value listenable builder
 import 'package:flutter/foundation.dart';
 import 'package:cb_file_manager/config/languages/app_localizations.dart';
+import 'package:cb_file_manager/helpers/folder_sort_manager.dart'; // Import for FolderSortManager
+import 'package:cb_file_manager/helpers/tag_manager.dart';
 
 // Add this class to cache thumbnails
 class ThumbnailCache {
@@ -194,18 +196,36 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
     // Initialize the blocs
     _folderListBloc = FolderListBloc();
 
+    // Clear cache to ensure fresh results
+    TagManager.clearCache();
+
     // Handle tag search initialization
     if (widget.searchTag != null) {
+      debugPrint(
+          'TabbedFolderListScreen: Initializing with tag search for "${widget.searchTag}"');
+      debugPrint('Global search mode: ${widget.globalTagSearch}');
+
       // Initialize with tag search
       if (widget.globalTagSearch) {
-        // Global tag search
-        _folderListBloc.add(SearchByTagGlobally(widget.searchTag!));
+        // Global tag search - force delay to ensure bloc is properly initialized
+        Future.delayed(const Duration(milliseconds: 100), () {
+          if (mounted) {
+            // Global tag search should be performed without loading a directory first
+            _folderListBloc.add(SearchByTagGlobally(widget.searchTag!));
+
+            // Set tag controller text for search bar
+            _tagController.text = widget.searchTag!;
+          }
+        });
       } else {
         // Local tag search within current directory
         _folderListBloc
             .add(FolderListLoad(widget.path)); // First load the directory
         _folderListBloc
             .add(SearchByTag(widget.searchTag!)); // Then search within it
+
+        // Set tag controller text for search bar
+        _tagController.text = widget.searchTag!;
       }
     } else {
       // Normal directory loading
@@ -323,6 +343,8 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
       final UserPreferences prefs = UserPreferences.instance;
       await prefs.init();
       await prefs.setSortOption(option);
+      final folderSortManager = FolderSortManager();
+      await folderSortManager.saveFolderSortOption(_currentPath, option);
     } catch (e) {
       debugPrint('Error saving sort option: $e');
     }
@@ -1143,6 +1165,10 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
                   _clearSelection();
                 }
               },
+              // Handle right-click for context menu
+              onSecondaryTapUp: (details) {
+                _showContextMenu(context, details.globalPosition);
+              },
               // Handle drag selection
               onPanStart: (details) {
                 _startDragSelection(details.localPosition);
@@ -1239,6 +1265,7 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
                                 isDesktopMode: isDesktopPlatform,
                                 lastSelectedPath:
                                     selectionState.lastSelectedPath,
+                                clearSelectionMode: _clearSelection,
                               ),
                             ),
                           );
@@ -1293,6 +1320,10 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
                   _clearSelection();
                 }
               },
+              // Handle right-click for context menu
+              onSecondaryTapUp: (details) {
+                _showContextMenu(context, details.globalPosition);
+              },
               // Handle drag selection
               onPanStart: (details) {
                 _startDragSelection(details.localPosition);
@@ -1346,6 +1377,10 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
                 if (selectionState.isSelectionMode) {
                   _clearSelection();
                 }
+              },
+              // Handle right-click for context menu
+              onSecondaryTapUp: (details) {
+                _showContextMenu(context, details.globalPosition);
               },
               // Handle drag selection
               onPanStart: (details) {
@@ -1668,6 +1703,42 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
         _folderListBloc.add(FolderListLoad(previousPath));
       }
     }
+  }
+
+  // Show context menu for the folder
+  void _showContextMenu(BuildContext context, Offset position) {
+    tab_components.FolderContextMenu.show(
+      context: context,
+      globalPosition: position, // Pass the global position
+      folderListBloc: _folderListBloc,
+      currentPath: _currentPath,
+      currentViewMode: _folderListBloc.state.viewMode,
+      currentSortOption: _folderListBloc.state.sortOption,
+      onViewModeChanged: _setViewMode,
+      onRefresh: _refreshFileList,
+      onCreateFolder: (String folderName) async {
+        final String newFolderPath =
+            '$_currentPath${Platform.pathSeparator}$folderName';
+
+        final directory = Directory(newFolderPath);
+        try {
+          await directory.create();
+          _folderListBloc.add(FolderListLoad(_currentPath));
+        } catch (error) {
+          if (mounted) {
+            // Check if the widget is still in the tree
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Error creating folder: $error'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        }
+      },
+      onSortOptionSaved:
+          _saveSortSetting, // Pass the existing save sort setting method
+    );
   }
 
   // Method to handle mouse forward button press

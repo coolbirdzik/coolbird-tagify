@@ -61,7 +61,11 @@ class TagChip extends StatelessWidget {
             color: Colors.white,
             fontWeight: FontWeight.w500,
           ),
-          label: Text(tag),
+          label: Text(
+            tag,
+            overflow: TextOverflow.ellipsis,
+            maxLines: 1,
+          ),
           backgroundColor: displayColor,
           visualDensity: isCompact ? VisualDensity.compact : null,
           padding:

@@ -12,6 +12,8 @@ import 'package:share_plus/share_plus.dart'; // Add import for Share Plus
 // Add import for XFile
 import 'package:cb_file_manager/helpers/folder_sort_manager.dart';
 import 'package:cb_file_manager/config/languages/app_localizations.dart';
+import 'package:cb_file_manager/helpers/tag_manager.dart';
+import 'package:cb_file_manager/ui/widgets/tag_chip.dart';
 
 class ImageGalleryScreen extends StatefulWidget {
   final String path;
@@ -33,6 +35,7 @@ class ImageGalleryScreenState extends State<ImageGalleryScreen> {
   late double _thumbnailSize = 150.0; // Default size
 
   List<File> _imageFiles = [];
+  Map<String, List<String>> _fileTagsMap = {};
   bool _isSelectionMode = false;
   final Set<String> _selectedFilePaths = {};
   SortOption _currentSortOption = SortOption.nameAsc;
@@ -62,13 +65,25 @@ class ImageGalleryScreenState extends State<ImageGalleryScreen> {
     }
   }
 
-  void _loadImages() {
+  Future<void> _loadImages() async {
     _imageFilesFuture = getAllImages(widget.path, recursive: widget.recursive);
-    _imageFilesFuture.then((images) {
-      setState(() {
-        _imageFiles = images;
-        _sortImageFiles();
-      });
+    _imageFilesFuture.then((images) async {
+      Map<String, List<String>> tagsMap = {};
+      for (var imageFile in images) {
+        try {
+          tagsMap[imageFile.path] = await TagManager.getTags(imageFile.path);
+        } catch (e) {
+          debugPrint('Error loading tags for ${imageFile.path}: $e');
+          tagsMap[imageFile.path] = [];
+        }
+      }
+      if (mounted) {
+        setState(() {
+          _imageFiles = images;
+          _fileTagsMap = tagsMap;
+          _sortImageFiles();
+        });
+      }
     });
   }
 
@@ -478,6 +493,7 @@ class ImageGalleryScreenState extends State<ImageGalleryScreen> {
       itemBuilder: (context, index) {
         final file = _imageFiles[index];
         final isSelected = _selectedFilePaths.contains(file.path);
+        final tags = _fileTagsMap[file.path] ?? []; // Get tags for the file
 
         return GestureDetector(
           onTap: () {
@@ -535,6 +551,9 @@ class ImageGalleryScreenState extends State<ImageGalleryScreen> {
                   ),
                 ),
               ),
+              // Add the tags overlay here
+              if (tags.isNotEmpty)
+                _buildTagsOverlay(tags, _thumbnailSize.round()),
               if (_isSelectionMode)
                 Positioned(
                   top: 8,
@@ -555,6 +574,94 @@ class ImageGalleryScreenState extends State<ImageGalleryScreen> {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildTagsOverlay(List<String> tags, int gridSize) {
+    if (tags.isEmpty) return const SizedBox.shrink();
+
+    // Determine compactness and number of tags based on grid size
+    bool verySmallGrid = gridSize >= 5;
+    bool smallGrid = gridSize == 4;
+    bool mediumGrid = gridSize == 3;
+    bool largeGrid = gridSize <= 2;
+
+    List<Widget> tagWidgets = [];
+    int maxTagsToShow = 1;
+    bool useCompactChips = true;
+
+    if (largeGrid) {
+      maxTagsToShow = 3;
+      useCompactChips = false;
+    } else if (mediumGrid) {
+      maxTagsToShow = 2;
+      useCompactChips = true;
+    } else if (smallGrid) {
+      maxTagsToShow = 1;
+      useCompactChips = true;
+    } else if (verySmallGrid) {
+      // Only show icon and count for very small items
+      return Positioned(
+        bottom: 4,
+        left: 4,
+        right: 4,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.6),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.label_outline, color: Colors.white, size: 12),
+              const SizedBox(width: 2),
+              Text(
+                '${tags.length}',
+                style: const TextStyle(color: Colors.white, fontSize: 10),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    for (int i = 0; i < tags.length && i < maxTagsToShow; i++) {
+      tagWidgets.add(TagChip(
+          tag: tags[i],
+          isCompact: useCompactChips,
+          onTap: () {
+            // Optional: Handle tag tap, e.g., search by tag
+            // final bloc = BlocProvider.of<FolderListBloc>(context, listen: false);
+            // bloc.add(SearchByTag(tags[i]));
+          }));
+    }
+
+    if (tags.length > maxTagsToShow) {
+      tagWidgets.add(Text(
+        '+${tags.length - maxTagsToShow}',
+        style:
+            TextStyle(color: Colors.white, fontSize: useCompactChips ? 10 : 12),
+      ));
+    }
+
+    return Positioned(
+      bottom: 5,
+      left: 5,
+      right: 5,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.4),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Wrap(
+          spacing: 4,
+          runSpacing: 2,
+          alignment: WrapAlignment.start,
+          children: tagWidgets,
+        ),
+      ),
     );
   }
 

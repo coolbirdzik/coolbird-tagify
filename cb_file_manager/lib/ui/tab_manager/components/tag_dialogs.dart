@@ -22,6 +22,8 @@ void showAddTagToFileDialog(BuildContext context, String filePath) {
     // Clear tag cache immediately
     TagManager.clearCache();
 
+    debugPrint("Sending tag notification for path: $filePath");
+
     // Notify the application about tag changes so any listening components can update
     // Add a special prefix if we need to preserve scroll position
     if (preserveScroll) {
@@ -29,6 +31,12 @@ void showAddTagToFileDialog(BuildContext context, String filePath) {
     } else {
       TagManager.instance.notifyTagChanged(filePath);
     }
+
+    // Also send a direct notification without prefix to ensure it's caught
+    TagManager.instance.notifyTagChanged(filePath);
+
+    // Add a global notification to ensure all listeners are triggered
+    TagManager.instance.notifyTagChanged("global:tag_updated");
   }
 
   showDialog(
@@ -96,6 +104,14 @@ void showAddTagToFileDialog(BuildContext context, String filePath) {
 
                     // Make sure to notify the parent UI of changes
                     refreshParentUI(context, filePath);
+
+                    // Show success notification
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Tags saved successfully'),
+                        duration: Duration(seconds: 2),
+                      ),
+                    );
 
                     // Close the dialog
                     Navigator.of(context).pop();

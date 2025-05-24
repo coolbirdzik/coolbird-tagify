@@ -52,7 +52,12 @@ class TagManager {
 
   // Method to notify the app about tag changes
   void notifyTagChanged(String filePath) {
+    debugPrint("TagManager: Notifying tag change for path: $filePath");
+    // Add to instance stream
     _tagChangesController.add(filePath);
+
+    // Also add to the static stream that FileGridItem is listening to
+    _tagChangeController.add(filePath);
   }
 
   // Private singleton constructor

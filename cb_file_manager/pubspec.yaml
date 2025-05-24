@@ -15,14 +15,14 @@ publish_to: none
 version: 1.0.0+1
 
 environment:
-  sdk: ">=2.15.0 <3.29.2"
+  sdk: ">=2.15.0 <3.32.0"
 
 dependencies:
   flutter:
     sdk: flutter
   flutter_localizations:
     sdk: flutter
-  intl: ^0.19.0
+  intl: ^0.20.2
   flutter_bloc: ^9.1.0
   redux: ^5.0.0
   path_provider: ^2.1.1

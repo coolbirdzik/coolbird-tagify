@@ -32,6 +32,8 @@ class FileView extends StatelessWidget {
   final bool isDesktopMode;
   final String? lastSelectedPath;
   final ColumnVisibility columnVisibility;
+  final Function()?
+      clearSelectionMode; // Add new callback for clearing selection mode
 
   const FileView({
     Key? key,
@@ -52,6 +54,7 @@ class FileView extends StatelessWidget {
     this.isDesktopMode = false,
     this.lastSelectedPath,
     this.columnVisibility = const ColumnVisibility(),
+    this.clearSelectionMode, // Add new parameter
   }) : super(key: key);
 
   @override
@@ -100,6 +103,7 @@ class FileView extends StatelessWidget {
                     toggleFolderSelection: toggleFileSelection,
                     isDesktopMode: isDesktopMode,
                     lastSelectedPath: lastSelectedPath,
+                    clearSelectionMode: clearSelectionMode,
                   )
                 : FileItem(
                     key: ValueKey(
@@ -301,6 +305,7 @@ class FileView extends StatelessWidget {
                             toggleFolderSelection: toggleFileSelection,
                             isDesktopMode: isDesktopMode,
                             lastSelectedPath: lastSelectedPath,
+                            clearSelectionMode: clearSelectionMode,
                           )
                         : _FileDetailsItemWrapper(
                             key: ValueKey(
@@ -383,6 +388,7 @@ class FileView extends StatelessWidget {
                       toggleFolderSelection: toggleFileSelection,
                       isDesktopMode: isDesktopMode,
                       lastSelectedPath: lastSelectedPath,
+                      clearSelectionMode: clearSelectionMode,
                     )
                   : FileGridItem(
                       key: ValueKey(
@@ -464,6 +470,7 @@ class _FolderDetailsItemWrapper extends StatelessWidget {
       toggleFolderSelection;
   final bool isDesktopMode;
   final String? lastSelectedPath;
+  final Function()? clearSelectionMode;
 
   const _FolderDetailsItemWrapper({
     Key? key,
@@ -474,6 +481,7 @@ class _FolderDetailsItemWrapper extends StatelessWidget {
     this.onTap,
     this.isDesktopMode = false,
     this.lastSelectedPath,
+    this.clearSelectionMode,
   }) : super(key: key);
 
   @override
@@ -488,6 +496,7 @@ class _FolderDetailsItemWrapper extends StatelessWidget {
       toggleFolderSelection: toggleFolderSelection,
       isDesktopMode: isDesktopMode,
       lastSelectedPath: lastSelectedPath,
+      clearSelectionMode: clearSelectionMode,
     );
   }
 }

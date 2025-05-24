@@ -5,6 +5,7 @@ import 'package:cb_file_manager/ui/screens/folder_list/folder_list_state.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
 import 'package:flutter/services.dart';
 import 'package:cb_file_manager/ui/components/shared_file_context_menu.dart';
+import 'package:cb_file_manager/ui/components/optimized_interaction_handler.dart';
 
 class FolderDetailsItem extends StatefulWidget {
   final Directory folder;
@@ -15,6 +16,7 @@ class FolderDetailsItem extends StatefulWidget {
       toggleFolderSelection;
   final bool isDesktopMode;
   final String? lastSelectedPath;
+  final Function()? clearSelectionMode;
 
   const FolderDetailsItem({
     Key? key,
@@ -25,6 +27,7 @@ class FolderDetailsItem extends StatefulWidget {
     this.toggleFolderSelection,
     this.isDesktopMode = false,
     this.lastSelectedPath,
+    this.clearSelectionMode,
   }) : super(key: key);
 
   @override
@@ -141,127 +144,142 @@ class _FolderDetailsItemState extends State<FolderDetailsItem> {
         onEnter: (_) => setState(() => _isHovering = true),
         onExit: (_) => setState(() => _isHovering = false),
         cursor: SystemMouseCursors.click,
-        child: GestureDetector(
-          onTap: () {
-            if (widget.isDesktopMode && widget.toggleFolderSelection != null) {
-              _handleFolderSelection();
-            } else if (widget.onTap != null) {
-              widget.onTap!(widget.folder.path);
-            }
-          },
-          onDoubleTap: widget.isDesktopMode
-              ? () {
+        child: Stack(
+          children: [
+            Container(
+              decoration: boxDecoration,
+              child: Row(
+                children: [
+                  // Name column (always visible)
+                  Expanded(
+                    flex: 3,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12.0, vertical: 10.0),
+                      child: Row(
+                        children: [
+                          const Icon(EvaIcons.folderOutline,
+                              color: Colors.amber),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              widget.folder.basename(),
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontWeight: _visuallySelected
+                                    ? FontWeight.bold
+                                    : FontWeight.normal,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  // Type column
+                  if (widget.columnVisibility.type)
+                    Expanded(
+                      flex: 2,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12.0, vertical: 10.0),
+                        child: const Text(
+                          'Thư mục',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
+
+                  // Size column
+                  if (widget.columnVisibility.size)
+                    Expanded(
+                      flex: 1,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12.0, vertical: 10.0),
+                        child: const Text(
+                          '', // Folders don't typically show size in explorer
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
+
+                  // Date modified column
+                  if (widget.columnVisibility.dateModified)
+                    Expanded(
+                      flex: 2,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12.0, vertical: 10.0),
+                        child: Text(
+                          _fileStat != null
+                              ? _fileStat!.modified.toString().split('.')[0]
+                              : 'Loading...',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
+
+                  // Date created column
+                  if (widget.columnVisibility.dateCreated)
+                    Expanded(
+                      flex: 2,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12.0, vertical: 10.0),
+                        child: Text(
+                          _fileStat != null
+                              ? _fileStat!.changed.toString().split('.')[0]
+                              : 'Loading...',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
+
+                  // Attributes column
+                  if (widget.columnVisibility.attributes)
+                    Expanded(
+                      flex: 1,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12.0, vertical: 10.0),
+                        child: Text(
+                          _getAttributes(_fileStat),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            // Replace with optimized interaction layer
+            Positioned.fill(
+              child: OptimizedInteractionLayer(
+                onTap: () {
+                  if (widget.isDesktopMode &&
+                      widget.toggleFolderSelection != null) {
+                    _handleFolderSelection();
+                  } else if (widget.onTap != null) {
+                    widget.onTap!(widget.folder.path);
+                  }
+                },
+                onDoubleTap: () {
+                  if (widget.clearSelectionMode != null) {
+                    widget.clearSelectionMode!();
+                  }
                   if (widget.onTap != null) {
                     widget.onTap!(widget.folder.path);
                   }
-                }
-              : null,
-          child: Container(
-            decoration: boxDecoration,
-            child: Row(
-              children: [
-                // Name column (always visible)
-                Expanded(
-                  flex: 3,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12.0, vertical: 10.0),
-                    child: Row(
-                      children: [
-                        const Icon(EvaIcons.folderOutline, color: Colors.amber),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            widget.folder.basename(),
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontWeight: _visuallySelected
-                                  ? FontWeight.bold
-                                  : FontWeight.normal,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-                // Type column
-                if (widget.columnVisibility.type)
-                  Expanded(
-                    flex: 2,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12.0, vertical: 10.0),
-                      child: const Text(
-                        'Thư mục',
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ),
-
-                // Size column
-                if (widget.columnVisibility.size)
-                  Expanded(
-                    flex: 1,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12.0, vertical: 10.0),
-                      child: const Text(
-                        '', // Folders don't typically show size in explorer
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ),
-
-                // Date modified column
-                if (widget.columnVisibility.dateModified)
-                  Expanded(
-                    flex: 2,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12.0, vertical: 10.0),
-                      child: Text(
-                        _fileStat != null
-                            ? _fileStat!.modified.toString().split('.')[0]
-                            : 'Loading...',
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ),
-
-                // Date created column
-                if (widget.columnVisibility.dateCreated)
-                  Expanded(
-                    flex: 2,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12.0, vertical: 10.0),
-                      child: Text(
-                        _fileStat != null
-                            ? _fileStat!.changed.toString().split('.')[0]
-                            : 'Loading...',
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ),
-
-                // Attributes column
-                if (widget.columnVisibility.attributes)
-                  Expanded(
-                    flex: 1,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12.0, vertical: 10.0),
-                      child: Text(
-                        _getAttributes(_fileStat),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ),
-              ],
+                },
+                onLongPress: () {
+                  if (widget.toggleFolderSelection != null) {
+                    _handleFolderSelection();
+                  }
+                },
+              ),
             ),
-          ),
+          ],
         ),
       ),
     );
@@ -278,5 +296,66 @@ class _FolderDetailsItemState extends State<FolderDetailsItem> {
     if (stat.modeString()[3] == 'x') attrs.add('X');
 
     return attrs.join(' ');
+  }
+}
+
+// Separate interaction layer to handle gestures without requiring content to rebuild
+class _FolderInteractionLayer extends StatefulWidget {
+  final VoidCallback onTap;
+  final VoidCallback onDoubleTap;
+  final VoidCallback? onLongPress;
+
+  const _FolderInteractionLayer({
+    required this.onTap,
+    required this.onDoubleTap,
+    this.onLongPress,
+  });
+
+  @override
+  _FolderInteractionLayerState createState() => _FolderInteractionLayerState();
+}
+
+class _FolderInteractionLayerState extends State<_FolderInteractionLayer> {
+  int _lastTapTime = 0;
+  Offset? _lastTapPosition;
+  static const int _doubleTapTimeout = 300; // milliseconds
+  static const double _doubleTapMaxDistance = 40.0; // pixels
+
+  void _handleTapDown(TapDownDetails details) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final position = details.globalPosition;
+
+    // Always trigger onTap immediately
+    widget.onTap();
+
+    // Check if this could be a double tap
+    if (_lastTapTime > 0) {
+      final timeDiff = now - _lastTapTime;
+      final distance = _lastTapPosition != null
+          ? (position - _lastTapPosition!).distance
+          : 0.0;
+
+      // If within double tap time window and distance threshold
+      if (timeDiff <= _doubleTapTimeout && distance <= _doubleTapMaxDistance) {
+        widget.onDoubleTap();
+        // Reset to prevent triple tap
+        _lastTapTime = 0;
+        _lastTapPosition = null;
+        return;
+      }
+    }
+
+    // Store info for potential next tap
+    _lastTapTime = now;
+    _lastTapPosition = position;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: _handleTapDown,
+      onLongPress: widget.onLongPress,
+    );
   }
 }

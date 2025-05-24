@@ -162,6 +162,8 @@ class _TagManagementSectionState extends State<TagManagementSection> {
     if (!mounted) return;
 
     try {
+      debugPrint("TagManagementSection: Saving changes for ${widget.filePath}");
+
       // Get tags to add (those in _selectedTags but not in _originalTags)
       List<String> tagsToAdd =
           _selectedTags.where((tag) => !_originalTags.contains(tag)).toList();
@@ -169,6 +171,9 @@ class _TagManagementSectionState extends State<TagManagementSection> {
       // Get tags to remove (those in _originalTags but not in _selectedTags)
       List<String> tagsToRemove =
           _originalTags.where((tag) => !_selectedTags.contains(tag)).toList();
+
+      debugPrint(
+          "TagManagementSection: Adding tags: $tagsToAdd, Removing tags: $tagsToRemove");
 
       // Process removals
       for (String tag in tagsToRemove) {
@@ -179,6 +184,14 @@ class _TagManagementSectionState extends State<TagManagementSection> {
       for (String tag in tagsToAdd) {
         await TagManager.addTag(widget.filePath, tag.trim());
       }
+
+      // Force update to original tags to reflect current state
+      _originalTags = List.from(_selectedTags);
+
+      // Make sure we trigger notifications manually
+      TagManager.clearCache();
+      TagManager.instance.notifyTagChanged(widget.filePath);
+      TagManager.instance.notifyTagChanged("global:tag_updated");
 
       // Refresh tags if needed
       _refreshTags();
