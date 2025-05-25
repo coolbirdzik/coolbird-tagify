@@ -44,7 +44,15 @@ class FolderSortManager {
     if (_isSystemPath(folderPath)) {
       sortOption = await _getMobileSortOption(folderPath);
     } else if (isWindows) {
+      // On Windows, try both methods for maximum reliability
       sortOption = await _getWindowsSortOption(folderPath);
+
+      // If Windows desktop.ini method failed, try the JSON config file as fallback
+      if (sortOption == null) {
+        debugPrint(
+            'Windows desktop.ini method failed, trying JSON config fallback');
+        sortOption = await _getMobileSortOption(folderPath);
+      }
     } else {
       sortOption = await _getMobileSortOption(folderPath);
     }
@@ -306,107 +314,63 @@ class FolderSortManager {
       debugPrint(
           'Mapped sort option to: SortByAttribute=$sortBy, SortDescending=$sortDescending');
 
-      // Create or update the desktop.ini file
-      Map<String, String> sections = {};
+      // Simpler approach: Just create a new desktop.ini file with the required settings
+      // This avoids issues with parsing and manipulating the existing file
+      String fileContent = '''[.ShellClassInfo]
+IconFile=
+IconIndex=0
+ConfirmFileOp=0
+InfoTip=
+SortByAttribute=$sortBy
+SortDescending=$sortDescending
+''';
 
-      // If file exists, read current sections
-      if (await desktopIniFile.exists()) {
-        final contents = await desktopIniFile.readAsString();
-        final lines = contents.split('\n');
-
-        String currentSection = '';
-        for (var line in lines) {
-          line = line.trim();
-          if (line.startsWith('[') && line.endsWith(']')) {
-            currentSection = line;
-            sections[currentSection] = '';
-          } else if (currentSection.isNotEmpty) {
-            sections[currentSection] =
-                '${sections[currentSection] ?? ''}$line\n';
-          }
-        }
-      }
-
-      // Update or add ViewState section
-      const viewStateSection = '[.ShellClassInfo]';
-      String viewStateContent = sections[viewStateSection] ?? '';
-
-      // Thêm các thuộc tính bổ sung nếu section mới
-      if (viewStateContent.isEmpty) {
-        viewStateContent =
-            'IconFile=\nIconIndex=0\nConfirmFileOp=0\nInfoTip=\n';
-      }
-
-      // Update sort settings
-      bool hasSortBy = false;
-      bool hasSortDescending = false;
-
-      if (viewStateContent.isNotEmpty) {
-        final contentLines = viewStateContent.split('\n');
-        for (int i = 0; i < contentLines.length; i++) {
-          if (contentLines[i].startsWith('SortByAttribute=')) {
-            contentLines[i] = 'SortByAttribute=$sortBy';
-            hasSortBy = true;
-          } else if (contentLines[i].startsWith('SortDescending=')) {
-            contentLines[i] = 'SortDescending=$sortDescending';
-            hasSortDescending = true;
-          }
-        }
-        viewStateContent = contentLines.join('\n');
-      }
-
-      // Add settings if not present
-      if (!hasSortBy) {
-        viewStateContent += 'SortByAttribute=$sortBy\n';
-      }
-      if (!hasSortDescending) {
-        viewStateContent += 'SortDescending=$sortDescending\n';
-      }
-
-      sections[viewStateSection] = viewStateContent;
-
-      // Build the final file content
-      String fileContent = '';
-      for (var section in sections.keys) {
-        fileContent += '$section\n${sections[section]}\n';
-      }
-
-      // Đảm bảo thư mục tồn tại trước khi lưu file
+      // Make sure the directory exists before saving the file
       final directory = Directory(folderPath);
       if (!await directory.exists()) {
         await directory.create(recursive: true);
       }
 
-      // Save file with SYSTEM+HIDDEN attributes on Windows
+      // Try to delete the file first to avoid any permission issues with overwriting
+      if (await desktopIniFile.exists()) {
+        try {
+          await desktopIniFile.delete();
+          debugPrint('Deleted existing desktop.ini file');
+        } catch (e) {
+          debugPrint('Error deleting existing desktop.ini file: $e');
+          // Continue anyway, we'll try to overwrite it
+        }
+      }
+
+      // Write the new file
       await desktopIniFile.writeAsString(fileContent);
+      debugPrint(
+          'Successfully wrote desktop.ini file with content:\n$fileContent');
 
-      debugPrint('Saved desktop.ini content: \n$fileContent');
+      // As a backup, also save the sort option to our config file format
+      // This ensures we have a fallback if desktop.ini doesn't work
+      await _saveMobileSortOption(folderPath, sortOption);
 
-      // Set file attributes (hidden, system)
+      // Set file attributes (hidden, system) using more robust method
       if (Platform.isWindows) {
         try {
-          // Đảm bảo thư mục có thuộc tính System trước để desktop.ini có hiệu lực
-          await Process.run('attrib', ['+S', folderPath]);
-          debugPrint('Set attribute +S on folder $folderPath');
+          // First, make the folder have the system attribute
+          final folderResult = await Process.run('attrib', ['+S', folderPath]);
+          debugPrint(
+              'Set attribute +S on folder $folderPath (exit code: ${folderResult.exitCode})');
+          debugPrint('Result: ${folderResult.stdout}');
+          if (folderResult.stderr.isNotEmpty) {
+            debugPrint('Error output: ${folderResult.stderr}');
+          }
 
-          // Sau đó thiết lập thuộc tính cho desktop.ini
-          await Process.run('attrib', ['+S', '+H', desktopIniPath]);
-          debugPrint('Set attributes +S +H on $desktopIniPath');
-
-          // Thử làm mới Explorer bằng nhiều cách khác nhau
-          try {
-            // Cách 1: Tạo và xóa file để kích hoạt refresh
-            final refreshFile =
-                pathlib.join(folderPath, 'refresh_explorer.tmp');
-            await File(refreshFile).writeAsString('refresh');
-            await File(refreshFile).delete();
-
-            // Cách 2: Sử dụng lệnh explorer để làm mới
-            await Process.run('explorer', ['/select,', desktopIniPath]);
-
-            debugPrint('Sent multiple notifications to refresh Explorer view');
-          } catch (e) {
-            debugPrint('Error refreshing Explorer view: $e');
+          // Then set attributes on the desktop.ini file
+          final fileResult =
+              await Process.run('attrib', ['+S', '+H', desktopIniPath]);
+          debugPrint(
+              'Set attributes +S +H on $desktopIniPath (exit code: ${fileResult.exitCode})');
+          debugPrint('Result: ${fileResult.stdout}');
+          if (fileResult.stderr.isNotEmpty) {
+            debugPrint('Error output: ${fileResult.stderr}');
           }
         } catch (e) {
           debugPrint('Error setting desktop.ini attributes: $e');
@@ -515,18 +479,53 @@ class FolderSortManager {
 
       // Load existing config if it exists
       if (await configFile.exists()) {
-        final contents = await configFile.readAsString();
-        config = json.decode(contents);
+        try {
+          final contents = await configFile.readAsString();
+          if (contents.isNotEmpty) {
+            config = json.decode(contents);
+          }
+        } catch (e) {
+          debugPrint('Error reading existing config file: $e');
+          // Continue with empty config if there was an error
+        }
       }
 
       // Update sort option
       config['sortOption'] = sortOption.index;
 
-      // Save config file
-      await configFile.writeAsString(json.encode(config));
+      // Make sure directory exists
+      final directory = Directory(folderPath);
+      if (!await directory.exists()) {
+        await directory.create(recursive: true);
+      }
 
-      // Try to make the file hidden on Android
-      if (Platform.isAndroid) {
+      // Delete the file first if it exists to avoid permission issues
+      if (await configFile.exists()) {
+        try {
+          await configFile.delete();
+        } catch (e) {
+          debugPrint('Warning: Failed to delete existing config file: $e');
+          // Continue anyway
+        }
+      }
+
+      // Write config file with pretty printing for better debugging
+      final jsonString = const JsonEncoder.withIndent('  ').convert(config);
+      await configFile.writeAsString(jsonString);
+      debugPrint(
+          'Successfully saved config file with sort option: $jsonString');
+
+      // Try to make the file hidden
+      if (Platform.isWindows) {
+        try {
+          final result = await Process.run('attrib', ['+H', configPath]);
+          debugPrint(
+              'Set hidden attribute on config file (exit code: ${result.exitCode})');
+        } catch (e) {
+          // Ignore errors, this is just a nice-to-have
+          debugPrint('Error making config file hidden: $e');
+        }
+      } else if (Platform.isAndroid) {
         try {
           // Create a .nomedia file in the same directory to prevent media scan
           final nomediaFile = File(pathlib.join(folderPath, '.nomedia'));

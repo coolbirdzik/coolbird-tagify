@@ -774,8 +774,16 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
 
       // Save the sort option to the current folder
       final folderSortManager = FolderSortManager();
-      await folderSortManager.saveFolderSortOption(
+      debugPrint(
+          'Trying to save sort option ${event.sortOption} to folder: ${state.currentPath.path}');
+      final saveResult = await folderSortManager.saveFolderSortOption(
           state.currentPath.path, event.sortOption);
+      debugPrint('Save sort option result: $saveResult');
+
+      // Check if sort option was actually saved
+      final savedOption =
+          await folderSortManager.getFolderSortOption(state.currentPath.path);
+      debugPrint('Retrieved sort option after save: ${savedOption?.name}');
 
       // Define the sorting function based on the selected sort option
       int Function(FileSystemEntity, FileSystemEntity) compareFunction;
