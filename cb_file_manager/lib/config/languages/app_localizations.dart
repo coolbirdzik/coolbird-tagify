@@ -203,4 +203,44 @@ abstract class AppLocalizations {
   String get noImagesFound;
   String get noVideosFound;
   String get loading;
+
+  // Search errors
+  String noFilesFoundTag(Map<String, String> args);
+  String noFilesFoundTagGlobal(Map<String, String> args);
+  String noFilesFoundTags(Map<String, String> args);
+  String noFilesFoundTagsGlobal(Map<String, String> args);
+  String errorSearchTag(Map<String, String> args);
+  String errorSearchTagGlobal(Map<String, String> args);
+  String errorSearchTags(Map<String, String> args);
+  String errorSearchTagsGlobal(Map<String, String> args);
+
+  // Search status
+  String searchingTag(Map<String, String> args);
+  String searchingTagGlobal(Map<String, String> args);
+  String searchingTags(Map<String, String> args);
+  String searchingTagsGlobal(Map<String, String> args);
+
+  // Search UI
+  String get searchTips;
+  String get searchTipsTitle;
+  String get viewTagSuggestions;
+  String get globalSearchModeEnabled;
+  String get localSearchModeEnabled;
+  String get globalSearchMode;
+  String get localSearchMode;
+  String get searchByFilename;
+  String get searchByTags;
+  String get searchMultipleTags;
+  String get globalSearch;
+  String get searchShortcuts;
+  String get searchHintText;
+  String get searchHintTextTags;
+  String get suggestedTags;
+  String get noMatchingTags;
+  String get results;
+  String get searchByFilenameDesc;
+  String get searchByTagsDesc;
+  String get searchMultipleTagsDesc;
+  String get globalSearchDesc;
+  String get searchShortcutsDesc;
 }

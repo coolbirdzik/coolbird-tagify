@@ -6,6 +6,7 @@ import 'package:cb_file_manager/helpers/tag_manager.dart';
 import 'package:cb_file_manager/ui/screens/folder_list/folder_list_bloc.dart';
 import 'package:cb_file_manager/ui/screens/folder_list/folder_list_event.dart';
 import 'package:cb_file_manager/ui/tab_manager/tab_manager.dart'; // Add TabManager import
+import 'package:cb_file_manager/config/languages/app_localizations.dart';
 import 'dart:io';
 import 'package:path/path.dart' as pathlib;
 
@@ -33,6 +34,7 @@ class _SearchBarState extends State<SearchBar> {
   List<String> _suggestedTags = [];
   bool _isGlobalSearch = false;
   bool _quickAction = false; // Add missing property
+  bool _showSearchTips = false; // Flag to control search tips display
 
   // Biến để lưu trữ overlay entry
   OverlayEntry? _overlayEntry;
@@ -158,6 +160,8 @@ class _SearchBarState extends State<SearchBar> {
     // Nếu không mounted, không tiếp tục
     if (!mounted) return;
 
+    final localizations = AppLocalizations.of(context)!;
+
     // Reset chỉ mục tag được chọn
     _selectedTagIndex = tags.isNotEmpty ? 0 : -1;
     _currentTags = List.from(tags);
@@ -210,7 +214,7 @@ class _SearchBarState extends State<SearchBar> {
                       children: [
                         Expanded(
                           child: Text(
-                            'Tags gợi ý (${_currentTags.length} kết quả)',
+                            '${localizations.suggestedTags} (${_currentTags.length} ${localizations.results})',
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 14,
@@ -239,7 +243,7 @@ class _SearchBarState extends State<SearchBar> {
                       ? Padding(
                           padding: const EdgeInsets.all(16.0),
                           child: Text(
-                            'Không tìm thấy tag phù hợp',
+                            localizations.noMatchingTags,
                             style: TextStyle(
                               fontStyle: FontStyle.italic,
                               color: theme.colorScheme.onSurfaceVariant,
@@ -330,7 +334,9 @@ class _SearchBarState extends State<SearchBar> {
     // Cập nhật text input với tag đã chọn
     final text = _searchController.text;
     final hashIndex = text.lastIndexOf('#');
-    final newText = text.substring(0, hashIndex + 1) + tag;
+    final newText = text.substring(0, hashIndex + 1) +
+        tag +
+        ' '; // Thêm khoảng trắng để chuẩn bị nhập tag tiếp theo
 
     // Cập nhật văn bản và vị trí con trỏ
     setState(() {
@@ -343,13 +349,42 @@ class _SearchBarState extends State<SearchBar> {
     // Đảm bảo cập nhật UI
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _searchFocusNode.requestFocus();
-
-      // Tự động thực hiện tìm kiếm sau khi chọn tag
-      _performSearch();
     });
 
-    debugPrint(
-        'Applied tag. New text: $newText - Performing search automatically');
+    debugPrint('Applied tag. New text: $newText');
+  }
+
+  // Phân tích chuỗi tìm kiếm để trích xuất nhiều tag
+  List<String> _extractTags(String query) {
+    List<String> tags = [];
+
+    // Use regex to find all patterns that start with # and continue until another # or end of string
+    RegExp tagRegex = RegExp(r'#([^\s#][^#]*?)(?=\s+#|\s*$)');
+    final matches = tagRegex.allMatches(query);
+
+    for (var match in matches) {
+      if (match.group(1) != null && match.group(1)!.isNotEmpty) {
+        // Trim trailing whitespace but preserve spaces within the tag
+        String tag = match.group(1)!.trimRight();
+        if (tag.isNotEmpty) {
+          tags.add(tag);
+        }
+      }
+    }
+
+    // If no matches found using the regex, fallback to simpler method
+    if (tags.isEmpty) {
+      // Check if there's a single tag in the query
+      if (query.startsWith('#') && query.length > 1) {
+        String tag = query.substring(1).trim();
+        if (tag.isNotEmpty) {
+          tags.add(tag);
+        }
+      }
+    }
+
+    // Remove duplicates
+    return tags.toSet().toList();
   }
 
   void _performSearch() {
@@ -363,69 +398,179 @@ class _SearchBarState extends State<SearchBar> {
     final query = _searchController.text;
     final folderListBloc = BlocProvider.of<FolderListBloc>(context);
     final tabBloc = BlocProvider.of<TabManagerBloc>(context);
+    final localizations = AppLocalizations.of(context)!;
 
-    // Check if it's a tag search (starts with # or in tag search mode)
-    if (_isSearchingTags || query.startsWith('#')) {
-      String tagQuery = query;
-      // If user just typed #, treat as empty tag query
-      if (tagQuery == '#') {
+    // Add the current path to tab history before performing the search
+    // This will allow back button to return to the normal view
+    tabBloc.add(AddToTabHistory(widget.tabId, currentPath));
+
+    // Check if it's a tag search (contains # character)
+    if (_isSearchingTags || query.contains('#')) {
+      // Extract all tags from the query
+      List<String> tags = _extractTags(query);
+
+      // If no valid tags were found, don't search
+      if (tags.isEmpty) {
         return;
       }
 
-      // Remove the '#' prefix if present
-      if (tagQuery.startsWith('#')) {
-        tagQuery = tagQuery.substring(1);
-      }
-
-      // Trim any whitespace
-      tagQuery = tagQuery.trim();
-
-      // If tag query is empty after trimming, don't search
-      if (tagQuery.isEmpty) {
-        return;
-      }
-
-      // Add the current path to tab history before performing the search
-      // This will allow back button to return to the normal view
-      tabBloc.add(AddToTabHistory(widget.tabId, currentPath));
-
-      // Check if user wants a global search using the shift key or global checkbox
-      if (_isGlobalSearch) {
-        // Show a message for longer searches
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const CircularProgressIndicator(
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                  strokeWidth: 2,
+      // Show a message with the tags being searched
+      String tagListStr = tags.map((t) => '"$t"').join(', ');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                strokeWidth: 2,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  _isGlobalSearch
+                      ? localizations.searchingTagsGlobal({'tags': tagListStr})
+                      : localizations.searchingTags({'tags': tagListStr}),
+                  overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(width: 12),
-                Text('Đang tìm kiếm tag "$tagQuery" trên toàn hệ thống...'),
-              ],
-            ),
-            duration: const Duration(seconds: 3),
+              ),
+            ],
           ),
-        );
+          duration: const Duration(seconds: 3),
+        ),
+      );
 
-        debugPrint('Searching for tag globally: "$tagQuery"');
-        folderListBloc.add(SearchByTagGlobally(tagQuery));
+      // Check if user wants a global search
+      if (_isGlobalSearch) {
+        debugPrint('Searching for multiple tags globally: $tags');
+        // Use the new event for global multi-tag search
+        if (tags.length == 1) {
+          // If only one tag, use the existing single tag search
+          folderListBloc.add(SearchByTagGlobally(tags.first));
+        } else {
+          // If multiple tags, use the new multi-tag search
+          folderListBloc.add(SearchByMultipleTagsGlobally(tags));
+        }
       } else {
-        debugPrint('Searching for tag in current directory: "$tagQuery"');
-        folderListBloc.add(SearchByTag(tagQuery));
+        debugPrint('Searching for multiple tags in current directory: $tags');
+        // Use the new event for local multi-tag search
+        if (tags.length == 1) {
+          // If only one tag, use the existing single tag search
+          folderListBloc.add(SearchByTag(tags.first));
+        } else {
+          // If multiple tags, use the new multi-tag search
+          folderListBloc.add(SearchByMultipleTags(tags));
+        }
       }
     } else {
-      // Add the current path to tab history before performing the search
-      // This will allow back button to return to the normal view
-      tabBloc.add(AddToTabHistory(widget.tabId, currentPath));
-
       // Tìm kiếm theo tên file
       debugPrint('Searching by filename: "$query"');
       folderListBloc.add(SearchByFileName(query));
     }
   }
 
-  // Phương thức xử lý phím mũi tên để điều hướng trong danh sách gợi ý
+  // Hiển thị tooltip các tip tìm kiếm
+  void _showSearchTipsDialog(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final localizations = AppLocalizations.of(context)!;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(EvaIcons.infoOutline, color: theme.colorScheme.primary),
+            const SizedBox(width: 8),
+            Text(localizations.searchTipsTitle),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildTipItem(
+                icon: EvaIcons.text,
+                title: localizations.searchByFilename,
+                description: localizations.searchByFilenameDesc,
+              ),
+              const Divider(),
+              _buildTipItem(
+                icon: EvaIcons.shoppingBag,
+                title: localizations.searchByTags,
+                description: localizations.searchByTagsDesc,
+              ),
+              const Divider(),
+              _buildTipItem(
+                icon: EvaIcons.hash,
+                title: localizations.searchMultipleTags,
+                description: localizations.searchMultipleTagsDesc,
+              ),
+              const Divider(),
+              _buildTipItem(
+                icon: EvaIcons.globe2Outline,
+                title: localizations.globalSearch,
+                description: localizations.globalSearchDesc,
+              ),
+              const Divider(),
+              _buildTipItem(
+                icon: EvaIcons.menu,
+                title: localizations.searchShortcuts,
+                description: localizations.searchShortcutsDesc,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text(localizations.close),
+          ),
+        ],
+        backgroundColor: isDark ? Colors.grey[850] : theme.colorScheme.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+      ),
+    );
+  }
+
+  // Helper để xây dựng mục tip
+  Widget _buildTipItem({
+    required IconData icon,
+    required String title,
+    required String description,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 18, color: Theme.of(context).colorScheme.primary),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  description,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   // Cập nhật overlay khi thay đổi lựa chọn
   void _updateOverlay() {
@@ -481,6 +626,7 @@ class _SearchBarState extends State<SearchBar> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final localizations = AppLocalizations.of(context)!;
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
@@ -580,8 +726,8 @@ class _SearchBarState extends State<SearchBar> {
                 ),
                 decoration: InputDecoration(
                   hintText: _isSearchingTags
-                      ? 'Tìm theo tag... (ví dụ: #important)'
-                      : 'Tìm kiếm tệp hoặc dùng # để tìm theo tag',
+                      ? localizations.searchHintTextTags
+                      : localizations.searchHintText,
                   hintStyle: TextStyle(
                     color: theme.colorScheme.onSurfaceVariant.withOpacity(0.7),
                     fontSize: 14,
@@ -592,6 +738,26 @@ class _SearchBarState extends State<SearchBar> {
                   isDense: true,
                 ),
                 onSubmitted: (_) => _performSearch(),
+              ),
+            ),
+          ),
+          // Tips button
+          Material(
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(20),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(20),
+              onTap: () => _showSearchTipsDialog(context),
+              child: Tooltip(
+                message: AppLocalizations.of(context)!.searchTips,
+                child: Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Icon(
+                    EvaIcons.infoOutline,
+                    color: theme.colorScheme.onSurfaceVariant,
+                    size: 20,
+                  ),
+                ),
               ),
             ),
           ),
@@ -611,7 +777,7 @@ class _SearchBarState extends State<SearchBar> {
                   }
                 },
                 child: Tooltip(
-                  message: 'Xem gợi ý tag',
+                  message: AppLocalizations.of(context)!.viewTagSuggestions,
                   child: Padding(
                     padding: const EdgeInsets.all(8.0),
                     child: Icon(
@@ -637,8 +803,8 @@ class _SearchBarState extends State<SearchBar> {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: Text(_isGlobalSearch
-                        ? 'Đã chuyển sang tìm kiếm toàn cục'
-                        : 'Đã chuyển sang tìm kiếm thư mục hiện tại'),
+                        ? AppLocalizations.of(context)!.globalSearchModeEnabled
+                        : AppLocalizations.of(context)!.localSearchModeEnabled),
                     duration: const Duration(milliseconds: 1000),
                     behavior: SnackBarBehavior.floating,
                     shape: RoundedRectangleBorder(
@@ -650,8 +816,8 @@ class _SearchBarState extends State<SearchBar> {
               },
               child: Tooltip(
                 message: _isGlobalSearch
-                    ? 'Đang tìm kiếm toàn cục (nhấn để chuyển)'
-                    : 'Đang tìm kiếm thư mục hiện tại (nhấn để chuyển)',
+                    ? AppLocalizations.of(context)!.globalSearchMode
+                    : AppLocalizations.of(context)!.localSearchMode,
                 child: Container(
                   padding: const EdgeInsets.all(8),
                   child: AnimatedSwitcher(
@@ -699,7 +865,7 @@ class _SearchBarState extends State<SearchBar> {
               borderRadius: BorderRadius.circular(20),
               onTap: widget.onCloseSearch,
               child: Tooltip(
-                message: 'Đóng',
+                message: AppLocalizations.of(context)!.close,
                 child: Padding(
                   padding: const EdgeInsets.all(8.0),
                   child: Icon(

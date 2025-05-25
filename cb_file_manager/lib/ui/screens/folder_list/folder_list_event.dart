@@ -69,6 +69,26 @@ class SearchByTagGlobally extends FolderListEvent {
   List<Object> get props => [tag];
 }
 
+// New event for searching by multiple tags in current directory
+class SearchByMultipleTags extends FolderListEvent {
+  final List<String> tags;
+
+  const SearchByMultipleTags(this.tags);
+
+  @override
+  List<Object> get props => [tags];
+}
+
+// New event for searching by multiple tags globally
+class SearchByMultipleTagsGlobally extends FolderListEvent {
+  final List<String> tags;
+
+  const SearchByMultipleTagsGlobally(this.tags);
+
+  @override
+  List<Object> get props => [tags];
+}
+
 class SearchByFileName extends FolderListEvent {
   final String query;
   final bool recursive;

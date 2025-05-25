@@ -63,13 +63,13 @@ class _ScrollableTabBarState extends State<ScrollableTabBar> {
 
     // Modern tab colors
     final tabBackgroundColor = isDarkMode
-        ? theme.scaffoldBackgroundColor.withOpacity(0.8)
-        : theme.scaffoldBackgroundColor.withOpacity(0.7);
+        ? theme.scaffoldBackgroundColor.withAlpha((0.8 * 255).round())
+        : theme.scaffoldBackgroundColor.withAlpha((0.7 * 255).round());
     final activeTabColor =
         isDarkMode ? theme.colorScheme.surface : theme.colorScheme.surface;
     final hoverColor = isDarkMode
-        ? theme.colorScheme.surface.withOpacity(0.8)
-        : theme.colorScheme.surface.withOpacity(0.8);
+        ? theme.colorScheme.surface.withAlpha((0.8 * 255).round())
+        : theme.colorScheme.surface.withAlpha((0.8 * 255).round());
 
     Widget windowCaptionButtons = Platform.isWindows
         ? Row(
@@ -120,7 +120,7 @@ class _ScrollableTabBarState extends State<ScrollableTabBar> {
           // borderRadius: BorderRadius.circular(8),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.02),
+              color: Colors.black.withAlpha((0.02 * 255).round()),
               blurRadius: 1,
               offset: const Offset(0, 1),
             ),
@@ -314,8 +314,8 @@ class _ModernTabBarState extends State<_ModernTabBar> {
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         color: isDarkMode
-                            ? Colors.white.withOpacity(0.08)
-                            : Colors.black.withOpacity(0.05),
+                            ? Colors.white.withAlpha((0.08 * 255).round())
+                            : Colors.black.withAlpha((0.05 * 255).round()),
                       ),
                       child: Center(
                         child: Icon(
@@ -371,6 +371,7 @@ class _ModernTab extends StatefulWidget {
 class _ModernTabState extends State<_ModernTab>
     with SingleTickerProviderStateMixin {
   bool _isHovered = false;
+  bool _isCloseButtonHovered = false;
   late AnimationController _controller;
   late Animation<double> _animation;
 
@@ -428,8 +429,8 @@ class _ModernTabState extends State<_ModernTab>
     final primaryColor = widget.theme.colorScheme.primary;
 
     final hoverColor = isDarkMode
-        ? Colors.white.withOpacity(0.04)
-        : Colors.black.withOpacity(0.04);
+        ? Colors.white.withAlpha((0.04 * 255).round())
+        : Colors.black.withAlpha((0.04 * 255).round());
 
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
@@ -466,7 +467,9 @@ class _ModernTabState extends State<_ModernTab>
                   event.timeStamp - _pointerDownEvent!.timeStamp;
               final Offset delta = event.position - _pointerDownEvent!.position;
               if (timeSinceDown.inMilliseconds < _kTapTimeoutMilliseconds &&
-                  delta.distanceSquared <= _kTapSlop * _kTapSlop) {
+                  delta.distanceSquared <= _kTapSlop * _kTapSlop &&
+                  !_isCloseButtonHovered) {
+                // Only activate tab if not clicking on close button
                 widget.onTap();
                 HapticFeedback.lightImpact();
               }
@@ -480,127 +483,159 @@ class _ModernTabState extends State<_ModernTab>
             // GestureDetector removed, tap handled by Listener above
             animation: _animation,
             builder: (context, child) {
-              return Container(
-                width: tabWidth,
-                height: 38,
-                margin: const EdgeInsets.symmetric(horizontal: 3, vertical: 3),
-                decoration: BoxDecoration(
-                  color: widget.isActive
-                      ? widget.activeTabColor
-                      : (_isHovered ? widget.hoverColor : Colors.transparent),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: widget.isActive
-                        ? (isDarkMode
-                            ? Colors.white.withOpacity(0.1)
-                            : Colors.black.withOpacity(0.05))
-                        : Colors.transparent,
-                    width: 0.5,
-                  ),
-                  boxShadow: widget.isActive
-                      ? [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.03),
-                            blurRadius: 2,
-                            offset: const Offset(0, 1),
-                          ),
-                        ]
-                      : null,
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: Stack(
-                    children: [
-                      // Tab content
-                      Positioned.fill(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          child: DefaultTextStyle(
-                            style: TextStyle(
-                              color: widget.labelColor,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500,
-                            ).merge(widget.labelStyle),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Expanded(
-                                  child: Padding(
-                                    padding: const EdgeInsets.only(right: 24.0),
-                                    child: Center(child: widget.child),
-                                  ),
-                                ),
-                                // Close button with modern styling
-                                if (widget.onClose != null)
-                                  AnimatedOpacity(
-                                    opacity: (_isHovered || widget.isActive)
-                                        ? 1.0
-                                        : 0.0,
-                                    duration: const Duration(milliseconds: 150),
-                                    child: GestureDetector(
-                                      onTap: () {
-                                        widget.onClose?.call();
-                                      },
-                                      child: MouseRegion(
-                                        cursor: SystemMouseCursors.click,
-                                        child: Container(
-                                          width: 22,
-                                          height: 22,
-                                          decoration: BoxDecoration(
-                                            color: _isHovered
-                                                ? (isDarkMode
-                                                    ? Colors.white
-                                                        .withOpacity(0.1)
-                                                    : Colors.black
-                                                        .withOpacity(0.05))
-                                                : Colors.transparent,
-                                            shape: BoxShape.circle,
-                                          ),
-                                          child: Icon(
-                                            EvaIcons.close,
-                                            size: 16,
-                                            color: isDarkMode
-                                                ? Colors.white.withOpacity(0.7)
-                                                : Colors.black.withOpacity(0.5),
-                                          ),
-                                        ),
+              return Stack(
+                children: [
+                  Container(
+                    width: tabWidth,
+                    height: 38,
+                    margin:
+                        const EdgeInsets.symmetric(horizontal: 3, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: widget.isActive
+                          ? widget.activeTabColor
+                          : (_isHovered
+                              ? widget.hoverColor
+                              : Colors.transparent),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: widget.isActive
+                            ? (isDarkMode
+                                ? Colors.white.withAlpha((0.1 * 255).round())
+                                : Colors.black.withAlpha((0.05 * 255).round()))
+                            : Colors.transparent,
+                        width: 0.5,
+                      ),
+                      boxShadow: widget.isActive
+                          ? [
+                              BoxShadow(
+                                color: Colors.black
+                                    .withAlpha((0.03 * 255).round()),
+                                blurRadius: 2,
+                                offset: const Offset(0, 1),
+                              ),
+                            ]
+                          : null,
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Stack(
+                        children: [
+                          // Tab content
+                          Positioned.fill(
+                            child: Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 12),
+                              child: DefaultTextStyle(
+                                style: TextStyle(
+                                  color: widget.labelColor,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                ).merge(widget.labelStyle),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Expanded(
+                                      child: Padding(
+                                        padding:
+                                            const EdgeInsets.only(right: 24.0),
+                                        child: Center(child: widget.child),
                                       ),
                                     ),
-                                  ),
-                              ],
+                                  ],
+                                ),
+                              ),
                             ),
                           ),
-                        ),
+
+                          // Hover effect
+                          if (_isHovered && !widget.isActive)
+                            Positioned.fill(
+                              child: Material(
+                                color: hoverColor,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+
+                          // Active tab indicator - subtle left border
+                          if (widget.isActive)
+                            Positioned(
+                              left: 0,
+                              top: 6,
+                              bottom: 6,
+                              width: 3,
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: primaryColor,
+                                  borderRadius: const BorderRadius.horizontal(
+                                    right: Radius.circular(4),
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
+                    ),
+                  ),
 
-                      // Hover effect
-                      if (_isHovered && !widget.isActive)
-                        Positioned.fill(
-                          child: Material(
-                            color: hoverColor,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-
-                      // Active tab indicator - subtle left border
-                      if (widget.isActive)
-                        Positioned(
-                          left: 0,
-                          top: 6,
-                          bottom: 6,
-                          width: 3,
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: primaryColor,
-                              borderRadius: const BorderRadius.horizontal(
-                                right: Radius.circular(4),
+                  // Close button - positioned on top of tab
+                  if (widget.onClose != null)
+                    Positioned(
+                      top: 3 + (38 - 22) / 2, // Center vertically in the tab
+                      right: 12, // Position from right edge
+                      child: AnimatedOpacity(
+                        opacity: (_isHovered || widget.isActive) ? 1.0 : 0.5,
+                        duration: const Duration(milliseconds: 150),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: MouseRegion(
+                            cursor: SystemMouseCursors.click,
+                            onEnter: (_) =>
+                                setState(() => _isCloseButtonHovered = true),
+                            onExit: (_) =>
+                                setState(() => _isCloseButtonHovered = false),
+                            child: GestureDetector(
+                              onTap: () {
+                                widget.onClose?.call();
+                                HapticFeedback
+                                    .lightImpact(); // Add haptic feedback
+                              },
+                              behavior: HitTestBehavior
+                                  .opaque, // Intercept all pointer events
+                              child: Container(
+                                width: 22,
+                                height: 22,
+                                decoration: BoxDecoration(
+                                  color: _isCloseButtonHovered
+                                      ? (isDarkMode
+                                          ? Colors.white
+                                              .withAlpha((0.15 * 255).round())
+                                          : Colors.black
+                                              .withAlpha((0.08 * 255).round()))
+                                      : (_isHovered
+                                          ? (isDarkMode
+                                              ? Colors.white.withAlpha(
+                                                  (0.1 * 255).round())
+                                              : Colors.black.withAlpha(
+                                                  (0.05 * 255).round()))
+                                          : Colors.transparent),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  EvaIcons.close,
+                                  size: 16,
+                                  color: isDarkMode
+                                      ? Colors.white
+                                          .withAlpha((0.7 * 255).round())
+                                      : Colors.black
+                                          .withAlpha((0.5 * 255).round()),
+                                ),
                               ),
                             ),
                           ),
                         ),
-                    ],
-                  ),
-                ),
+                      ),
+                    ),
+                ],
               );
             },
           ),
@@ -672,10 +707,10 @@ class _WindowCaptionButtonState extends State<_WindowCaptionButton> {
     final isDarkMode = widget.theme.brightness == Brightness.dark;
     final iconColor = isDarkMode ? Colors.white70 : Colors.black54;
     final hoverBackgroundColor = widget.isCloseButton
-        ? Colors.red.withOpacity(0.9)
+        ? Colors.red.withAlpha((0.9 * 255).round())
         : (isDarkMode
-            ? Colors.white.withOpacity(0.1)
-            : Colors.black.withOpacity(0.08));
+            ? Colors.white.withAlpha((0.1 * 255).round())
+            : Colors.black.withAlpha((0.08 * 255).round()));
     final hoverIconColor = widget.isCloseButton
         ? Colors.white
         : (isDarkMode ? Colors.white : Colors.black);

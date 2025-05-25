@@ -425,14 +425,6 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
           ),
         );
       }
-
-      // Show success message
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Opened tag "$tag" in a new tab'),
-          duration: const Duration(seconds: 2),
-        ),
-      );
     } catch (e) {
       // Handle error if the TabManagerBloc is not found
       ScaffoldMessenger.of(context).showSnackBar(

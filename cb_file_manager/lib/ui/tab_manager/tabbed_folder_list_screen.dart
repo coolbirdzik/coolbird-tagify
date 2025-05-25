@@ -33,6 +33,7 @@ import 'tab_data.dart'; // Import TabData explicitly
 import 'package:cb_file_manager/ui/dialogs/open_with_dialog.dart';
 import 'package:cb_file_manager/helpers/external_app_helper.dart';
 import 'package:cb_file_manager/helpers/trash_manager.dart'; // Import for TrashManager
+import 'package:cb_file_manager/ui/screens/system_screen_router.dart'; // Import SystemScreenRouter
 
 // Add imports for hardware acceleration
 import 'package:flutter/rendering.dart' show RendererBinding;
@@ -534,7 +535,7 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
     // Show loading indicator
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('Đang làm mới thumbnails...'),
+        content: Text('Đang làm mới...'),
         duration: Duration(seconds: 2),
       ),
     );
@@ -546,23 +547,32 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
     PaintingBinding.instance.imageCache.clear();
     PaintingBinding.instance.imageCache.clearLiveImages();
 
-    // Xóa cache thumbnail và cache hệ thống
-    // VideoThumbnailHelper.clearCache();
-
-    // Reload thư mục với forceRegenerateThumbnails để đảm bảo thumbnail được tạo mới
-    _folderListBloc.add(FolderListRefresh(_currentPath));
+    // Check if this is a system path (starts with #)
+    if (_currentPath.startsWith('#')) {
+      // For system paths, we need special handling
+      if (_currentPath == '#tags') {
+        // For tag management screen
+        TagManager.clearCache();
+        // Clear the system screen router cache for this path
+        SystemScreenRouter.refreshSystemPath(_currentPath, widget.tabId);
+        // Reload tag management data (will be handled by the component)
+      } else if (_currentPath.startsWith('#tag:')) {
+        // For tag search screens, extract the tag and re-run the search
+        final tag = _currentPath.substring(5); // Remove "#tag:" prefix
+        TagManager.clearCache();
+        // Clear the system screen router cache for this path
+        SystemScreenRouter.refreshSystemPath(_currentPath, widget.tabId);
+        _folderListBloc.add(SearchByTagGlobally(tag));
+      }
+    } else {
+      // For regular paths, reload with thumbnail regeneration
+      _folderListBloc.add(FolderListRefresh(_currentPath));
+    }
 
     // Thiết lập thời gian chờ cố định 3 giây (đủ để đảm bảo hoàn tất các thao tác trên UI)
     Future.delayed(const Duration(seconds: 3), () {
       if (mounted && isRefreshing) {
         isRefreshing = false;
-        // Thông báo hoàn tất làm mới
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Đã làm mới xong!'),
-            duration: Duration(seconds: 1),
-          ),
-        );
       }
     });
 
@@ -574,7 +584,7 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-                'Đã hoàn tất làm mới. Một số thumbnail có thể cần thời gian để cập nhật.'),
+                'Đã hoàn tất làm mới. Một số dữ liệu có thể cần thời gian để cập nhật.'),
             duration: Duration(seconds: 3),
           ),
         );
@@ -1123,10 +1133,33 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
           }
         });
 
-        // Use FolderListRefresh instead of FolderListLoad to force thumbnail regeneration
-        VideoThumbnailHelper.trimCache();
-        _folderListBloc.add(
-            FolderListRefresh(_currentPath, forceRegenerateThumbnails: true));
+        // Check if this is a system path (starts with #)
+        if (_currentPath.startsWith('#')) {
+          // For system paths, we need special handling
+          if (_currentPath == '#tags') {
+            // For tag management screen
+            TagManager.clearCache();
+            // Clear the system screen router cache for this path
+            SystemScreenRouter.refreshSystemPath(_currentPath, widget.tabId);
+            // Notify completion after a short delay since there's no explicit loading state
+            Future.delayed(const Duration(milliseconds: 500), () {
+              completer.complete();
+            });
+          } else if (_currentPath.startsWith('#tag:')) {
+            // For tag search screens, extract the tag and re-run the search
+            final tag = _currentPath.substring(5); // Remove "#tag:" prefix
+            TagManager.clearCache();
+            // Clear the system screen router cache for this path
+            SystemScreenRouter.refreshSystemPath(_currentPath, widget.tabId);
+            _folderListBloc.add(SearchByTagGlobally(tag));
+            // Completion will be triggered by the listener above
+          }
+        } else {
+          // Use FolderListRefresh instead of FolderListLoad to force thumbnail regeneration
+          VideoThumbnailHelper.trimCache();
+          _folderListBloc.add(
+              FolderListRefresh(_currentPath, forceRegenerateThumbnails: true));
+        }
 
         // Wait for the loading to complete before returning
         return completer.future;

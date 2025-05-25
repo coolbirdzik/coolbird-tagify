@@ -363,4 +363,127 @@ class VietnameseLocalizations implements AppLocalizations {
   String get sortBySize => 'Sắp xếp theo kích thước';
   @override
   String get sortByDate => 'Sắp xếp theo ngày';
+
+  // Search errors
+  @override
+  String noFilesFoundTag(Map<String, String> args) =>
+      'Không tìm thấy tệp nào có tag "${args['tag']}"';
+
+  @override
+  String noFilesFoundTagGlobal(Map<String, String> args) =>
+      'Không tìm thấy tệp nào có tag "${args['tag']}" trên toàn hệ thống';
+
+  @override
+  String noFilesFoundTags(Map<String, String> args) =>
+      'Không tìm thấy tệp nào có các tag ${args['tags']}';
+
+  @override
+  String noFilesFoundTagsGlobal(Map<String, String> args) =>
+      'Không tìm thấy tệp nào có các tag ${args['tags']} trên toàn hệ thống';
+
+  @override
+  String errorSearchTag(Map<String, String> args) =>
+      'Lỗi khi tìm kiếm theo tag: ${args['error']}';
+
+  @override
+  String errorSearchTagGlobal(Map<String, String> args) =>
+      'Lỗi khi tìm kiếm theo tag trên toàn hệ thống: ${args['error']}';
+
+  @override
+  String errorSearchTags(Map<String, String> args) =>
+      'Lỗi khi tìm kiếm với nhiều tag: ${args['error']}';
+
+  @override
+  String errorSearchTagsGlobal(Map<String, String> args) =>
+      'Lỗi khi tìm kiếm với nhiều tag trên toàn hệ thống: ${args['error']}';
+
+  // Search status
+  @override
+  String searchingTag(Map<String, String> args) =>
+      'Đang tìm kiếm tag "${args['tag']}"...';
+
+  @override
+  String searchingTagGlobal(Map<String, String> args) =>
+      'Đang tìm kiếm tag "${args['tag']}" trên toàn hệ thống...';
+
+  @override
+  String searchingTags(Map<String, String> args) =>
+      'Đang tìm kiếm các tag ${args['tags']}...';
+
+  @override
+  String searchingTagsGlobal(Map<String, String> args) =>
+      'Đang tìm kiếm các tag ${args['tags']} trên toàn hệ thống...';
+
+  // Search UI
+  @override
+  String get searchTips => 'Mẹo tìm kiếm';
+
+  @override
+  String get searchTipsTitle => 'Mẹo tìm kiếm';
+
+  @override
+  String get viewTagSuggestions => 'Xem gợi ý tag';
+
+  @override
+  String get globalSearchModeEnabled => 'Đã chuyển sang tìm kiếm toàn cục';
+
+  @override
+  String get localSearchModeEnabled =>
+      'Đã chuyển sang tìm kiếm thư mục hiện tại';
+
+  @override
+  String get globalSearchMode => 'Đang tìm kiếm toàn cục (nhấn để chuyển)';
+
+  @override
+  String get localSearchMode =>
+      'Đang tìm kiếm thư mục hiện tại (nhấn để chuyển)';
+
+  @override
+  String get searchByFilename => 'Tìm theo tên tệp';
+
+  @override
+  String get searchByTags => 'Tìm theo tag';
+
+  @override
+  String get searchMultipleTags => 'Tìm nhiều tag';
+
+  @override
+  String get globalSearch => 'Tìm kiếm toàn cục';
+
+  @override
+  String get searchShortcuts => 'Phím tắt';
+
+  @override
+  String get searchHintText => 'Tìm kiếm tệp hoặc dùng # để tìm theo tag';
+
+  @override
+  String get searchHintTextTags => 'Tìm theo tag... (ví dụ: #important #work)';
+
+  @override
+  String get suggestedTags => 'Tags gợi ý';
+
+  @override
+  String get noMatchingTags => 'Không tìm thấy tag phù hợp';
+
+  @override
+  String get results => 'kết quả';
+
+  @override
+  String get searchByFilenameDesc => 'Nhập tên tệp để tìm kiếm.';
+
+  @override
+  String get searchByTagsDesc =>
+      'Sử dụng ký hiệu # để tìm theo tag. Ví dụ: #important';
+
+  @override
+  String get searchMultipleTagsDesc =>
+      'Sử dụng nhiều tag cùng lúc để lọc kết quả chính xác hơn. Mỗi tag cần có ký tự # ở đầu và phải cách nhau bởi khoảng trắng. Ví dụ: #work #urgent #2023';
+
+  @override
+  String get globalSearchDesc =>
+      'Bấm vào biểu tượng thư mục/toàn cầu để chuyển đổi giữa tìm kiếm thư mục hiện tại và toàn hệ thống.';
+
+  @override
+  String get searchShortcutsDesc =>
+      'Nhấn Enter để bắt đầu tìm kiếm. Dùng phím mũi tên để chọn tag từ gợi ý.';
 }

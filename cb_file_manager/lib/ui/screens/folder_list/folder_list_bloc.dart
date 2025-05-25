@@ -13,6 +13,26 @@ import 'package:cb_file_manager/models/database/database_manager.dart';
 import 'folder_list_event.dart';
 import 'folder_list_state.dart';
 
+// Error message constants
+class SearchErrorMessages {
+  static String noFilesFoundTag(String tag) =>
+      'Không tìm thấy tệp nào có tag "$tag"';
+  static String noFilesFoundTagGlobal(String tag) =>
+      'Không tìm thấy tệp nào có tag "$tag" trên toàn hệ thống';
+  static String noFilesFoundTags(String tags) =>
+      'Không tìm thấy tệp nào có các tag $tags';
+  static String noFilesFoundTagsGlobal(String tags) =>
+      'Không tìm thấy tệp nào có các tag $tags trên toàn hệ thống';
+  static String errorSearchTag(String error) =>
+      'Lỗi khi tìm kiếm theo tag: $error';
+  static String errorSearchTagGlobal(String error) =>
+      'Lỗi khi tìm kiếm theo tag trên toàn hệ thống: $error';
+  static String errorSearchTags(String error) =>
+      'Lỗi khi tìm kiếm với nhiều tag: $error';
+  static String errorSearchTagsGlobal(String error) =>
+      'Lỗi khi tìm kiếm với nhiều tag trên toàn hệ thống: $error';
+}
+
 class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
   StreamSubscription? _tagChangeSubscription;
   StreamSubscription? _globalTagChangeSubscription;
@@ -59,6 +79,8 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
     on<SearchByFileName>(_onSearchByFileName);
     on<SearchByTag>(_onSearchByTag);
     on<SearchByTagGlobally>(_onSearchByTagGlobally);
+    on<SearchByMultipleTags>(_onSearchByMultipleTags);
+    on<SearchByMultipleTagsGlobally>(_onSearchByMultipleTagsGlobally);
 
     // Handler for adding tag search results
     on<AddTagSearchResults>(_onAddTagSearchResults);
@@ -470,6 +492,27 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
     emit(state.copyWith(isLoading: true));
 
     try {
+      // Check if this is a system path (starts with #)
+      if (event.path.startsWith('#')) {
+        // For system paths, we need special handling
+        if (event.path == '#tags') {
+          // For tag management screen, just load all unique tags
+          final allUniqueTags = await TagManager.getAllUniqueTags("");
+          emit(state.copyWith(
+            isLoading: false,
+            allUniqueTags: allUniqueTags,
+          ));
+          return;
+        } else if (event.path.startsWith('#tag:')) {
+          // For tag search, this will be handled by SearchByTagGlobally
+          // Just update loading state to false
+          emit(state.copyWith(
+            isLoading: false,
+          ));
+          return;
+        }
+      }
+
       final directory = Directory(event.path);
       if (await directory.exists()) {
         // Load folder contents first
@@ -1223,13 +1266,14 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
         searchResults: results,
         currentSearchTag: event.tag,
         currentSearchQuery: null, // Clear any previous text search
-        error:
-            results.isEmpty ? 'No files found with tag "${event.tag}"' : null,
+        error: results.isEmpty
+            ? SearchErrorMessages.noFilesFoundTag(event.tag)
+            : null,
       ));
     } catch (e) {
       emit(state.copyWith(
         isLoading: false,
-        error: 'Error searching by tag: ${e.toString()}',
+        error: SearchErrorMessages.errorSearchTag(e.toString()),
         searchResults: [], // Ensure we clear results on error
       ));
     }
@@ -1298,13 +1342,13 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
         currentSearchTag: event.tag,
         currentSearchQuery: null, // Clear any previous text search
         error: validResults.isEmpty
-            ? 'No files found with tag "${event.tag}" globally'
+            ? SearchErrorMessages.noFilesFoundTagGlobal(event.tag)
             : null,
       ));
     } catch (e) {
       emit(state.copyWith(
         isLoading: false,
-        error: 'Error searching by tag globally: ${e.toString()}',
+        error: SearchErrorMessages.errorSearchTagGlobal(e.toString()),
         searchResults: [], // Ensure we clear results on error
       ));
     }
@@ -1329,5 +1373,139 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
       searchResults: currentResults,
       // Keep the current search tag and query unchanged
     ));
+  }
+
+  // New handler for searching by multiple tags in current directory
+  void _onSearchByMultipleTags(
+    SearchByMultipleTags event,
+    Emitter<FolderListState> emit,
+  ) async {
+    emit(state.copyWith(isLoading: true));
+
+    try {
+      // Clear tag cache to ensure fresh data
+      TagManager.clearCache();
+
+      String tagListStr = event.tags.map((t) => '"$t"').join(', ');
+      debugPrint(
+          'Searching for files with multiple tags $tagListStr in directory ${state.currentPath.path}');
+
+      // Start with all files containing the first tag
+      List<FileSystemEntity> results = [];
+      if (event.tags.isNotEmpty) {
+        results = await TagManager.findFilesByTag(
+          state.currentPath.path,
+          event.tags.first,
+        );
+      }
+
+      // For each additional tag, filter the results to only include files with all tags
+      for (int i = 1; i < event.tags.length; i++) {
+        String tag = event.tags[i];
+        List<FileSystemEntity> filteredResults = [];
+
+        for (var entity in results) {
+          if (entity is File) {
+            List<String> fileTags = await TagManager.getTags(entity.path);
+            if (fileTags.contains(tag)) {
+              filteredResults.add(entity);
+            }
+          }
+        }
+
+        results = filteredResults;
+      }
+
+      // Log the search results for debugging
+      debugPrint(
+          'Found ${results.length} results for multiple tags: $tagListStr');
+      for (var entity in results) {
+        debugPrint('  - ${entity.path}');
+      }
+
+      emit(state.copyWith(
+        isLoading: false,
+        searchResults: results,
+        currentSearchTag: event.tags.join(", "), // Join tags for display
+        currentSearchQuery: null, // Clear any previous text search
+        error: results.isEmpty
+            ? SearchErrorMessages.noFilesFoundTags(tagListStr)
+            : null,
+      ));
+    } catch (e) {
+      emit(state.copyWith(
+        isLoading: false,
+        error: SearchErrorMessages.errorSearchTags(e.toString()),
+        searchResults: [], // Ensure we clear results on error
+      ));
+    }
+  }
+
+  // New handler for global search with multiple tags
+  void _onSearchByMultipleTagsGlobally(
+    SearchByMultipleTagsGlobally event,
+    Emitter<FolderListState> emit,
+  ) async {
+    emit(state.copyWith(isLoading: true));
+
+    try {
+      // Clear tag cache to ensure fresh data
+      TagManager.clearCache();
+
+      String tagListStr = event.tags.map((t) => '"$t"').join(', ');
+      debugPrint('Searching for files with multiple tags $tagListStr globally');
+
+      // Start with all files containing the first tag
+      List<FileSystemEntity> results = [];
+      if (event.tags.isNotEmpty) {
+        results = await TagManager.findFilesByTagGlobally(event.tags.first);
+      }
+
+      // For each additional tag, filter the results to only include files with all tags
+      for (int i = 1; i < event.tags.length; i++) {
+        String tag = event.tags[i];
+        List<FileSystemEntity> filteredResults = [];
+
+        for (var entity in results) {
+          if (entity is File && entity.existsSync()) {
+            List<String> fileTags = await TagManager.getTags(entity.path);
+            if (fileTags.contains(tag)) {
+              filteredResults.add(entity);
+            }
+          }
+        }
+
+        results = filteredResults;
+      }
+
+      // Filter out any non-existent files
+      final List<FileSystemEntity> validResults = [];
+      for (var entity in results) {
+        try {
+          if (entity is File && entity.existsSync()) {
+            validResults.add(entity);
+            debugPrint('  - ${entity.path}');
+          }
+        } catch (e) {
+          debugPrint('Error checking file existence: ${entity.path} - $e');
+        }
+      }
+
+      emit(state.copyWith(
+        isLoading: false,
+        searchResults: validResults,
+        currentSearchTag: event.tags.join(", "), // Join tags for display
+        currentSearchQuery: null, // Clear any previous text search
+        error: validResults.isEmpty
+            ? SearchErrorMessages.noFilesFoundTagsGlobal(tagListStr)
+            : null,
+      ));
+    } catch (e) {
+      emit(state.copyWith(
+        isLoading: false,
+        error: SearchErrorMessages.errorSearchTagsGlobal(e.toString()),
+        searchResults: [], // Ensure we clear results on error
+      ));
+    }
   }
 }

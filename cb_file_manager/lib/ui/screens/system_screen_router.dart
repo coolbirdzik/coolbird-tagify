@@ -126,4 +126,24 @@ class SystemScreenRouter {
       debugPrint('Cleared all widget caches');
     }
   }
+
+  /// Refreshes a specific system path or all system paths
+  /// Useful when the app needs to refresh tag-related screens
+  static void refreshSystemPath(String? path, String? tabId) {
+    if (path != null && tabId != null) {
+      // Create the cache key
+      final String cacheKey = '$tabId:$path';
+
+      // Remove this specific path from cache
+      _cachedWidgets.remove(cacheKey);
+      _loggedKeys.remove(cacheKey);
+      debugPrint('Refreshed system path: $path in tab: $tabId');
+    } else if (tabId != null) {
+      // Clear all paths for this tab
+      clearWidgetCache(tabId);
+    } else {
+      // Clear all caches
+      clearWidgetCache();
+    }
+  }
 }

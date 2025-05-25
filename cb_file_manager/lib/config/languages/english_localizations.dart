@@ -320,7 +320,7 @@ class EnglishLocalizations implements AppLocalizations {
 
   // File picker dialogs
   @override
-  String get chooseBackupLocation => 'Choose Backup Location';
+  String get chooseBackupLocation => 'Choose backup location';
   @override
   String get chooseRestoreLocation => 'Choose Restore File';
   @override
@@ -346,7 +346,7 @@ class EnglishLocalizations implements AppLocalizations {
   @override
   String get createCopy => 'Create copy';
   @override
-  String get deleteFile => 'Delete file';
+  String get deleteFile => 'Delete File';
 
   // Sorting
   @override
@@ -361,4 +361,125 @@ class EnglishLocalizations implements AppLocalizations {
   String get sortBySize => 'Sort by size';
   @override
   String get sortByDate => 'Sort by date';
+
+  // Search errors
+  @override
+  String noFilesFoundTag(Map<String, String> args) =>
+      'No files found with tag "${args['tag']}"';
+
+  @override
+  String noFilesFoundTagGlobal(Map<String, String> args) =>
+      'No files found with tag "${args['tag']}" globally';
+
+  @override
+  String noFilesFoundTags(Map<String, String> args) =>
+      'No files found with tags ${args['tags']}';
+
+  @override
+  String noFilesFoundTagsGlobal(Map<String, String> args) =>
+      'No files found with tags ${args['tags']} globally';
+
+  @override
+  String errorSearchTag(Map<String, String> args) =>
+      'Error searching by tag: ${args['error']}';
+
+  @override
+  String errorSearchTagGlobal(Map<String, String> args) =>
+      'Error searching by tag globally: ${args['error']}';
+
+  @override
+  String errorSearchTags(Map<String, String> args) =>
+      'Error searching by multiple tags: ${args['error']}';
+
+  @override
+  String errorSearchTagsGlobal(Map<String, String> args) =>
+      'Error searching by multiple tags globally: ${args['error']}';
+
+  // Search status
+  @override
+  String searchingTag(Map<String, String> args) =>
+      'Searching for tag "${args['tag']}"...';
+
+  @override
+  String searchingTagGlobal(Map<String, String> args) =>
+      'Searching for tag "${args['tag']}" globally...';
+
+  @override
+  String searchingTags(Map<String, String> args) =>
+      'Searching for tags ${args['tags']}...';
+
+  @override
+  String searchingTagsGlobal(Map<String, String> args) =>
+      'Searching for tags ${args['tags']} globally...';
+
+  // Search UI
+  @override
+  String get searchTips => 'Search Tips';
+
+  @override
+  String get searchTipsTitle => 'Search Tips';
+
+  @override
+  String get viewTagSuggestions => 'View tag suggestions';
+
+  @override
+  String get globalSearchModeEnabled => 'Switched to global search';
+
+  @override
+  String get localSearchModeEnabled => 'Switched to current folder search';
+
+  @override
+  String get globalSearchMode => 'Searching globally (tap to switch)';
+
+  @override
+  String get localSearchMode => 'Searching current folder (tap to switch)';
+
+  @override
+  String get searchByFilename => 'Search by filename';
+
+  @override
+  String get searchByTags => 'Search by tags';
+
+  @override
+  String get searchMultipleTags => 'Search multiple tags';
+
+  @override
+  String get globalSearch => 'Global search';
+
+  @override
+  String get searchShortcuts => 'Shortcuts';
+
+  @override
+  String get searchHintText => 'Search files or use # to search by tags';
+
+  @override
+  String get searchHintTextTags => 'Search by tags... (e.g. #important #work)';
+
+  @override
+  String get suggestedTags => 'Suggested tags';
+
+  @override
+  String get noMatchingTags => 'No matching tags found';
+
+  @override
+  String get results => 'results';
+
+  @override
+  String get searchByFilenameDesc => 'Enter a filename to search.';
+
+  @override
+  String get searchByTagsDesc =>
+      'Use the # symbol to search by tag. Example: #important';
+
+  @override
+  String get searchMultipleTagsDesc =>
+      'Use multiple tags at once to filter results more precisely. Each tag needs a # symbol at the beginning and must be separated by spaces. Example: #work #urgent #2023';
+
+  @override
+  String get globalSearchDesc =>
+      'Click on the folder/globe icon to toggle between searching the current folder and the entire system.';
+
+  @override
+  String get searchShortcutsDesc =>
+      'Press Enter to start searching. Use arrow keys to select tags from suggestions.';
 }
