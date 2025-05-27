@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui'; // Import for ImageFilter
 import 'package:flutter/material.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
 import './utils/route.dart';
@@ -77,128 +78,153 @@ class _CBDrawerState extends State<CBDrawer> {
 
     return Drawer(
       elevation: 0,
-      backgroundColor: theme.scaffoldBackgroundColor,
+      backgroundColor: theme.scaffoldBackgroundColor
+          .withOpacity(0.85), // Make background semi-transparent
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.only(
           topRight: Radius.circular(16),
           bottomRight: Radius.circular(16),
         ),
       ),
-      child: Column(
-        children: [
-          // Modern drawer header
-          _buildDrawerHeader(isSmallScreen, theme),
-
-          // Scrollable menu items
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+      child: ClipRRect(
+        // Clip the blur effect to the drawer's shape
+        borderRadius: const BorderRadius.only(
+          topRight: Radius.circular(16),
+          bottomRight: Radius.circular(16),
+        ),
+        child: Stack(
+          children: [
+            // BackdropFilter for blur effect
+            BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 5.0, sigmaY: 5.0),
+              child: Container(
+                color: Colors
+                    .transparent, // Important: child of BackdropFilter should be transparent
+              ),
+            ),
+            // Original drawer content
+            Column(
               children: [
-                // Main navigation items
-                _buildNavigationItem(
-                  context,
-                  icon: EvaIcons.homeOutline,
-                  title: context.tr.home,
-                  onTap: () {
-                    Navigator.pop(context);
-                    RouteUtils.safeNavigate(context, const TabMainScreen());
-                  },
-                ),
+                // Modern drawer header
+                _buildDrawerHeader(isSmallScreen, theme),
 
-                const SizedBox(height: 8),
-
-                // Storage section with expansion
-                _buildExpansionSection(
-                  context,
-                  icon: EvaIcons.hardDriveOutline,
-                  title: 'Storage',
-                ),
-
-                const SizedBox(height: 8),
-
-                // Tags section
-                _buildNavigationItem(
-                  context,
-                  icon: EvaIcons.pricetags,
-                  title: context.tr.tags,
-                  onTap: () {
-                    Navigator.pop(context);
-
-                    // Open tag management in a new tab
-                    final tabBloc = BlocProvider.of<TabManagerBloc>(context);
-
-                    // Check if a tags tab already exists
-                    final existingTab = tabBloc.state.tabs.firstWhere(
-                      (tab) => tab.path == '#tags',
-                      orElse: () => TabData(id: '', name: '', path: ''),
-                    );
-
-                    if (existingTab.id.isNotEmpty) {
-                      // If tab exists, switch to it
-                      tabBloc.add(SwitchToTab(existingTab.id));
-                    } else {
-                      // Otherwise, create a new tab
-                      tabBloc.add(
-                        AddTab(
-                          path: '#tags',
-                          name: 'Tags',
-                          switchToTab: true,
-                        ),
-                      );
-                    }
-                  },
-                ),
-
-                _buildNavigationItem(
-                  context,
-                  icon: EvaIcons.wifi,
-                  title: 'Networks',
-                  onTap: () {
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Network functionality coming soon'),
+                // Scrollable menu items
+                Expanded(
+                  child: ListView(
+                    padding:
+                        const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                    children: [
+                      // Main navigation items
+                      _buildNavigationItem(
+                        context,
+                        icon: EvaIcons.homeOutline,
+                        title: context.tr.home,
+                        onTap: () {
+                          Navigator.pop(context);
+                          RouteUtils.safeNavigate(
+                              context, const TabMainScreen());
+                        },
                       ),
-                    );
-                  },
-                ),
 
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  child: Divider(
-                    height: 1,
-                    thickness: 1,
-                    color: theme.dividerTheme.color,
+                      const SizedBox(height: 8),
+
+                      // Storage section with expansion
+                      _buildExpansionSection(
+                        context,
+                        icon: EvaIcons.hardDriveOutline,
+                        title: 'Storage',
+                      ),
+
+                      const SizedBox(height: 8),
+
+                      // Tags section
+                      _buildNavigationItem(
+                        context,
+                        icon: EvaIcons.pricetags,
+                        title: context.tr.tags,
+                        onTap: () {
+                          Navigator.pop(context);
+
+                          // Open tag management in a new tab
+                          final tabBloc =
+                              BlocProvider.of<TabManagerBloc>(context);
+
+                          // Check if a tags tab already exists
+                          final existingTab = tabBloc.state.tabs.firstWhere(
+                            (tab) => tab.path == '#tags',
+                            orElse: () => TabData(id: '', name: '', path: ''),
+                          );
+
+                          if (existingTab.id.isNotEmpty) {
+                            // If tab exists, switch to it
+                            tabBloc.add(SwitchToTab(existingTab.id));
+                          } else {
+                            // Otherwise, create a new tab
+                            tabBloc.add(
+                              AddTab(
+                                path: '#tags',
+                                name: 'Tags',
+                                switchToTab: true,
+                              ),
+                            );
+                          }
+                        },
+                      ),
+
+                      _buildNavigationItem(
+                        context,
+                        icon: EvaIcons.wifi,
+                        title: 'Networks',
+                        onTap: () {
+                          Navigator.pop(context);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content:
+                                  Text('Network functionality coming soon'),
+                            ),
+                          );
+                        },
+                      ),
+
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        child: Divider(
+                          height: 1,
+                          thickness: 1,
+                          color: theme.dividerTheme.color,
+                        ),
+                      ),
+
+                      // Settings and info section
+                      _buildNavigationItem(
+                        context,
+                        icon: EvaIcons.settings2Outline,
+                        title: context.tr.settings,
+                        onTap: () {
+                          Navigator.pop(context);
+                          _showSettingsDialog(context);
+                        },
+                      ),
+
+                      _buildNavigationItem(
+                        context,
+                        icon: EvaIcons.infoOutline,
+                        title: 'About',
+                        onTap: () {
+                          Navigator.pop(context);
+                          _showAboutDialog(context);
+                        },
+                      ),
+                    ],
                   ),
                 ),
 
-                // Settings and info section
-                _buildNavigationItem(
-                  context,
-                  icon: EvaIcons.settings2Outline,
-                  title: context.tr.settings,
-                  onTap: () {
-                    Navigator.pop(context);
-                    _showSettingsDialog(context);
-                  },
-                ),
-
-                _buildNavigationItem(
-                  context,
-                  icon: EvaIcons.infoOutline,
-                  title: 'About',
-                  onTap: () {
-                    Navigator.pop(context);
-                    _showAboutDialog(context);
-                  },
-                ),
+                // Footer with app info
+                _buildDrawerFooter(theme),
               ],
             ),
-          ),
-
-          // Footer with app info
-          _buildDrawerFooter(theme),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -334,6 +360,7 @@ class _CBDrawerState extends State<CBDrawer> {
         child: Material(
           color: _isStorageExpanded
               ? theme.colorScheme.surface
+                  .withOpacity(0.7) // Make expanded background semi-transparent
               : Colors.transparent,
           child: ExpansionTile(
             shape: RoundedRectangleBorder(
@@ -353,7 +380,8 @@ class _CBDrawerState extends State<CBDrawer> {
               ),
             ),
             collapsedBackgroundColor: Colors.transparent,
-            backgroundColor: theme.colorScheme.surface,
+            backgroundColor: theme.colorScheme.surface
+                .withOpacity(0.7), // Make expanded background semi-transparent
             childrenPadding: const EdgeInsets.only(bottom: 8),
             initiallyExpanded: _isStorageExpanded,
             onExpansionChanged: (isExpanded) {
@@ -795,206 +823,236 @@ class _AppDrawerState extends State<AppDrawer> {
 
     return Drawer(
       elevation: 0,
-      backgroundColor: theme.scaffoldBackgroundColor,
+      backgroundColor: theme.scaffoldBackgroundColor
+          .withOpacity(0.85), // Make background semi-transparent
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.only(
           topRight: Radius.circular(16),
           bottomRight: Radius.circular(16),
         ),
       ),
-      child: Column(
-        children: [
-          // Modern drawer header with gradient
-          Container(
-            padding: const EdgeInsets.fromLTRB(20, 48, 16, 16),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  AppTheme.primaryBlue,
-                  AppTheme.darkBlue,
-                ],
-              ),
-              borderRadius: const BorderRadius.only(
-                bottomRight: Radius.circular(24),
+      child: ClipRRect(
+        // Clip the blur effect to the drawer's shape
+        borderRadius: const BorderRadius.only(
+          topRight: Radius.circular(16),
+          bottomRight: Radius.circular(16),
+        ),
+        child: Stack(
+          children: [
+            // BackdropFilter for blur effect
+            BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 5.0, sigmaY: 5.0),
+              child: Container(
+                color: Colors
+                    .transparent, // Important: child of BackdropFilter should be transparent
               ),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            // Original drawer content
+            Column(
               children: [
-                Row(
-                  children: [
-                    // Logo with shadow effect
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Image.asset(
-                        'assets/images/logo.png',
-                        height: 32,
-                        width: 32,
-                      ),
+                // Modern drawer header with gradient
+                Container(
+                  padding: const EdgeInsets.fromLTRB(20, 48, 16, 16),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        AppTheme.primaryBlue,
+                        AppTheme.darkBlue,
+                      ],
                     ),
-
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.only(left: 12),
-                        child: Text(
-                          context.tr.appTitle,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 22,
-                            fontWeight: FontWeight.w600,
+                    borderRadius: const BorderRadius.only(
+                      bottomRight: Radius.circular(24),
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          // Logo with shadow effect
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.15),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Image.asset(
+                              'assets/images/logo.png',
+                              height: 32,
+                              width: 32,
+                            ),
                           ),
+
+                          Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.only(left: 12),
+                              child: Text(
+                                context.tr.appTitle,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+
+                          // Pin button (hidden on small screens)
+                          if (!isSmallScreen)
+                            IconButton(
+                              icon: Icon(
+                                widget.isPinned
+                                    ? EvaIcons.pin
+                                    : EvaIcons.pinOutline,
+                                color: Colors.white,
+                                size: 20,
+                              ),
+                              tooltip:
+                                  widget.isPinned ? 'Unpin menu' : 'Pin menu',
+                              onPressed: () {
+                                widget.onPinStateChanged(!widget.isPinned);
+                              },
+                            ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 12),
+
+                      // Subtitle
+                      Text(
+                        'File Management Made Simple',
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.9),
+                          fontSize: 14,
                         ),
                       ),
-                    ),
+                    ],
+                  ),
+                ),
 
-                    // Pin button (hidden on small screens)
-                    if (!isSmallScreen)
-                      IconButton(
-                        icon: Icon(
-                          widget.isPinned ? EvaIcons.pin : EvaIcons.pinOutline,
-                          color: Colors.white,
-                          size: 20,
-                        ),
-                        tooltip: widget.isPinned ? 'Unpin menu' : 'Pin menu',
-                        onPressed: () {
-                          widget.onPinStateChanged(!widget.isPinned);
+                // Scrollable menu items
+                Expanded(
+                  child: ListView(
+                    padding:
+                        const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                    children: [
+                      // Storage section with expansion
+                      _buildExpansionTile(
+                        context,
+                        icon: EvaIcons.hardDriveOutline,
+                        title: 'Storage',
+                      ),
+
+                      const SizedBox(height: 8),
+
+                      // Home
+                      _buildListTile(
+                        context,
+                        icon: EvaIcons.homeOutline,
+                        title: context.tr.home,
+                        onTap: () {
+                          Navigator.pop(context);
+                          RouteUtils.safeNavigate(
+                              context, const TabMainScreen());
                         },
                       ),
-                  ],
-                ),
 
-                const SizedBox(height: 12),
-
-                // Subtitle
-                Text(
-                  'File Management Made Simple',
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.9),
-                    fontSize: 14,
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // Scrollable menu items
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-              children: [
-                // Storage section with expansion
-                _buildExpansionTile(
-                  context,
-                  icon: EvaIcons.hardDriveOutline,
-                  title: 'Storage',
-                ),
-
-                const SizedBox(height: 8),
-
-                // Home
-                _buildListTile(
-                  context,
-                  icon: EvaIcons.homeOutline,
-                  title: context.tr.home,
-                  onTap: () {
-                    Navigator.pop(context);
-                    RouteUtils.safeNavigate(context, const TabMainScreen());
-                  },
-                ),
-
-                // Tags section
-                _buildListTile(
-                  context,
-                  icon: EvaIcons.pricetags,
-                  title: context.tr.tags,
-                  onTap: () {
-                    Navigator.pop(context);
-                    _openTagsTab(context);
-                  },
-                ),
-
-                _buildListTile(
-                  context,
-                  icon: EvaIcons.wifi,
-                  title: 'Networks',
-                  onTap: () {
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Network functionality coming soon'),
+                      // Tags section
+                      _buildListTile(
+                        context,
+                        icon: EvaIcons.pricetags,
+                        title: context.tr.tags,
+                        onTap: () {
+                          Navigator.pop(context);
+                          _openTagsTab(context);
+                        },
                       ),
-                    );
-                  },
-                ),
 
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  child: Divider(
-                    height: 1,
-                    thickness: 1,
-                    color: theme.dividerTheme.color,
-                  ),
-                ),
-
-                // Settings and info section
-                _buildListTile(
-                  context,
-                  icon: EvaIcons.settings2Outline,
-                  title: context.tr.settings,
-                  onTap: () {
-                    Navigator.pop(context);
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const SettingsScreen(),
+                      _buildListTile(
+                        context,
+                        icon: EvaIcons.wifi,
+                        title: 'Networks',
+                        onTap: () {
+                          Navigator.pop(context);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content:
+                                  Text('Network functionality coming soon'),
+                            ),
+                          );
+                        },
                       ),
-                    );
-                  },
+
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        child: Divider(
+                          height: 1,
+                          thickness: 1,
+                          color: theme.dividerTheme.color,
+                        ),
+                      ),
+
+                      // Settings and info section
+                      _buildListTile(
+                        context,
+                        icon: EvaIcons.settings2Outline,
+                        title: context.tr.settings,
+                        onTap: () {
+                          Navigator.pop(context);
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const SettingsScreen(),
+                            ),
+                          );
+                        },
+                      ),
+
+                      _buildListTile(
+                        context,
+                        icon: EvaIcons.infoOutline,
+                        title: 'About',
+                        onTap: () {
+                          Navigator.pop(context);
+                          _showAboutDialog(context);
+                        },
+                      ),
+                    ],
+                  ),
                 ),
 
-                _buildListTile(
-                  context,
-                  icon: EvaIcons.infoOutline,
-                  title: 'About',
-                  onTap: () {
-                    Navigator.pop(context);
-                    _showAboutDialog(context);
-                  },
+                // Footer with app info
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Version 1.0.0',
+                        style: TextStyle(
+                          color: theme.textTheme.bodySmall?.color
+                              ?.withOpacity(0.7),
+                          fontSize: 12,
+                        ),
+                      ),
+                      Text(
+                        '© CoolBird',
+                        style: TextStyle(
+                          color: theme.textTheme.bodySmall?.color
+                              ?.withOpacity(0.7),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
-          ),
-
-          // Footer with app info
-          Container(
-            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Version 1.0.0',
-                  style: TextStyle(
-                    color: theme.textTheme.bodySmall?.color?.withOpacity(0.7),
-                    fontSize: 12,
-                  ),
-                ),
-                Text(
-                  '© CoolBird',
-                  style: TextStyle(
-                    color: theme.textTheme.bodySmall?.color?.withOpacity(0.7),
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1048,6 +1106,7 @@ class _AppDrawerState extends State<AppDrawer> {
         child: Material(
           color: _isStorageExpanded
               ? theme.colorScheme.surface
+                  .withOpacity(0.7) // Make expanded background semi-transparent
               : Colors.transparent,
           child: ExpansionTile(
             shape: RoundedRectangleBorder(
@@ -1067,7 +1126,8 @@ class _AppDrawerState extends State<AppDrawer> {
               ),
             ),
             collapsedBackgroundColor: Colors.transparent,
-            backgroundColor: theme.colorScheme.surface,
+            backgroundColor: theme.colorScheme.surface
+                .withOpacity(0.7), // Make expanded background semi-transparent
             childrenPadding: const EdgeInsets.only(bottom: 8),
             initiallyExpanded: _isStorageExpanded,
             onExpansionChanged: (isExpanded) {

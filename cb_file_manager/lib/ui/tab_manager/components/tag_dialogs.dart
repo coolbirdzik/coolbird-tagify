@@ -643,7 +643,7 @@ class PopularTagsWidget extends StatelessWidget {
   const PopularTagsWidget({
     Key? key,
     required this.onTagSelected,
-    this.limit = 10,
+    this.limit = 20,
   }) : super(key: key);
 
   @override
@@ -700,7 +700,7 @@ class RecentTagsWidget extends StatelessWidget {
   const RecentTagsWidget({
     Key? key,
     required this.onTagSelected,
-    this.limit = 10,
+    this.limit = 20,
   }) : super(key: key);
 
   @override

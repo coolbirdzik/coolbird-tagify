@@ -247,7 +247,7 @@ class TagManager {
 
   /// List to keep track of recently used tags with timestamps
   static List<Map<String, dynamic>> _recentTags = [];
-  static const int MAX_RECENT_TAGS = 20;
+  static const int MAX_RECENT_TAGS = 40;
 
   /// Add a tag to recent tags list
   static void addToRecentTags(String tag) {
@@ -294,7 +294,7 @@ class TagManager {
 
   /// Get recently added tags
   /// Returns a list of the most recently added tags
-  static Future<List<String>> getRecentTags({int limit = 10}) async {
+  static Future<List<String>> getRecentTags({int limit = 20}) async {
     await initialize();
 
     // Load recent tags if not already loaded

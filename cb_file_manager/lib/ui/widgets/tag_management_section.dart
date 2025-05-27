@@ -427,39 +427,42 @@ class _TagManagementSectionState extends State<TagManagementSection> {
                             height: 1,
                             thickness: 1,
                             color: Colors.grey.withOpacity(0.2)),
-                        ListView.builder(
-                          shrinkWrap: true,
-                          physics: const ClampingScrollPhysics(),
-                          itemCount: _tagSuggestions.length > 6
-                              ? 6
-                              : _tagSuggestions.length,
-                          itemBuilder: (context, index) {
-                            final suggestion = _tagSuggestions[index];
-                            return Material(
-                              color: Colors.transparent,
-                              child: InkWell(
-                                onTap: () {
-                                  if (!_selectedTags.contains(suggestion)) {
-                                    // Only add to selected tags instead of immediately applying
-                                    setState(() {
-                                      _selectedTags.add(suggestion);
-                                      _tagSuggestions =
-                                          []; // Clear suggestions after selection
-                                    });
-                                  }
-                                },
-                                child: ListTile(
-                                  dense: true,
-                                  leading:
-                                      const Icon(Icons.local_offer, size: 20),
-                                  title: Text(
-                                    suggestion,
-                                    style: const TextStyle(fontSize: 16),
+                        Expanded(
+                          // Wrap ListView.builder with Expanded
+                          child: ListView.builder(
+                            shrinkWrap: true,
+                            physics: const ClampingScrollPhysics(),
+                            itemCount: _tagSuggestions.length > 6
+                                ? 6
+                                : _tagSuggestions.length,
+                            itemBuilder: (context, index) {
+                              final suggestion = _tagSuggestions[index];
+                              return Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  onTap: () {
+                                    if (!_selectedTags.contains(suggestion)) {
+                                      // Only add to selected tags instead of immediately applying
+                                      setState(() {
+                                        _selectedTags.add(suggestion);
+                                        _tagSuggestions =
+                                            []; // Clear suggestions after selection
+                                      });
+                                    }
+                                  },
+                                  child: ListTile(
+                                    dense: true,
+                                    leading:
+                                        const Icon(Icons.local_offer, size: 20),
+                                    title: Text(
+                                      suggestion,
+                                      style: const TextStyle(fontSize: 16),
+                                    ),
                                   ),
                                 ),
-                              ),
-                            );
-                          },
+                              );
+                            },
+                          ),
                         ),
                       ],
                     ),
