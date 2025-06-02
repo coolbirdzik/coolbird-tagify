@@ -4,9 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:path/path.dart' as pathlib;
 import 'package:cb_file_manager/ui/screens/folder_list/folder_list_state.dart';
 
-/// Manages per-folder sorting preferences
-/// On Windows, uses desktop.ini
-/// On other platforms, uses a hidden cbfile_config.json file
+/// Manages per-folder sorting preferences using JSON config files
 class FolderSortManager {
   static final FolderSortManager _instance = FolderSortManager._internal();
 
@@ -14,9 +12,6 @@ class FolderSortManager {
   factory FolderSortManager() => _instance;
 
   FolderSortManager._internal();
-
-  // Check if the device is running Windows
-  bool get isWindows => Platform.isWindows;
 
   // Cache of sort options for each folder
   final Map<String, SortOption> _folderSortCache = {};
@@ -32,388 +27,83 @@ class FolderSortManager {
   /// Get the sort option for a specific folder
   /// If a folder-specific option is found, it's returned
   /// Otherwise returns null (fallback to global preference)
+  /// This method is designed to never throw exceptions to avoid blocking folder loading
   Future<SortOption?> getFolderSortOption(String folderPath) async {
-    // Check cache first
-    if (_folderSortCache.containsKey(folderPath)) {
-      return _folderSortCache[folderPath];
-    }
-
-    SortOption? sortOption;
-
-    // For system paths like #tags or #tag:xyz, always use the mobile approach
-    if (_isSystemPath(folderPath)) {
-      sortOption = await _getMobileSortOption(folderPath);
-    } else if (isWindows) {
-      // On Windows, try both methods for maximum reliability
-      sortOption = await _getWindowsSortOption(folderPath);
-
-      // If Windows desktop.ini method failed, try the JSON config file as fallback
-      if (sortOption == null) {
-        debugPrint(
-            'Windows desktop.ini method failed, trying JSON config fallback');
-        sortOption = await _getMobileSortOption(folderPath);
+    try {
+      // Check cache first
+      if (_folderSortCache.containsKey(folderPath)) {
+        return _folderSortCache[folderPath];
       }
-    } else {
-      sortOption = await _getMobileSortOption(folderPath);
-    }
 
-    // Cache the result if found
-    if (sortOption != null) {
-      _folderSortCache[folderPath] = sortOption;
-    }
+      SortOption? sortOption;
 
-    return sortOption;
+      // Use JSON config for all platforms and paths - NO TIMEOUT for faster loading
+      try {
+        sortOption = await _getMobileSortOption(folderPath);
+      } catch (e) {
+        debugPrint('JSON config method failed: $e');
+        sortOption = null;
+      }
+
+      // Cache the result if found
+      if (sortOption != null) {
+        _folderSortCache[folderPath] = sortOption;
+      }
+
+      return sortOption;
+    } catch (e) {
+      // Ultimate safety net - never let this method throw exceptions
+      debugPrint('Unexpected error in getFolderSortOption: $e');
+      return null;
+    }
   }
 
   /// Save the sort option for a specific folder
+  /// This method is designed to never throw exceptions to avoid blocking folder operations
   Future<bool> saveFolderSortOption(
       String folderPath, SortOption sortOption) async {
-    bool success = false;
-
-    // For system paths like #tags or #tag:xyz, always use the mobile approach
-    if (_isSystemPath(folderPath)) {
-      // For system paths, we'll just store in memory
-      _folderSortCache[folderPath] = sortOption;
-      success = true;
-      debugPrint(
-          'Saved sort option for system path: $folderPath (in memory only)');
-    } else if (isWindows) {
-      success = await _saveWindowsSortOption(folderPath, sortOption);
-    } else {
-      success = await _saveMobileSortOption(folderPath, sortOption);
-    }
-
-    // Update cache if successful
-    if (success) {
-      _folderSortCache[folderPath] = sortOption;
-    }
-
-    return success;
-  }
-
-  /// Clear the sort option for a specific folder
-  Future<bool> clearFolderSortOption(String folderPath) async {
-    bool success = false;
-
-    // For system paths, just remove from cache
-    if (_isSystemPath(folderPath)) {
-      _folderSortCache.remove(folderPath);
-      success = true;
-      debugPrint('Cleared sort option for system path: $folderPath');
-    } else if (isWindows) {
-      success = await _clearWindowsSortOption(folderPath);
-    } else {
-      success = await _clearMobileSortOption(folderPath);
-    }
-
-    // Remove from cache if successful
-    if (success) {
-      _folderSortCache.remove(folderPath);
-    }
-
-    return success;
-  }
-
-  /// Get sorting option from Windows desktop.ini file
-  Future<SortOption?> _getWindowsSortOption(String folderPath) async {
     try {
-      final desktopIniPath = pathlib.join(folderPath, 'desktop.ini');
-      final desktopIniFile = File(desktopIniPath);
+      bool success = false;
 
-      if (!await desktopIniFile.exists()) {
-        debugPrint('desktop.ini not found in $folderPath');
-        return null;
+      // Use JSON config for all platforms and paths - NO TIMEOUT for faster saving
+      try {
+        success = await _saveMobileSortOption(folderPath, sortOption);
+        if (success) {
+          debugPrint('Successfully saved sort option using JSON config');
+        }
+      } catch (e) {
+        debugPrint('JSON save method failed: $e');
+        success = false;
       }
 
-      final contents = await desktopIniFile.readAsString();
-      debugPrint('Reading desktop.ini from $folderPath: \n$contents');
-
-      final lines = contents.split('\n');
-
-      // Parse the INI file format
-      String? sortBy;
-      String? sortDescending;
-      bool inShellClassInfo = false;
-
-      for (var line in lines) {
-        line = line.trim();
-
-        // Kiểm tra xem có đang ở trong section ShellClassInfo hay không
-        if (line == '[.ShellClassInfo]') {
-          inShellClassInfo = true;
-          continue;
-        } else if (line.startsWith('[') && line.endsWith(']')) {
-          inShellClassInfo = false;
-          continue;
-        }
-
-        // Chỉ đọc các cài đặt sắp xếp từ section .ShellClassInfo
-        if (inShellClassInfo) {
-          if (line.startsWith('SortByAttribute=')) {
-            sortBy = line.substring('SortByAttribute='.length).trim();
-            debugPrint('Found SortByAttribute=$sortBy');
-          } else if (line.startsWith('SortDescending=')) {
-            sortDescending = line.substring('SortDescending='.length).trim();
-            debugPrint('Found SortDescending=$sortDescending');
-          }
-        }
+      // Update cache if successful
+      if (success) {
+        _folderSortCache[folderPath] = sortOption;
       }
 
-      // Nếu không tìm thấy trong section, thử tìm bất kỳ nơi nào trong file
-      if (sortBy == null) {
-        for (var line in lines) {
-          line = line.trim();
-          if (line.contains('SortByAttribute=')) {
-            sortBy = line.split('=')[1].trim();
-            debugPrint('Found SortByAttribute=$sortBy outside of section');
-          } else if (line.contains('SortDescending=')) {
-            sortDescending = line.split('=')[1].trim();
-            debugPrint(
-                'Found SortDescending=$sortDescending outside of section');
-          }
-        }
-      }
-
-      // Convert Windows Explorer sort settings to our SortOption
-      if (sortBy != null) {
-        // Mặc định là sắp xếp tăng dần nếu không có giá trị
-        bool descending = sortDescending == '1';
-        debugPrint(
-            'Converting Windows sort: sortBy=$sortBy, descending=$descending');
-
-        switch (sortBy) {
-          case '0': // Sort by name
-            return descending ? SortOption.nameDesc : SortOption.nameAsc;
-          case '1': // Sort by size
-            return descending ? SortOption.sizeDesc : SortOption.sizeAsc;
-          case '2': // Sort by type
-            return descending ? SortOption.typeDesc : SortOption.typeAsc;
-          case '3': // Sort by date modified
-            return descending ? SortOption.dateDesc : SortOption.dateAsc;
-          case '4': // Sort by date created
-            return descending
-                ? SortOption.dateCreatedDesc
-                : SortOption.dateCreatedAsc;
-          case '5': // Sort by attributes
-            return descending
-                ? SortOption.attributesDesc
-                : SortOption.attributesAsc;
-          default:
-            // Thử phân tích số nếu có ký tự không mong muốn
-            try {
-              int numericValue =
-                  int.parse(sortBy.replaceAll(RegExp(r'[^0-9]'), ''));
-              switch (numericValue) {
-                case 0:
-                  return descending ? SortOption.nameDesc : SortOption.nameAsc;
-                case 1:
-                  return descending ? SortOption.sizeDesc : SortOption.sizeAsc;
-                case 2:
-                  return descending ? SortOption.typeDesc : SortOption.typeAsc;
-                case 3:
-                  return descending ? SortOption.dateDesc : SortOption.dateAsc;
-                case 4:
-                  return descending
-                      ? SortOption.dateCreatedDesc
-                      : SortOption.dateCreatedAsc;
-                case 5:
-                  return descending
-                      ? SortOption.attributesDesc
-                      : SortOption.attributesAsc;
-                default:
-                  debugPrint('Unknown numeric sortBy value: $numericValue');
-                  return null;
-              }
-            } catch (e) {
-              debugPrint('Failed to parse sortBy value: $sortBy, error: $e');
-              return null;
-            }
-        }
-      }
-
-      debugPrint('No sort settings found in desktop.ini');
-      return null;
+      return success;
     } catch (e) {
-      debugPrint('Error reading desktop.ini: $e');
-      return null;
-    }
-  }
-
-  /// Save sorting option to Windows desktop.ini file
-  Future<bool> _saveWindowsSortOption(
-      String folderPath, SortOption sortOption) async {
-    try {
-      final desktopIniPath = pathlib.join(folderPath, 'desktop.ini');
-      final desktopIniFile = File(desktopIniPath);
-
-      debugPrint('Saving sort option ${sortOption.name} to $desktopIniPath');
-
-      // Map our SortOption to Windows Explorer settings
-      String sortBy = '0'; // Default to name sort
-      String sortDescending = '0'; // Default to ascending
-
-      switch (sortOption) {
-        case SortOption.nameAsc:
-          sortBy = '0';
-          sortDescending = '0';
-          break;
-        case SortOption.nameDesc:
-          sortBy = '0';
-          sortDescending = '1';
-          break;
-        case SortOption.sizeAsc:
-          sortBy = '1';
-          sortDescending = '0';
-          break;
-        case SortOption.sizeDesc:
-          sortBy = '1';
-          sortDescending = '1';
-          break;
-        case SortOption.typeAsc:
-          sortBy = '2';
-          sortDescending = '0';
-          break;
-        case SortOption.typeDesc:
-          sortBy = '2';
-          sortDescending = '1';
-          break;
-        case SortOption.dateAsc:
-          sortBy = '3';
-          sortDescending = '0';
-          break;
-        case SortOption.dateDesc:
-          sortBy = '3';
-          sortDescending = '1';
-          break;
-        case SortOption.dateCreatedAsc:
-          sortBy = '4'; // Windows supports date created
-          sortDescending = '0';
-          break;
-        case SortOption.dateCreatedDesc:
-          sortBy = '4'; // Windows supports date created
-          sortDescending = '1';
-          break;
-        case SortOption.extensionAsc:
-          sortBy = '2'; // Use type (same as extension in Windows)
-          sortDescending = '0';
-          break;
-        case SortOption.extensionDesc:
-          sortBy = '2'; // Use type (same as extension in Windows)
-          sortDescending = '1';
-          break;
-        case SortOption.attributesAsc:
-          sortBy = '5'; // Special sort for attributes
-          sortDescending = '0';
-          break;
-        case SortOption.attributesDesc:
-          sortBy = '5'; // Special sort for attributes
-          sortDescending = '1';
-          break;
-      }
-
-      debugPrint(
-          'Mapped sort option to: SortByAttribute=$sortBy, SortDescending=$sortDescending');
-
-      // Simpler approach: Just create a new desktop.ini file with the required settings
-      // This avoids issues with parsing and manipulating the existing file
-      String fileContent = '''[.ShellClassInfo]
-IconFile=
-IconIndex=0
-ConfirmFileOp=0
-InfoTip=
-SortByAttribute=$sortBy
-SortDescending=$sortDescending
-''';
-
-      // Make sure the directory exists before saving the file
-      final directory = Directory(folderPath);
-      if (!await directory.exists()) {
-        await directory.create(recursive: true);
-      }
-
-      // Try to delete the file first to avoid any permission issues with overwriting
-      if (await desktopIniFile.exists()) {
-        try {
-          await desktopIniFile.delete();
-          debugPrint('Deleted existing desktop.ini file');
-        } catch (e) {
-          debugPrint('Error deleting existing desktop.ini file: $e');
-          // Continue anyway, we'll try to overwrite it
-        }
-      }
-
-      // Write the new file
-      await desktopIniFile.writeAsString(fileContent);
-      debugPrint(
-          'Successfully wrote desktop.ini file with content:\n$fileContent');
-
-      // As a backup, also save the sort option to our config file format
-      // This ensures we have a fallback if desktop.ini doesn't work
-      await _saveMobileSortOption(folderPath, sortOption);
-
-      // Set file attributes (hidden, system) using more robust method
-      if (Platform.isWindows) {
-        try {
-          // First, make the folder have the system attribute
-          final folderResult = await Process.run('attrib', ['+S', folderPath]);
-          debugPrint(
-              'Set attribute +S on folder $folderPath (exit code: ${folderResult.exitCode})');
-          debugPrint('Result: ${folderResult.stdout}');
-          if (folderResult.stderr.isNotEmpty) {
-            debugPrint('Error output: ${folderResult.stderr}');
-          }
-
-          // Then set attributes on the desktop.ini file
-          final fileResult =
-              await Process.run('attrib', ['+S', '+H', desktopIniPath]);
-          debugPrint(
-              'Set attributes +S +H on $desktopIniPath (exit code: ${fileResult.exitCode})');
-          debugPrint('Result: ${fileResult.stdout}');
-          if (fileResult.stderr.isNotEmpty) {
-            debugPrint('Error output: ${fileResult.stderr}');
-          }
-        } catch (e) {
-          debugPrint('Error setting desktop.ini attributes: $e');
-          // Continue anyway as the settings might still work
-        }
-      }
-
-      return true;
-    } catch (e) {
-      debugPrint('Error saving desktop.ini: $e');
+      // Ultimate safety net - never let this method throw exceptions
+      debugPrint('Unexpected error in saveFolderSortOption: $e');
+      // Still try to cache it in memory as a last resort
+      _folderSortCache[folderPath] = sortOption;
       return false;
     }
   }
 
-  /// Clear Windows sort settings from desktop.ini
-  Future<bool> _clearWindowsSortOption(String folderPath) async {
+  /// Clear the sort option for a specific folder
+  Future<bool> clearFolderSortOption(String folderPath) async {
     try {
-      final desktopIniPath = pathlib.join(folderPath, 'desktop.ini');
-      final desktopIniFile = File(desktopIniPath);
+      bool success = await _clearMobileSortOption(folderPath);
 
-      if (!await desktopIniFile.exists()) {
-        return true; // Nothing to clear
+      // Remove from cache if successful
+      if (success) {
+        _folderSortCache.remove(folderPath);
       }
 
-      final contents = await desktopIniFile.readAsString();
-      final lines = contents.split('\n');
-
-      List<String> newLines = [];
-      for (var line in lines) {
-        if (!line.contains('SortByAttribute=') &&
-            !line.contains('SortDescending=')) {
-          newLines.add(line);
-        }
-      }
-
-      // Only write back if file had sortable content
-      if (newLines.length != lines.length) {
-        await desktopIniFile.writeAsString(newLines.join('\n'));
-      }
-
-      return true;
+      return success;
     } catch (e) {
-      debugPrint('Error clearing desktop.ini sort settings: $e');
+      debugPrint('Error clearing folder sort option: $e');
       return false;
     }
   }

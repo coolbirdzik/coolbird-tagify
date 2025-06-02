@@ -249,12 +249,32 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
     // Set up a listener for TabManagerBloc state changes
     final tabBloc = BlocProvider.of<TabManagerBloc>(context);
     final activeTab = tabBloc.state.activeTab;
-
     if (activeTab != null &&
         activeTab.id == widget.tabId &&
         activeTab.path != _currentPath) {
       // Only update if the path has actually changed
       _updatePath(activeTab.path);
+    }
+
+    // Only reload if the tab is active AND content is actually missing or outdated
+    if (activeTab != null && activeTab.id == widget.tabId) {
+      // Check if we actually need to reload
+      final currentState = _folderListBloc.state;
+      final shouldReload = currentState.currentPath.path != _currentPath ||
+          (currentState.folders.isEmpty &&
+              currentState.files.isEmpty &&
+              !currentState.isLoading);
+
+      if (shouldReload) {
+        // Add a small delay to ensure proper state synchronization
+        Future.delayed(const Duration(milliseconds: 50), () {
+          if (mounted) {
+            debugPrint(
+                'Tab ${widget.tabId} became active, reloading content for path: $_currentPath');
+            _folderListBloc.add(FolderListLoad(_currentPath));
+          }
+        });
+      }
     }
   }
 

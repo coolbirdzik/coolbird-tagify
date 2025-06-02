@@ -204,10 +204,18 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
             }
           }
 
-          // Get folder-specific sort option if available
+          // Get folder-specific sort option if available (with defensive error handling)
           final folderSortManager = FolderSortManager();
-          final folderSortOption =
-              await folderSortManager.getFolderSortOption(event.path);
+          SortOption? folderSortOption;
+          try {
+            // Remove timeout - let it run quickly with cache
+            folderSortOption =
+                await folderSortManager.getFolderSortOption(event.path);
+          } catch (e) {
+            debugPrint(
+                'Error getting folder sort option for ${event.path}: $e');
+            folderSortOption = null; // Use default sort option if error occurs
+          }
 
           // Use folder-specific sort option if available, otherwise use the current sort option
           SortOption sortOptionToUse = folderSortOption ?? state.sortOption;
@@ -379,7 +387,7 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
         case SortOption.dateCreatedAsc:
           compareFunction = (a, b) {
             // On Windows, we can get creation time
-            if (FolderSortManager().isWindows) {
+            if (Platform.isWindows) {
               try {
                 final aStats = fileStatsCache[a.path]!;
                 final bStats = fileStatsCache[b.path]!;
@@ -401,7 +409,7 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
         case SortOption.dateCreatedDesc:
           compareFunction = (a, b) {
             // On Windows, we can get creation time
-            if (FolderSortManager().isWindows) {
+            if (Platform.isWindows) {
               try {
                 final aStats = fileStatsCache[a.path]!;
                 final bStats = fileStatsCache[b.path]!;
@@ -547,15 +555,20 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
               fileTags[file.path] = tags;
             }
           }
-        }
-
-        // Get all unique tags for this directory
+        } // Get all unique tags for this directory
         final allUniqueTags = await TagManager.getAllUniqueTags(event.path);
 
-        // Get folder-specific sort option if available
+        // Get folder-specific sort option if available (with defensive error handling)
         final folderSortManager = FolderSortManager();
-        final folderSortOption =
-            await folderSortManager.getFolderSortOption(event.path);
+        SortOption? folderSortOption;
+        try {
+          // Remove timeout - let it run quickly with cache
+          folderSortOption =
+              await folderSortManager.getFolderSortOption(event.path);
+        } catch (e) {
+          debugPrint('Error getting folder sort option for ${event.path}: $e');
+          folderSortOption = null; // Use default sort option if error occurs
+        }
 
         // Use folder-specific sort option if available, otherwise use the current sort option
         SortOption sortOptionToUse = folderSortOption ?? state.sortOption;
@@ -813,19 +826,34 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
         cacheFileStats(sortedFiles),
         cacheFileStats(sortedFilteredFiles),
         cacheFileStats(sortedSearchResults),
-      ]);
-
-      // Save the sort option to the current folder
+      ]); // Save the sort option to the current folder (with defensive error handling)
       final folderSortManager = FolderSortManager();
       debugPrint(
           'Trying to save sort option ${event.sortOption} to folder: ${state.currentPath.path}');
-      final saveResult = await folderSortManager.saveFolderSortOption(
-          state.currentPath.path, event.sortOption);
+
+      bool saveResult = false;
+      try {
+        // Remove timeout - let it run quickly without blocking
+        saveResult = await folderSortManager.saveFolderSortOption(
+            state.currentPath.path, event.sortOption);
+      } catch (e) {
+        debugPrint(
+            'Error saving folder sort option for ${state.currentPath.path}: $e');
+        saveResult = false; // Continue without saving if error occurs
+      }
       debugPrint('Save sort option result: $saveResult');
 
-      // Check if sort option was actually saved
-      final savedOption =
-          await folderSortManager.getFolderSortOption(state.currentPath.path);
+      // Check if sort option was actually saved (with defensive error handling)
+      SortOption? savedOption;
+      try {
+        // Remove timeout - let it run quickly with cache
+        savedOption =
+            await folderSortManager.getFolderSortOption(state.currentPath.path);
+      } catch (e) {
+        debugPrint(
+            'Error getting folder sort option for ${state.currentPath.path}: $e');
+        savedOption = null; // Continue without saved option if error occurs
+      }
       debugPrint('Retrieved sort option after save: ${savedOption?.name}');
 
       // Define the sorting function based on the selected sort option
@@ -889,7 +917,7 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
         case SortOption.dateCreatedAsc:
           compareFunction = (a, b) {
             // On Windows, we can get creation time
-            if (FolderSortManager().isWindows) {
+            if (Platform.isWindows) {
               try {
                 final aStats = fileStatsCache[a.path]!;
                 final bStats = fileStatsCache[b.path]!;
@@ -911,7 +939,7 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
         case SortOption.dateCreatedDesc:
           compareFunction = (a, b) {
             // On Windows, we can get creation time
-            if (FolderSortManager().isWindows) {
+            if (Platform.isWindows) {
               try {
                 final aStats = fileStatsCache[a.path]!;
                 final bStats = fileStatsCache[b.path]!;
