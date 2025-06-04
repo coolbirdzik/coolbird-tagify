@@ -120,7 +120,10 @@ class _CBDrawerState extends State<CBDrawer> {
                         icon: EvaIcons.homeOutline,
                         title: context.tr.home,
                         onTap: () {
-                          Navigator.pop(context);
+                          // Only pop the Navigator when drawer is not pinned
+                          if (!widget.isPinned) {
+                            Navigator.pop(context);
+                          }
                           RouteUtils.safeNavigate(
                               context, const TabMainScreen());
                         },
@@ -143,7 +146,10 @@ class _CBDrawerState extends State<CBDrawer> {
                         icon: EvaIcons.pricetags,
                         title: context.tr.tags,
                         onTap: () {
-                          Navigator.pop(context);
+                          // Only pop the Navigator when drawer is not pinned
+                          if (!widget.isPinned) {
+                            Navigator.pop(context);
+                          }
 
                           // Open tag management in a new tab
                           final tabBloc =
@@ -176,7 +182,10 @@ class _CBDrawerState extends State<CBDrawer> {
                         icon: EvaIcons.wifi,
                         title: 'Networks',
                         onTap: () {
-                          Navigator.pop(context);
+                          // Only pop the Navigator when drawer is not pinned
+                          if (!widget.isPinned) {
+                            Navigator.pop(context);
+                          }
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
                               content:
@@ -201,7 +210,10 @@ class _CBDrawerState extends State<CBDrawer> {
                         icon: EvaIcons.settings2Outline,
                         title: context.tr.settings,
                         onTap: () {
-                          Navigator.pop(context);
+                          // Only pop the Navigator when drawer is not pinned
+                          if (!widget.isPinned) {
+                            Navigator.pop(context);
+                          }
                           _showSettingsDialog(context);
                         },
                       ),
@@ -211,7 +223,10 @@ class _CBDrawerState extends State<CBDrawer> {
                         icon: EvaIcons.infoOutline,
                         title: 'About',
                         onTap: () {
-                          Navigator.pop(context);
+                          // Only pop the Navigator when drawer is not pinned
+                          if (!widget.isPinned) {
+                            Navigator.pop(context);
+                          }
                           _showAboutDialog(context);
                         },
                       ),
@@ -398,7 +413,10 @@ class _CBDrawerState extends State<CBDrawer> {
                 title: 'Trash Bin',
                 iconColor: Colors.red[400],
                 onTap: () async {
-                  Navigator.pop(context);
+                  // Only pop the Navigator when drawer is not pinned
+                  if (!widget.isPinned) {
+                    Navigator.pop(context);
+                  }
                   // Navigate to the Trash Bin screen
                   if (context.mounted) {
                     Navigator.push(
@@ -617,7 +635,10 @@ class _CBDrawerState extends State<CBDrawer> {
           TextButton(
             onPressed: () {
               Navigator.of(context).pop();
-              Navigator.pop(context);
+              // Only pop the Navigator when drawer is not pinned
+              if (!widget.isPinned) {
+                Navigator.pop(context);
+              }
               _openInCurrentTab(drive.path, drive.path.split(r'\')[0]);
             },
             child: Text(context.tr.ok),
@@ -1145,7 +1166,10 @@ class _AppDrawerState extends State<AppDrawer> {
                 title: 'Trash Bin',
                 iconColor: Colors.red[400],
                 onTap: () {
-                  Navigator.pop(context);
+                  // Only pop the Navigator when drawer is not pinned
+                  if (!widget.isPinned) {
+                    Navigator.pop(context);
+                  }
                   Navigator.push(
                     context,
                     MaterialPageRoute(
@@ -1229,7 +1253,10 @@ class _AppDrawerState extends State<AppDrawer> {
         icon: icon,
         title: displayName,
         onTap: () {
-          Navigator.pop(context);
+          // Only pop the Navigator when drawer is not pinned
+          if (!widget.isPinned) {
+            Navigator.pop(context);
+          }
           _openFolder(storage.path);
         },
       );
