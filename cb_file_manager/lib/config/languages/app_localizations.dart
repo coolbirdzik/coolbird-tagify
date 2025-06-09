@@ -99,6 +99,18 @@ abstract class AppLocalizations {
   String get local;
   String get networks;
 
+  // File operations related to networks
+  String get download;
+  String get downloadFile;
+  String get selectDownloadLocation;
+  String get selectFolder;
+  String get browse;
+  String get upload;
+  String get uploadFile;
+  String get selectFileToUpload;
+  String get create;
+  String get folderName;
+
   // Additional translations for database settings
   String get databaseSettings;
   String get databaseStorage;

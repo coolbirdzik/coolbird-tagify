@@ -43,23 +43,10 @@ class SystemScreen extends StatelessWidget {
           ? AppBar(
               title: Text(title),
               actions: actions,
-              // Add a button to close the tab
-              leading: IconButton(
-                icon: const Icon(Icons.close),
-                onPressed: () {
-                  // Get the current tab ID from the parent tab system
-                  final tabId = (ModalRoute.of(context)?.settings.arguments
-                      as Map<String, dynamic>?)?['tabId'];
-                  if (tabId != null) {
-                    // Close the tab
-                    BlocProvider.of<TabManagerBloc>(context)
-                        .add(CloseTab(tabId));
-                  } else {
-                    // If no tab ID, just pop the route
-                    Navigator.of(context).pop();
-                  }
-                },
-              ),
+              // Replace the close button with a back button
+              // This will automatically handle whether to show a back arrow
+              // or a close button depending on the navigation stack.
+              leading: Navigator.canPop(context) ? const BackButton() : null,
             )
           : null,
       body: child,

@@ -65,8 +65,14 @@ Future<String?> _generateThumbnailIsolate(_ThumbnailIsolateArgs args) async {
 
   try {
     if (args.rootIsolateToken != null) {
-      BackgroundIsolateBinaryMessenger.ensureInitialized(
-          args.rootIsolateToken!);
+      try {
+        BackgroundIsolateBinaryMessenger.ensureInitialized(
+            args.rootIsolateToken!);
+      } catch (e) {
+        debugPrint(
+            'VideoThumbnail (Isolate): Error initializing BackgroundIsolateBinaryMessenger: $e');
+        // Continue execution, we'll try to generate thumbnail without platform channels
+      }
     } else {
       debugPrint(
           'VideoThumbnail (Isolate): Warning - RootIsolateToken is null, platform channels may fail.');
@@ -687,15 +693,21 @@ class VideoThumbnailHelper {
       );
 
       // Use a timeout to prevent isolate from hanging indefinitely
-      final generatedPath =
-          await compute(_generateThumbnailIsolate, args).timeout(
-        const Duration(seconds: 30),
-        onTimeout: () {
-          _log('VideoThumbnail: Timeout generating thumbnail for $videoPath',
-              forceShow: true);
-          return null;
-        },
-      );
+      String? generatedPath;
+      try {
+        generatedPath = await compute(_generateThumbnailIsolate, args).timeout(
+          const Duration(seconds: 30),
+          onTimeout: () {
+            _log('VideoThumbnail: Timeout generating thumbnail for $videoPath',
+                forceShow: true);
+            return null;
+          },
+        );
+      } catch (e, stack) {
+        _log('VideoThumbnail: Error during compute for $videoPath: $e\n$stack',
+            forceShow: true);
+        return null;
+      }
 
       if (generatedPath != null) {
         final resultFile = File(generatedPath);

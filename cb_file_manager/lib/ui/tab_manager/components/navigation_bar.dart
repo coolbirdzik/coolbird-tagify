@@ -10,6 +10,7 @@ class PathNavigationBar extends StatefulWidget {
   final TextEditingController pathController;
   final Function(String) onPathSubmitted;
   final String currentPath;
+  final bool isNetworkPath;
 
   const PathNavigationBar({
     Key? key,
@@ -17,6 +18,7 @@ class PathNavigationBar extends StatefulWidget {
     required this.pathController,
     required this.onPathSubmitted,
     required this.currentPath,
+    this.isNetworkPath = false,
   }) : super(key: key);
 
   @override
@@ -204,139 +206,92 @@ class _PathNavigationBarState extends State<PathNavigationBar> {
 
     return Row(
       children: [
-        // Back button
         IconButton(
-          icon: const Icon(EvaIcons.arrowBackOutline),
-          tooltip: 'Back',
-          onPressed: _canNavigateBack ? _handleBackNavigation : null,
-          padding: const EdgeInsets.only(right: 4.0),
+          icon: const Icon(EvaIcons.arrowBack),
+          onPressed: _canNavigateBack
+              ? () => BlocProvider.of<TabManagerBloc>(context)
+                  .backNavigationToPath(widget.tabId)
+              : null,
+          tooltip: 'Go back',
+        ),
+        IconButton(
+          icon: const Icon(EvaIcons.arrowForward),
+          onPressed: _canNavigateForward
+              ? () => BlocProvider.of<TabManagerBloc>(context)
+                  .forwardNavigationToPath(widget.tabId)
+              : null,
+          tooltip: 'Go forward',
         ),
 
-        // Forward button
-        IconButton(
-          icon: const Icon(EvaIcons.arrowForwardOutline),
-          tooltip: 'Forward',
-          onPressed: _canNavigateForward ? _handleForwardNavigation : null,
-          padding: const EdgeInsets.only(right: 8.0),
-        ),
-
-        // Small spacing between buttons and text field
-        const SizedBox(width: 4.0),
-
-        // Address bar with autocomplete
-        Expanded(
-          child: RawAutocomplete<String>(
-            textEditingController: widget.pathController,
-            focusNode: FocusNode(),
-            optionsBuilder: (TextEditingValue textEditingValue) async {
-              if (textEditingValue.text.isEmpty) {
-                return const Iterable<String>.empty();
-              }
-              return await _getDirectorySuggestions(textEditingValue.text);
-            },
-            onSelected: (String selection) {
-              widget.pathController.text = selection;
-              widget.onPathSubmitted(selection);
-            },
-            fieldViewBuilder: (
-              BuildContext context,
-              TextEditingController textEditingController,
-              FocusNode focusNode,
-              VoidCallback onFieldSubmitted,
-            ) {
-              return TextField(
-                controller: textEditingController,
-                focusNode: focusNode,
-                decoration: InputDecoration(
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(4.0),
-                    borderSide: BorderSide.none,
-                  ),
-                  filled: true,
-                  fillColor: Theme.of(context).brightness == Brightness.dark
-                      ? Colors.grey[800]
-                      : Colors.grey[200],
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                  isDense: true,
-                  suffixIcon: IconButton(
-                    icon: const Icon(EvaIcons.arrowIosForwardOutline, size: 20),
-                    onPressed: () {
-                      widget.onPathSubmitted(textEditingController.text);
-                    },
-                    padding: const EdgeInsets.all(0),
-                    constraints: const BoxConstraints(),
-                  ),
-                ),
-                style: const TextStyle(fontSize: 14),
-                onSubmitted: (String value) {
-                  widget.onPathSubmitted(value);
-                },
-              );
-            },
-            optionsViewBuilder: (
-              BuildContext context,
-              AutocompleteOnSelected<String> onSelected,
-              Iterable<String> options,
-            ) {
-              // Handle empty results case gracefully
-              if (options.isEmpty) {
-                return const SizedBox
-                    .shrink(); // Don't show anything if no results
-              }
-
-              // Calculate dimensions based on screen size
-              final screenSize = MediaQuery.of(context).size;
-              final width = screenSize.width * 0.8; // Use 80% of screen width
-              final maxHeight = screenSize.height *
-                  0.5; // Limit height to 50% of screen height
-
-              return Align(
-                alignment: Alignment.topLeft,
-                child: Material(
-                  elevation: 4.0,
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(
-                      maxHeight: maxHeight,
-                      maxWidth: width,
-                    ),
-                    child: ListView.builder(
-                      shrinkWrap: true,
-                      padding: EdgeInsets.zero,
-                      itemCount: options.length,
-                      itemBuilder: (BuildContext context, int index) {
-                        final String option = options.elementAt(index);
-                        final baseName =
-                            option.split(Platform.pathSeparator).last;
-                        return ListTile(
-                          dense: true,
-                          visualDensity: const VisualDensity(
-                              horizontal: 0,
-                              vertical: -4), // Make items more compact
-                          leading: const Icon(Icons.folder, size: 18),
-                          title: Text(
-                            baseName,
-                            style: const TextStyle(fontSize: 12),
-                          ),
-                          subtitle: Text(
-                            option,
-                            style: const TextStyle(fontSize: 10),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          onTap: () {
-                            onSelected(option);
-                          },
-                        );
-                      },
-                    ),
-                  ),
-                ),
-              );
-            },
+        // Special display for network paths
+        if (widget.isNetworkPath) ...[
+          const Icon(EvaIcons.wifi),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              _formatNetworkPath(widget.currentPath),
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
           ),
-        ),
+        ] else ...[
+          Expanded(
+            child: TextField(
+              controller: widget.pathController,
+              decoration: InputDecoration(
+                hintText: 'Path',
+                contentPadding: const EdgeInsets.symmetric(
+                  vertical: 8.0,
+                  horizontal: 12.0,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12.0),
+                  borderSide: BorderSide.none,
+                ),
+                filled: true,
+                fillColor: Theme.of(context)
+                    .inputDecorationTheme
+                    .fillColor
+                    ?.withOpacity(0.7),
+              ),
+              onSubmitted: widget.onPathSubmitted,
+              textInputAction: TextInputAction.go,
+            ),
+          ),
+        ],
       ],
     );
+  }
+
+  // Format a network path for display
+  String _formatNetworkPath(String path) {
+    if (!path.startsWith('#network/')) return path;
+
+    try {
+      final parts = path.split('/');
+      if (parts.length < 3) return path;
+
+      final protocol = parts[1].toUpperCase(); // SMB, FTP, etc.
+      final server = Uri.decodeComponent(parts[2]);
+
+      if (parts.length >= 4 && parts[3].startsWith('S')) {
+        // We have a share
+        final share = Uri.decodeComponent(parts[3].substring(1));
+
+        if (parts.length > 4) {
+          // We have a subfolder
+          final remainingPath = parts.sublist(4).join('/');
+          return '$protocol://$server/$share/$remainingPath';
+        } else {
+          return '$protocol://$server/$share';
+        }
+      } else {
+        return '$protocol://$server';
+      }
+    } catch (_) {
+      return path;
+    }
   }
 }

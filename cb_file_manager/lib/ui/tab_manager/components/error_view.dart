@@ -6,72 +6,59 @@ class ErrorView extends StatelessWidget {
   final String errorMessage;
   final VoidCallback onRetry;
   final VoidCallback onGoBack;
+  final bool isNetworkPath;
 
   const ErrorView({
     Key? key,
     required this.errorMessage,
     required this.onRetry,
     required this.onGoBack,
+    this.isNetworkPath = false,
   }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    // Check if error is likely due to permissions
-    bool isAdminError = errorMessage.toLowerCase().contains('access denied') ||
-        errorMessage.toLowerCase().contains('administrator privileges');
-
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
-            isAdminError ? EvaIcons.shieldOutline : EvaIcons.alertCircleOutline,
-            size: 48,
-            color: isAdminError ? Colors.orange : Colors.red,
+            isNetworkPath ? EvaIcons.wifiOff : EvaIcons.alertCircle,
+            size: 72,
+            color: Colors.grey,
           ),
           const SizedBox(height: 16),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24.0),
-            child: Text(
-              errorMessage,
-              style: TextStyle(
-                color: isAdminError ? Colors.orange[800] : Colors.red[700],
-                fontSize: isAdminError ? 16.0 : 14.0,
+          Text(
+            errorMessage,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 24),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              OutlinedButton(
+                onPressed: onGoBack,
+                child: Text(isNetworkPath ? 'Close Connection' : 'Go Back'),
               ),
+              const SizedBox(width: 8),
+              ElevatedButton(
+                onPressed: onRetry,
+                child: Text(isNetworkPath ? 'Try Again' : 'Retry'),
+              ),
+            ],
+          ),
+          if (isNetworkPath) ...[
+            const SizedBox(height: 16),
+            const Text(
+              'If this error persists, check your network connection and the server status.',
               textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 14, color: Colors.grey),
             ),
-          ),
-          const SizedBox(height: 16),
-          if (isAdminError)
-            const Column(
-              children: [
-                Text(
-                  'To access this drive, you need to:',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-                SizedBox(height: 8),
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 32.0),
-                  child: Text(
-                    '1. Close the app\n'
-                    '2. Right-click on the app icon\n'
-                    '3. Select "Run as administrator"\n'
-                    '4. Try accessing the drive again',
-                    textAlign: TextAlign.left,
-                  ),
-                ),
-                SizedBox(height: 16),
-              ],
-            ),
-          ElevatedButton(
-            onPressed: onRetry,
-            child: const Text('Try Again'),
-          ),
-          const SizedBox(height: 8),
-          TextButton(
-            onPressed: onGoBack,
-            child: const Text('Go Back'),
-          ),
+          ],
         ],
       ),
     );

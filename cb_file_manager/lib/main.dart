@@ -17,6 +17,8 @@ import 'helpers/video_thumbnail_helper.dart'; // Import our video thumbnail help
 import 'helpers/frame_timing_optimizer.dart'; // Import our new frame timing optimizer
 import 'helpers/batch_tag_manager.dart'; // Import batch tag manager
 import 'models/database/database_manager.dart'; // Import database manager
+import 'models/database/network_credentials.dart'; // Import network credentials model
+import 'services/network_credentials_service.dart'; // Import network credentials service
 import 'config/app_theme.dart'; // Import global theme configuration
 import 'package:flutter_localizations/flutter_localizations.dart'; // Import for localization
 import 'config/language_controller.dart'; // Import our language controller
@@ -128,6 +130,9 @@ void main() async {
       } else {
         debugPrint('Database manager already initialized');
       }
+
+      // Khởi tạo NetworkCredentialsService
+      await NetworkCredentialsService().init(dbManager.getStore()!);
 
       // Khởi tạo các hệ thống phụ thuộc khác
       await BatchTagManager.initialize();

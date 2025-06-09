@@ -1,6 +1,7 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'dart:math';
 import 'tab_data.dart';
+import 'package:flutter/material.dart';
 
 /// Events for the TabManager
 abstract class TabEvent {}
@@ -156,6 +157,22 @@ class TabManagerBloc extends Bloc<TabEvent, TabManagerState> {
   }
 
   void _onUpdateTabPath(UpdateTabPath event, Emitter<TabManagerState> emit) {
+    // Check if the path is actually changing
+    final currentTab = state.tabs.firstWhere(
+      (tab) => tab.id == event.tabId,
+      orElse: () => TabData(id: '', name: '', path: ''),
+    );
+
+    // If the path is the same as the current path, don't update
+    if (currentTab.path == event.newPath) {
+      debugPrint(
+          "TabManagerBloc: Skipping tab path update - path unchanged: ${event.newPath}");
+      return;
+    }
+
+    debugPrint(
+        "TabManagerBloc: Updating tab path from ${currentTab.path} to ${event.newPath}");
+
     final tabs = state.tabs.map((tab) {
       if (tab.id == event.tabId) {
         // First add the new path to the navigation history of the existing tab
@@ -312,5 +329,53 @@ class TabManagerBloc extends Bloc<TabEvent, TabManagerState> {
       orElse: () => TabData(id: '', name: '', path: ''),
     );
     return tab.forwardHistory.isNotEmpty ? tab.forwardHistory.last : null;
+  }
+}
+
+/// Helper class for working with the tab system
+/// Serves as interface between network browsing and the tab system
+class TabNavigator {
+  /// Updates the path of a specific tab
+  static void updateTabPath(BuildContext context, String tabId, String path) {
+    final tabBloc = BlocProvider.of<TabManagerBloc>(context);
+
+    // Check if the path is actually different before updating
+    final currentTab = tabBloc.state.tabs.firstWhere(
+      (tab) => tab.id == tabId,
+      orElse: () => TabData(id: '', name: '', path: ''),
+    );
+
+    // Only update if the path has actually changed
+    if (currentTab.path != path) {
+      tabBloc.add(UpdateTabPath(tabId, path));
+      // Add path to tab history as well
+      tabBloc.add(AddToTabHistory(tabId, path));
+    } else {
+      debugPrint("TabNavigator: Skipping path update - path unchanged: $path");
+    }
+  }
+
+  /// Opens a new tab with the specified path
+  static void openTab(BuildContext context, String path, {String? title}) {
+    final tabBloc = BlocProvider.of<TabManagerBloc>(context);
+    tabBloc.add(AddTab(
+      path: path,
+      name: title ?? _extractNameFromPath(path),
+      switchToTab: true,
+    ));
+  }
+
+  /// Closes the specified tab
+  static void closeTab(BuildContext context, String tabId) {
+    final tabBloc = BlocProvider.of<TabManagerBloc>(context);
+    tabBloc.add(CloseTab(tabId));
+  }
+
+  /// Helper method to extract a name from a path
+  static String _extractNameFromPath(String path) {
+    final pathParts = path.split('/');
+    return pathParts.isEmpty || pathParts.last.isEmpty
+        ? 'Root'
+        : pathParts.last;
   }
 }

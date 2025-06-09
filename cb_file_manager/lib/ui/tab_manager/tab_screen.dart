@@ -774,6 +774,18 @@ class _TabScreenState extends State<TabScreen> with TickerProviderStateMixin {
               ),
               _buildOptionItem(
                 context,
+                icon: EvaIcons.wifi,
+                text: 'Network browsing',
+                onTap: _navigateToNetworkBrowsing,
+              ),
+              _buildOptionItem(
+                context,
+                icon: EvaIcons.monitor,
+                text: 'SMB Network',
+                onTap: _navigateToSMBBrowsing,
+              ),
+              _buildOptionItem(
+                context,
                 icon: EvaIcons.settings2Outline,
                 text: 'Settings',
                 onTap: () {
@@ -838,5 +850,27 @@ class _TabScreenState extends State<TabScreen> with TickerProviderStateMixin {
         ),
       ),
     );
+  }
+
+  // New method to navigate to network browsing screen
+  void _navigateToNetworkBrowsing() {
+    // Close the tab options dialog if it's open
+    Navigator.of(context).pop();
+
+    // Add a new tab with the network path
+    context.read<TabManagerBloc>().add(
+          AddTab(path: '#network', name: 'Network', switchToTab: true),
+        );
+  }
+
+  // New method to navigate to SMB browsing screen
+  void _navigateToSMBBrowsing() {
+    // Close the tab options dialog if it's open
+    Navigator.of(context).pop();
+
+    // Add a new tab with the SMB path
+    context.read<TabManagerBloc>().add(
+          AddTab(path: '#smb', name: 'SMB Network', switchToTab: true),
+        );
   }
 }

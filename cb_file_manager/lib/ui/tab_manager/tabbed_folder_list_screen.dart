@@ -44,6 +44,7 @@ import 'package:flutter/foundation.dart';
 import 'package:cb_file_manager/config/languages/app_localizations.dart';
 import 'package:cb_file_manager/helpers/folder_sort_manager.dart'; // Import for FolderSortManager
 import 'package:cb_file_manager/helpers/tag_manager.dart';
+import 'package:cb_file_manager/ui/components/screen_scaffold.dart';
 
 // Add this class to cache thumbnails
 class ThumbnailCache {
@@ -858,6 +859,9 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
       );
     }
 
+    // Check if the current path is a network path (SMB, FTP, etc.)
+    final bool isNetworkPath = _currentPath.startsWith('#network/');
+
     // Add a BlocListener to actively listen for TabManagerBloc state changes
     return BlocProvider.value(
       value: _selectionBloc,
@@ -898,7 +902,7 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
                 _currentSearchTag = state.currentSearchTag;
                 _currentFilter = state.currentFilter;
 
-                return _buildWithSelectionState(context, state);
+                return _buildWithSelectionState(context, state, isNetworkPath);
               }),
             ),
           ),
@@ -908,8 +912,8 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
   }
 
   // New helper method that builds the UI with selection state from BLoC
-  Widget _buildWithSelectionState(
-      BuildContext context, FolderListState folderListState) {
+  Widget _buildWithSelectionState(BuildContext context,
+      FolderListState folderListState, bool isNetworkPath) {
     return BlocBuilder<SelectionBloc, SelectionState>(
         builder: (context, selectionState) {
       // Create actions for the app bar
@@ -947,89 +951,73 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
                     folderListState.allTags.toList(),
                     folderListState.currentPath.path);
               },
-              onGallerySelected: (value) {
-                if (value == 'image_gallery') {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => ImageGalleryScreen(
-                        path: _currentPath,
-                        recursive: false,
-                      ),
-                    ),
-                  );
-                } else if (value == 'video_gallery') {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => VideoGalleryScreen(
-                        path: _currentPath,
-                        recursive: false,
-                      ),
-                    ),
-                  );
-                }
-              },
+              onGallerySelected: isNetworkPath
+                  ? null
+                  : (value) {
+                      if (value == 'image_gallery') {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => ImageGalleryScreen(
+                              path: _currentPath,
+                              recursive: false,
+                            ),
+                          ),
+                        );
+                      } else if (value == 'video_gallery') {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => VideoGalleryScreen(
+                              path: _currentPath,
+                              recursive: false,
+                            ),
+                          ),
+                        );
+                      }
+                    },
               currentPath: _currentPath,
             )
           : []);
 
-      // If we're in selection mode, show a custom app bar
-      if (selectionState.isSelectionMode) {
-        return Scaffold(
-          appBar: tab_components.SelectionAppBar(
-            // Pass the explicit count to ensure consistency
-            selectedCount: selectionState.selectedCount,
-            // Pass detailed counts for better information
-            selectedFileCount: selectionState.selectedFilePaths.length,
-            selectedFolderCount: selectionState.selectedFolderPaths.length,
-            onClearSelection: _clearSelection,
-            selectedFilePaths: selectionState.selectedFilePaths.toList(),
-            selectedFolderPaths: selectionState.selectedFolderPaths.toList(),
-            showRemoveTagsDialog: _showRemoveTagsDialog,
-            showManageAllTagsDialog: (context) =>
-                _showManageAllTagsDialog(context),
-            showDeleteConfirmationDialog: (context) =>
-                _showDeleteConfirmationDialog(context),
-          ),
-          body: _buildBody(context, folderListState, selectionState),
-          floatingActionButton: FloatingActionButton(
-            onPressed: () {
-              tab_components.showBatchAddTagDialog(
-                  context, selectionState.selectedFilePaths.toList());
-            },
-            child: const Icon(EvaIcons.shoppingBag),
-          ),
-        );
-      }
-
-      // Note: We're not using BaseScreen here since we're already inside a tab
-      return Scaffold(
-        appBar: widget.showAppBar
-            ? FluentBackground.appBar(
-                context: context,
-                title: _showSearchBar
-                    ? tab_components.SearchBar(
-                        currentPath: _currentPath,
-                        tabId: widget.tabId,
-                        onCloseSearch: () {
-                          setState(() {
-                            _showSearchBar = false;
-                          });
-                        },
-                      )
-                    : tab_components.PathNavigationBar(
-                        tabId: widget.tabId,
-                        pathController: _pathController,
-                        onPathSubmitted: _handlePathSubmit,
-                        currentPath: _currentPath,
-                      ),
-                actions: _showSearchBar ? [] : actions,
-                blurAmount: 12.0,
-                opacity: 0.6,
-              )
-            : null,
-        body: _buildBody(context, folderListState, selectionState),
+      return ScreenScaffold(
+        selectionState: selectionState,
+        body:
+            _buildBody(context, folderListState, selectionState, isNetworkPath),
+        isNetworkPath: isNetworkPath,
+        onClearSelection: _clearSelection,
+        showRemoveTagsDialog: _showRemoveTagsDialog,
+        showManageAllTagsDialog: (context) => _showManageAllTagsDialog(context),
+        showDeleteConfirmationDialog: (context) =>
+            _showDeleteConfirmationDialog(context),
+        selectionModeFloatingActionButton: isNetworkPath
+            ? null
+            : FloatingActionButton(
+                onPressed: () {
+                  tab_components.showBatchAddTagDialog(
+                      context, selectionState.selectedFilePaths.toList());
+                },
+                child: const Icon(EvaIcons.shoppingBag),
+              ),
+        showAppBar: widget.showAppBar,
+        showSearchBar: _showSearchBar,
+        searchBar: tab_components.SearchBar(
+          currentPath: _currentPath,
+          tabId: widget.tabId,
+          onCloseSearch: () {
+            setState(() {
+              _showSearchBar = false;
+            });
+          },
+        ),
+        pathNavigationBar: tab_components.PathNavigationBar(
+          tabId: widget.tabId,
+          pathController: _pathController,
+          onPathSubmitted: _handlePathSubmit,
+          currentPath: _currentPath,
+          isNetworkPath: isNetworkPath, // Pass network flag
+        ),
+        actions: actions,
         floatingActionButton: FloatingActionButton(
           onPressed: _toggleSelectionMode,
           child: const Icon(EvaIcons.checkmarkSquare2Outline),
@@ -1039,7 +1027,7 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
   }
 
   Widget _buildBody(BuildContext context, FolderListState state,
-      SelectionState selectionState) {
+      SelectionState selectionState, bool isNetworkPath) {
     // Apply frame timing optimization before heavy UI operations
     FrameTimingOptimizer().optimizeBeforeHeavyOperation();
 
@@ -1054,22 +1042,38 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
         blurAmount: 5.0,
         child: tab_components.ErrorView(
           errorMessage: state.error!,
+          isNetworkPath: isNetworkPath,
           onRetry: () {
             _folderListBloc.add(FolderListLoad(_currentPath));
           },
           onGoBack: () {
-            // Navigate to parent directory or home if this fails
-            try {
-              final parentPath = Directory(_currentPath).parent.path;
-              if (parentPath != _currentPath) {
+            // For network paths, carefully handle navigation
+            if (isNetworkPath) {
+              final parts = _currentPath.split('/');
+              if (parts.length > 3) {
+                // At least #network/protocol/server level, can go back
+                final parentPath = parts.sublist(0, parts.length - 1).join('/');
                 _navigateToPath(parentPath);
               } else {
-                // If we're at root level, navigate to the drive listing
-                _navigateToPath(''); // Empty path triggers drive list
+                // At root of network share, just close the tab or do nothing
+                final tabBloc =
+                    BlocProvider.of<TabManagerBloc>(context, listen: false);
+                tabBloc.add(CloseTab(widget.tabId));
               }
-            } catch (e) {
-              // If all else fails, go to empty path to show drives
-              _navigateToPath('');
+            } else {
+              // Normal local file system navigation
+              try {
+                final parentPath = Directory(_currentPath).parent.path;
+                if (parentPath != _currentPath) {
+                  _navigateToPath(parentPath);
+                } else {
+                  // If we're at root level, navigate to the drive listing
+                  _navigateToPath(''); // Empty path triggers drive list
+                }
+              } catch (e) {
+                // If all else fails, go to empty path to show drives
+                _navigateToPath('');
+              }
             }
           },
         ),
@@ -1674,7 +1678,7 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
     tab_components.showDeleteTagDialog(context, filePath, tags);
   }
 
-  void _showRemoveTagsDialog(BuildContext context, List<String> filePaths) {
+  void _showRemoveTagsDialog(BuildContext context) {
     // Use the SelectionBloc to get current selection state
     final selectionState = context.read<SelectionBloc>().state;
 

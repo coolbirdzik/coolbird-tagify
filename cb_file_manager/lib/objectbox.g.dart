@@ -14,6 +14,7 @@ import 'package:objectbox/internal.dart'
 import 'package:objectbox/objectbox.dart' as obx;
 import 'package:objectbox_flutter_libs/objectbox_flutter_libs.dart';
 
+import 'models/database/network_credentials.dart';
 import 'models/objectbox/file_tag.dart';
 import 'models/objectbox/user_preference.dart';
 
@@ -109,6 +110,70 @@ final _entities = <obx_int.ModelEntity>[
     relations: <obx_int.ModelRelation>[],
     backlinks: <obx_int.ModelBacklink>[],
   ),
+  obx_int.ModelEntity(
+    id: const obx_int.IdUid(3, 7601612105610997067),
+    name: 'NetworkCredentials',
+    lastPropertyId: const obx_int.IdUid(9, 3066354330843171996),
+    flags: 0,
+    properties: <obx_int.ModelProperty>[
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(1, 3583246625690998622),
+        name: 'id',
+        type: 6,
+        flags: 1,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(2, 5534440979501677115),
+        name: 'serviceType',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(3, 4894066231335562941),
+        name: 'host',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(4, 1512355342509337407),
+        name: 'username',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(5, 6181782070738729868),
+        name: 'password',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(6, 4510501619612566042),
+        name: 'port',
+        type: 6,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(7, 2596249702761254653),
+        name: 'domain',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(8, 5410606016458189550),
+        name: 'additionalOptions',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(9, 3066354330843171996),
+        name: 'lastConnected',
+        type: 10,
+        flags: 0,
+      ),
+    ],
+    relations: <obx_int.ModelRelation>[],
+    backlinks: <obx_int.ModelBacklink>[],
+  ),
 ];
 
 /// Shortcut for [obx.Store.new] that passes [getObjectBoxModel] and for Flutter
@@ -149,7 +214,7 @@ Future<obx.Store> openStore({
 obx_int.ModelDefinition getObjectBoxModel() {
   final model = obx_int.ModelInfo(
     entities: _entities,
-    lastEntityId: const obx_int.IdUid(2, 802553438266831037),
+    lastEntityId: const obx_int.IdUid(3, 7601612105610997067),
     lastIndexId: const obx_int.IdUid(3, 2690286472131489868),
     lastRelationId: const obx_int.IdUid(0, 0),
     lastSequenceId: const obx_int.IdUid(0, 0),
@@ -205,10 +270,9 @@ obx_int.ModelDefinition getObjectBoxModel() {
         object.id = id;
       },
       objectToFB: (UserPreference object, fb.Builder fbb) {
-        final stringValueOffset =
-            object.stringValue == null
-                ? null
-                : fbb.writeString(object.stringValue!);
+        final stringValueOffset = object.stringValue == null
+            ? null
+            : fbb.writeString(object.stringValue!);
         final keyOffset = fbb.writeString(object.key);
         fbb.startTable(10);
         fbb.addInt64(0, object.id);
@@ -278,6 +342,81 @@ obx_int.ModelDefinition getObjectBoxModel() {
         return object;
       },
     ),
+    NetworkCredentials: obx_int.EntityDefinition<NetworkCredentials>(
+      model: _entities[2],
+      toOneRelations: (NetworkCredentials object) => [],
+      toManyRelations: (NetworkCredentials object) => {},
+      getId: (NetworkCredentials object) => object.id,
+      setId: (NetworkCredentials object, int id) {
+        object.id = id;
+      },
+      objectToFB: (NetworkCredentials object, fb.Builder fbb) {
+        final serviceTypeOffset = fbb.writeString(object.serviceType);
+        final hostOffset = fbb.writeString(object.host);
+        final usernameOffset = fbb.writeString(object.username);
+        final passwordOffset = fbb.writeString(object.password);
+        final domainOffset = object.domain == null
+            ? null
+            : fbb.writeString(object.domain!);
+        final additionalOptionsOffset = object.additionalOptions == null
+            ? null
+            : fbb.writeString(object.additionalOptions!);
+        fbb.startTable(10);
+        fbb.addInt64(0, object.id);
+        fbb.addOffset(1, serviceTypeOffset);
+        fbb.addOffset(2, hostOffset);
+        fbb.addOffset(3, usernameOffset);
+        fbb.addOffset(4, passwordOffset);
+        fbb.addInt64(5, object.port);
+        fbb.addOffset(6, domainOffset);
+        fbb.addOffset(7, additionalOptionsOffset);
+        fbb.addInt64(8, object.lastConnected.millisecondsSinceEpoch);
+        fbb.finish(fbb.endTable());
+        return object.id;
+      },
+      objectFromFB: (obx.Store store, ByteData fbData) {
+        final buffer = fb.BufferContext(fbData);
+        final rootOffset = buffer.derefObject(0);
+        final serviceTypeParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 6, '');
+        final hostParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 8, '');
+        final usernameParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 10, '');
+        final passwordParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 12, '');
+        final portParam = const fb.Int64Reader().vTableGetNullable(
+          buffer,
+          rootOffset,
+          14,
+        );
+        final domainParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGetNullable(buffer, rootOffset, 16);
+        final additionalOptionsParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGetNullable(buffer, rootOffset, 18);
+        final lastConnectedParam = DateTime.fromMillisecondsSinceEpoch(
+          const fb.Int64Reader().vTableGet(buffer, rootOffset, 20, 0),
+        );
+        final object = NetworkCredentials(
+          serviceType: serviceTypeParam,
+          host: hostParam,
+          username: usernameParam,
+          password: passwordParam,
+          port: portParam,
+          domain: domainParam,
+          additionalOptions: additionalOptionsParam,
+          lastConnected: lastConnectedParam,
+        )..id = const fb.Int64Reader().vTableGet(buffer, rootOffset, 4, 0);
+
+        return object;
+      },
+    ),
   };
 
   return obx_int.ModelDefinition(model, bindings);
@@ -341,5 +480,53 @@ class UserPreference_ {
   /// See [UserPreference.typeValue].
   static final typeValue = obx.QueryIntegerProperty<UserPreference>(
     _entities[1].properties[7],
+  );
+}
+
+/// [NetworkCredentials] entity fields to define ObjectBox queries.
+class NetworkCredentials_ {
+  /// See [NetworkCredentials.id].
+  static final id = obx.QueryIntegerProperty<NetworkCredentials>(
+    _entities[2].properties[0],
+  );
+
+  /// See [NetworkCredentials.serviceType].
+  static final serviceType = obx.QueryStringProperty<NetworkCredentials>(
+    _entities[2].properties[1],
+  );
+
+  /// See [NetworkCredentials.host].
+  static final host = obx.QueryStringProperty<NetworkCredentials>(
+    _entities[2].properties[2],
+  );
+
+  /// See [NetworkCredentials.username].
+  static final username = obx.QueryStringProperty<NetworkCredentials>(
+    _entities[2].properties[3],
+  );
+
+  /// See [NetworkCredentials.password].
+  static final password = obx.QueryStringProperty<NetworkCredentials>(
+    _entities[2].properties[4],
+  );
+
+  /// See [NetworkCredentials.port].
+  static final port = obx.QueryIntegerProperty<NetworkCredentials>(
+    _entities[2].properties[5],
+  );
+
+  /// See [NetworkCredentials.domain].
+  static final domain = obx.QueryStringProperty<NetworkCredentials>(
+    _entities[2].properties[6],
+  );
+
+  /// See [NetworkCredentials.additionalOptions].
+  static final additionalOptions = obx.QueryStringProperty<NetworkCredentials>(
+    _entities[2].properties[7],
+  );
+
+  /// See [NetworkCredentials.lastConnected].
+  static final lastConnected = obx.QueryDateProperty<NetworkCredentials>(
+    _entities[2].properties[8],
   );
 }

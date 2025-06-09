@@ -482,4 +482,26 @@ class EnglishLocalizations implements AppLocalizations {
   @override
   String get searchShortcutsDesc =>
       'Press Enter to start searching. Use arrow keys to select tags from suggestions.';
+
+  // File operations related to networks
+  @override
+  String get download => 'Download';
+  @override
+  String get downloadFile => 'Download File';
+  @override
+  String get selectDownloadLocation => 'Select location to save the file:';
+  @override
+  String get selectFolder => 'Select folder';
+  @override
+  String get browse => 'Browse...';
+  @override
+  String get upload => 'Upload File';
+  @override
+  String get uploadFile => 'Upload File';
+  @override
+  String get selectFileToUpload => 'Select file to upload:';
+  @override
+  String get create => 'Create';
+  @override
+  String get folderName => 'Folder Name';
 }

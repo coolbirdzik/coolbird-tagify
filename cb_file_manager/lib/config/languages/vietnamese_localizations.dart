@@ -157,9 +157,31 @@ class VietnameseLocalizations implements AppLocalizations {
 
   // Storage locations
   @override
-  String get local => 'Lưu trữ cục bộ';
+  String get local => 'Cục bộ';
   @override
-  String get networks => 'Kết nối mạng';
+  String get networks => 'Mạng';
+
+  // File operations related to networks
+  @override
+  String get download => 'Tải xuống';
+  @override
+  String get downloadFile => 'Tải tệp xuống';
+  @override
+  String get selectDownloadLocation => 'Chọn vị trí lưu tệp:';
+  @override
+  String get selectFolder => 'Chọn thư mục';
+  @override
+  String get browse => 'Duyệt...';
+  @override
+  String get upload => 'Tải lên';
+  @override
+  String get uploadFile => 'Tải tệp lên';
+  @override
+  String get selectFileToUpload => 'Chọn tệp để tải lên:';
+  @override
+  String get create => 'Tạo';
+  @override
+  String get folderName => 'Tên thư mục';
 
   // Additional translations for database settings
   @override

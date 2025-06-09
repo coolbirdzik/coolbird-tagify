@@ -353,6 +353,19 @@ class DatabaseManager implements IDatabaseProvider {
       return false;
     }
   }
+
+  /// Lấy đối tượng Store của ObjectBox để các service khác sử dụng
+  dynamic getStore() {
+    if (!_isInitialized) {
+      throw StateError('DatabaseManager has not been initialized yet');
+    }
+
+    if (_provider is ObjectBoxDatabaseProvider) {
+      return (_provider as ObjectBoxDatabaseProvider).getStore();
+    }
+
+    return null;
+  }
 }
 
 /// Helper class để đảm bảo các hoạt động bất đồng bộ chỉ thực hiện một lần

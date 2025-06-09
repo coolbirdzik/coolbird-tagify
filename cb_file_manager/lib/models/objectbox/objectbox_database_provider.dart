@@ -156,6 +156,11 @@ class ObjectBoxDatabaseProvider implements IDatabaseProvider {
     return _isInitialized;
   }
 
+  /// Trả về đối tượng Store của ObjectBox
+  Store? getStore() {
+    return _store;
+  }
+
   @override
   Future<void> close() async {
     // We don't close the shared store from individual providers

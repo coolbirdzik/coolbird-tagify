@@ -81,9 +81,63 @@
         }
       ],
       "relations": []
+    },
+    {
+      "id": "3:7601612105610997067",
+      "lastPropertyId": "9:3066354330843171996",
+      "name": "NetworkCredentials",
+      "properties": [
+        {
+          "id": "1:3583246625690998622",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:5534440979501677115",
+          "name": "serviceType",
+          "type": 9
+        },
+        {
+          "id": "3:4894066231335562941",
+          "name": "host",
+          "type": 9
+        },
+        {
+          "id": "4:1512355342509337407",
+          "name": "username",
+          "type": 9
+        },
+        {
+          "id": "5:6181782070738729868",
+          "name": "password",
+          "type": 9
+        },
+        {
+          "id": "6:4510501619612566042",
+          "name": "port",
+          "type": 6
+        },
+        {
+          "id": "7:2596249702761254653",
+          "name": "domain",
+          "type": 9
+        },
+        {
+          "id": "8:5410606016458189550",
+          "name": "additionalOptions",
+          "type": 9
+        },
+        {
+          "id": "9:3066354330843171996",
+          "name": "lastConnected",
+          "type": 10
+        }
+      ],
+      "relations": []
     }
   ],
-  "lastEntityId": "2:802553438266831037",
+  "lastEntityId": "3:7601612105610997067",
   "lastIndexId": "3:2690286472131489868",
   "lastRelationId": "0:0",
   "lastSequenceId": "0:0",

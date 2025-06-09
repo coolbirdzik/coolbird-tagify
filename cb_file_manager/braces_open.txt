@@ -1,0 +1,82 @@
+18:class NetworkBrowserScreen extends StatefulWidget {
+23:  const NetworkBrowserScreen({
+34:class _NetworkBrowserScreenState extends State<NetworkBrowserScreen> {
+50:  void initState() {
+54:    WidgetsBinding.instance.addPostFrameCallback((_) {
+55:      if (mounted && !_isLoadingStarted) {
+62:  void didUpdateWidget(NetworkBrowserScreen oldWidget) {
+66:    if (oldWidget.path != widget.path && !_isUpdatingPath) {
+68:          "\n\n=== PATH CHANGED ===\nFrom: ${oldWidget.path}\nTo: ${widget.path}\n");
+77:  void dispose() {
+82:  Future<void> _loadNetworkDirectory() async {
+84:    if (_isLoadingStarted) {
+91:    if (_isUpdatingPath) {
+96:    setState(() {
+104:    if (_registry.isNetworkPath(widget.path)) {
+106:      debugPrint("NetworkBrowserScreen: Loading content from: ${widget.path}");
+110:      if (service == null) {
+111:        setState(() {
+123:    } else {
+124:      setState(() {
+133:  void _manualForceLoad() {
+135:    setState(() {
+143:  Widget build(BuildContext context) {
+145:      listenWhen: (previous, current) {
+151:      buildWhen: (previous, current) {
+159:      listener: (context, state) {
+161:        if (_isLoading && !state.isLoading) {
+162:          setState(() {
+167:              "NetworkBrowserScreen: Loading finished, has directories: ${state.directories?.length ?? 0}, has files: ${state.files?.length ?? 0}");
+171:        if (state.hasError && _errorMessage != state.errorMessage) {
+172:          setState(() {
+189:      builder: (context, state) {
+191:        if (_isLoading || state.isLoading) {
+211:        if (_errorMessage != null) {
+258:        if (state.directories != null && state.files != null) {
+323:  List<Widget> _buildActions() {
+332:        onPressed: () {
+348:        onSelected: (SortOption option) {
+349:          setState(() {
+402:        onSelected: (ViewMode mode) {
+403:          setState(() {
+467:        onPressed: () {
+479:        onSelected: (String action) {
+480:          switch (action) {
+544:  void _applySorting() {
+547:    setState(() {
+558:  List<Directory> _sortDirectories(List<Directory> directories) {
+559:    switch (_sortOption) {
+581:  List<File> _sortFiles(List<File> files) {
+582:    switch (_sortOption) {
+603:  String _getFileExtension(String filePath) {
+606:    if (lastDot == -1 || lastDot == name.length - 1) {
+613:  void _showDownloadDialog(BuildContext context) {
+625:            onPressed: () {
+639:  void _showConnectionProperties(BuildContext context) {
+648:            Text('Path: ${widget.path}'),
+650:            Text('Tab ID: ${widget.tabId}'),
+664:  void _showUploadDialog(BuildContext context) {
+672:  void _showCreateFolderDialog(BuildContext context) {
+690:            onPressed: () {
+692:              if (folderName.isNotEmpty) {
+694:                final newFolderPath = '${widget.path}/$folderName';
+709:  void _refreshDirectory() {
+716:  String _getItemName(String itemPath) {
+721:  IconData _getFileIcon(String filePath) {
+724:    switch (extension) {
+797:  Widget _buildBody(NetworkBrowsingState state) {
+801:    if (directories.isEmpty && files.isEmpty) {
+809:      itemBuilder: (context, index) {
+810:        if (index < directories.length) {
+820:        } else {
+837:  void _handlePathSubmit(String newPath) {
+838:    if (newPath != widget.path) {
+844:  void _navigateToDirectory(String path) {
+846:    if (_isUpdatingPath) {
+856:    Future.microtask(() {
+862:  void _openNetworkFile(File file) async {
+865:      SnackBar(content: Text('Opening ${_getItemName(file.path)}')),
+870:  void _manualForceLoad() {
+878:Future<String> getTemporaryDirectory() async {
+885:class TabNavigator {
+886:  static void updateTabPath(BuildContext context, String tabId, String path) {

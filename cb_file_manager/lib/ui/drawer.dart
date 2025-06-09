@@ -186,12 +186,30 @@ class _CBDrawerState extends State<CBDrawer> {
                           if (!widget.isPinned) {
                             Navigator.pop(context);
                           }
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content:
-                                  Text('Network functionality coming soon'),
-                            ),
+
+                          // Open network browsing in a new tab
+                          final tabBloc =
+                              BlocProvider.of<TabManagerBloc>(context);
+
+                          // Check if a network tab already exists
+                          final existingTab = tabBloc.state.tabs.firstWhere(
+                            (tab) => tab.path == '#network',
+                            orElse: () => TabData(id: '', name: '', path: ''),
                           );
+
+                          if (existingTab.id.isNotEmpty) {
+                            // If tab exists, switch to it
+                            tabBloc.add(SwitchToTab(existingTab.id));
+                          } else {
+                            // Otherwise, create a new tab
+                            tabBloc.add(
+                              AddTab(
+                                path: '#network',
+                                name: 'Network',
+                                switchToTab: true,
+                              ),
+                            );
+                          }
                         },
                       ),
 
@@ -781,494 +799,61 @@ class _CBDrawerState extends State<CBDrawer> {
     // Default icon
     return EvaIcons.folderOutline;
   }
-}
 
-/// A simplified app drawer for the main UI
-class AppDrawer extends StatefulWidget {
-  // Add parameters for pinned state like in CBDrawer
-  final bool isPinned;
-  final Function(bool) onPinStateChanged;
-
-  const AppDrawer({
-    Key? key,
-    required this.isPinned,
-    required this.onPinStateChanged,
-  }) : super(key: key);
-
-  @override
-  State<AppDrawer> createState() => _AppDrawerState();
-}
-
-class _AppDrawerState extends State<AppDrawer> {
-  bool _isStorageExpanded = false;
-  List<Directory> _storageLocations = [];
-  bool _isLoadingStorages = false;
-
-  @override
-  void initState() {
-    super.initState();
-    // Load all storage locations when initialized
-    _loadStorageLocations();
-  }
-
-  Future<void> _loadStorageLocations() async {
-    setState(() {
-      _isLoadingStorages = true;
-    });
-
-    try {
-      final locations = await getAllStorageLocations();
-      setState(() {
-        _storageLocations = locations;
-        _isLoadingStorages = false;
-      });
-    } catch (e) {
-      setState(() {
-        _isLoadingStorages = false;
-      });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error loading storage locations: $e'),
-          ),
-        );
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    // Check if the screen is small (width < 600)
-    final bool isSmallScreen = MediaQuery.of(context).size.width < 600;
-    final ThemeData theme = Theme.of(context);
-
-    return Drawer(
-      elevation: 0,
-      backgroundColor: theme.scaffoldBackgroundColor
-          .withOpacity(0.85), // Make background semi-transparent
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.only(
-          topRight: Radius.circular(16),
-          bottomRight: Radius.circular(16),
-        ),
-      ),
-      child: ClipRRect(
-        // Clip the blur effect to the drawer's shape
-        borderRadius: const BorderRadius.only(
-          topRight: Radius.circular(16),
-          bottomRight: Radius.circular(16),
-        ),
-        child: Stack(
+  void _showNetworkConnectionsDialog(BuildContext context) {
+    // Show a dialog with network connection options
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Network Connections'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            // BackdropFilter for blur effect
-            BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 5.0, sigmaY: 5.0),
-              child: Container(
-                color: Colors
-                    .transparent, // Important: child of BackdropFilter should be transparent
-              ),
+            ListTile(
+              leading: const Icon(EvaIcons.monitor, color: Colors.blue),
+              title: const Text('SMB Network'),
+              subtitle: const Text('Browse Windows/Samba shares'),
+              onTap: () {
+                Navigator.pop(context); // Close dialog
+                _openNetworkTab(context, '#smb', 'SMB Network');
+              },
             ),
-            // Original drawer content
-            Column(
-              children: [
-                // Modern drawer header with gradient
-                Container(
-                  padding: const EdgeInsets.fromLTRB(20, 48, 16, 16),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        AppTheme.primaryBlue,
-                        AppTheme.darkBlue,
-                      ],
-                    ),
-                    borderRadius: const BorderRadius.only(
-                      bottomRight: Radius.circular(24),
-                    ),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          // Logo with shadow effect
-                          Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.15),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Image.asset(
-                              'assets/images/logo.png',
-                              height: 32,
-                              width: 32,
-                            ),
-                          ),
-
-                          Expanded(
-                            child: Padding(
-                              padding: const EdgeInsets.only(left: 12),
-                              child: Text(
-                                context.tr.appTitle,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ),
-
-                          // Pin button (hidden on small screens)
-                          if (!isSmallScreen)
-                            IconButton(
-                              icon: Icon(
-                                widget.isPinned
-                                    ? EvaIcons.pin
-                                    : EvaIcons.pinOutline,
-                                color: Colors.white,
-                                size: 20,
-                              ),
-                              tooltip:
-                                  widget.isPinned ? 'Unpin menu' : 'Pin menu',
-                              onPressed: () {
-                                widget.onPinStateChanged(!widget.isPinned);
-                              },
-                            ),
-                        ],
-                      ),
-
-                      const SizedBox(height: 12),
-
-                      // Subtitle
-                      Text(
-                        'File Management Made Simple',
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(0.9),
-                          fontSize: 14,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                // Scrollable menu items
-                Expanded(
-                  child: ListView(
-                    padding:
-                        const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-                    children: [
-                      // Storage section with expansion
-                      _buildExpansionTile(
-                        context,
-                        icon: EvaIcons.hardDriveOutline,
-                        title: 'Storage',
-                      ),
-
-                      const SizedBox(height: 8),
-
-                      // Home
-                      _buildListTile(
-                        context,
-                        icon: EvaIcons.homeOutline,
-                        title: context.tr.home,
-                        onTap: () {
-                          Navigator.pop(context);
-                          RouteUtils.safeNavigate(
-                              context, const TabMainScreen());
-                        },
-                      ),
-
-                      // Tags section
-                      _buildListTile(
-                        context,
-                        icon: EvaIcons.pricetags,
-                        title: context.tr.tags,
-                        onTap: () {
-                          Navigator.pop(context);
-                          _openTagsTab(context);
-                        },
-                      ),
-
-                      _buildListTile(
-                        context,
-                        icon: EvaIcons.wifi,
-                        title: 'Networks',
-                        onTap: () {
-                          Navigator.pop(context);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content:
-                                  Text('Network functionality coming soon'),
-                            ),
-                          );
-                        },
-                      ),
-
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        child: Divider(
-                          height: 1,
-                          thickness: 1,
-                          color: theme.dividerTheme.color,
-                        ),
-                      ),
-
-                      // Settings and info section
-                      _buildListTile(
-                        context,
-                        icon: EvaIcons.settings2Outline,
-                        title: context.tr.settings,
-                        onTap: () {
-                          Navigator.pop(context);
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const SettingsScreen(),
-                            ),
-                          );
-                        },
-                      ),
-
-                      _buildListTile(
-                        context,
-                        icon: EvaIcons.infoOutline,
-                        title: 'About',
-                        onTap: () {
-                          Navigator.pop(context);
-                          _showAboutDialog(context);
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-
-                // Footer with app info
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Version 1.0.0',
-                        style: TextStyle(
-                          color: theme.textTheme.bodySmall?.color
-                              ?.withOpacity(0.7),
-                          fontSize: 12,
-                        ),
-                      ),
-                      Text(
-                        '© CoolBird',
-                        style: TextStyle(
-                          color: theme.textTheme.bodySmall?.color
-                              ?.withOpacity(0.7),
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+            ListTile(
+              leading: const Icon(EvaIcons.cloudUpload, color: Colors.blue),
+              title: const Text('FTP Connections'),
+              subtitle: const Text('Connect to FTP servers'),
+              onTap: () {
+                Navigator.pop(context); // Close dialog
+                _openNetworkTab(context, '#ftp', 'FTP Connections');
+              },
+            ),
+            ListTile(
+              leading: const Icon(EvaIcons.globe, color: Colors.blue),
+              title: const Text('All Network Connections'),
+              subtitle: const Text('View all connection types'),
+              onTap: () {
+                Navigator.pop(context); // Close dialog
+                _openNetworkTab(context, '#network', 'Network');
+              },
             ),
           ],
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('CANCEL'),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildListTile(
-    BuildContext context, {
-    required IconData icon,
-    required String title,
-    required VoidCallback onTap,
-  }) {
-    final ThemeData theme = Theme.of(context);
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      child: ListTile(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        leading: Icon(
-          icon,
-          size: 22,
-          color: theme.colorScheme.primary,
-        ),
-        title: Text(
-          title,
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w500,
-            color: theme.textTheme.titleMedium?.color,
-          ),
-        ),
-        onTap: onTap,
-      ),
-    );
-  }
-
-  Widget _buildExpansionTile(
-    BuildContext context, {
-    required IconData icon,
-    required String title,
-  }) {
-    final ThemeData theme = Theme.of(context);
-
-    return Theme(
-      data: Theme.of(context).copyWith(
-        dividerColor: Colors.transparent,
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: Material(
-          color: _isStorageExpanded
-              ? theme.colorScheme.surface
-                  .withOpacity(0.7) // Make expanded background semi-transparent
-              : Colors.transparent,
-          child: ExpansionTile(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            leading: Icon(
-              icon,
-              size: 22,
-              color: theme.colorScheme.primary,
-            ),
-            title: Text(
-              title,
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w500,
-                color: theme.textTheme.titleMedium?.color,
-              ),
-            ),
-            collapsedBackgroundColor: Colors.transparent,
-            backgroundColor: theme.colorScheme.surface
-                .withOpacity(0.7), // Make expanded background semi-transparent
-            childrenPadding: const EdgeInsets.only(bottom: 8),
-            initiallyExpanded: _isStorageExpanded,
-            onExpansionChanged: (isExpanded) {
-              setState(() {
-                _isStorageExpanded = isExpanded;
-              });
-            },
-            children: [
-              ..._buildStorageItems(),
-
-              // Add Trash Bin item
-              _buildStorageSubItem(
-                context,
-                icon: EvaIcons.trash2Outline,
-                title: 'Trash Bin',
-                iconColor: Colors.red[400],
-                onTap: () {
-                  // Only pop the Navigator when drawer is not pinned
-                  if (!widget.isPinned) {
-                    Navigator.pop(context);
-                  }
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const TrashBinScreen(),
-                    ),
-                  );
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStorageSubItem(
-    BuildContext context, {
-    required IconData icon,
-    required String title,
-    Color? iconColor,
-    required VoidCallback onTap,
-  }) {
-    final theme = Theme.of(context);
-
-    return ListTile(
-      contentPadding: const EdgeInsets.only(left: 56, right: 16),
-      dense: true,
-      leading: Icon(
-        icon,
-        size: 20,
-        color: iconColor ?? theme.colorScheme.primary.withOpacity(0.8),
-      ),
-      title: Text(
-        title,
-        style: TextStyle(
-          fontSize: 15,
-          fontWeight: FontWeight.w500,
-        ),
-      ),
-      onTap: onTap,
-    );
-  }
-
-  List<Widget> _buildStorageItems() {
-    if (_isLoadingStorages) {
-      return [
-        const Padding(
-          padding: EdgeInsets.symmetric(vertical: 12),
-          child: Center(
-            child: SizedBox(
-              height: 24,
-              width: 24,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
-          ),
-        ),
-      ];
-    }
-
-    if (_storageLocations.isEmpty) {
-      return [
-        ListTile(
-          contentPadding: const EdgeInsets.only(left: 56, right: 16),
-          title: const Text('No storage locations found'),
-          trailing: IconButton(
-            icon: const Icon(EvaIcons.refresh),
-            onPressed: _loadStorageLocations,
-          ),
-        ),
-      ];
-    }
-
-    return _storageLocations.map((storage) {
-      // Get the storage display name
-      String displayName = _getStorageDisplayName(storage);
-      // Get the appropriate icon for this storage
-      IconData icon = _getStorageIcon(storage);
-
-      return _buildStorageSubItem(
-        context,
-        icon: icon,
-        title: displayName,
-        onTap: () {
-          // Only pop the Navigator when drawer is not pinned
-          if (!widget.isPinned) {
-            Navigator.pop(context);
-          }
-          _openFolder(storage.path);
-        },
-      );
-    }).toList();
-  }
-
-  void _openTagsTab(BuildContext context) {
+  void _openNetworkTab(BuildContext context, String path, String name) {
     final tabBloc = BlocProvider.of<TabManagerBloc>(context);
 
-    // Check if a tags tab already exists
+    // Check if a tab with this path already exists
     final existingTab = tabBloc.state.tabs.firstWhere(
-      (tab) => tab.path == '#tags',
+      (tab) => tab.path == path,
       orElse: () => TabData(id: '', name: '', path: ''),
     );
 
@@ -1279,130 +864,11 @@ class _AppDrawerState extends State<AppDrawer> {
       // Otherwise, create a new tab
       tabBloc.add(
         AddTab(
-          path: '#tags',
-          name: 'Tags',
+          path: path,
+          name: name,
           switchToTab: true,
         ),
       );
     }
-  }
-
-  void _openFolder(String path) {
-    final tabBloc = BlocProvider.of<TabManagerBloc>(context);
-    final activeTab = tabBloc.state.activeTab;
-
-    if (activeTab != null) {
-      // Add path to navigation history first
-      tabBloc.add(AddToTabHistory(activeTab.id, path));
-      // Update the tab path
-      tabBloc.add(UpdateTabPath(activeTab.id, path));
-      // Update tab name to reflect the new folder
-      List<String> parts = path.split(Platform.pathSeparator);
-      String name =
-          parts.lastWhere((part) => part.isNotEmpty, orElse: () => 'Root');
-      if (name.isEmpty) name = 'Root';
-      tabBloc.add(UpdateTabName(activeTab.id, name));
-    } else {
-      // If no active tab, create a new one
-      String name = path.split(Platform.pathSeparator).last;
-      if (name.isEmpty) name = 'Root';
-      tabBloc.add(AddTab(path: path, name: name));
-    }
-  }
-
-  void _showAboutDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(context.tr.appTitle),
-        content: const Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('A powerful file manager with tagging capabilities.'),
-            SizedBox(height: 16),
-            Text('Version: 1.0.0'),
-            SizedBox(height: 8),
-            Text('Developed by CoolBird Team'),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: Text('Close'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // Helper method to get a display name for a storage location
-  String _getStorageDisplayName(Directory storage) {
-    String path = storage.path;
-
-    // For Windows drives
-    if (Platform.isWindows && path.contains(':')) {
-      String driveLetter = path.split(r'\')[0];
-      return '$driveLetter (Drive)';
-    }
-
-    // For Android/Linux paths
-    if (path == '/') {
-      return 'Root (/)';
-    }
-
-    if (path == '/storage/emulated/0') {
-      return 'Internal Storage';
-    }
-
-    if (path == '/sdcard') {
-      return 'Internal Storage';
-    }
-
-    if (path.startsWith('/storage/') && path != '/storage') {
-      String sdName = path.substring('/storage/'.length);
-      if (sdName != 'emulated' && !sdName.startsWith('emulated/')) {
-        return 'SD Card ($sdName)';
-      } else if (sdName.startsWith('emulated/') &&
-          !sdName.startsWith('emulated/0')) {
-        String emulatedId = sdName.substring('emulated/'.length);
-        return 'Secondary Storage ($emulatedId)';
-      }
-    }
-
-    // Default - show the last part of the path
-    List<String> parts = path.split(Platform.pathSeparator);
-    String lastPart =
-        parts.lastWhere((part) => part.isNotEmpty, orElse: () => path);
-    return lastPart.isEmpty ? path : lastPart;
-  }
-
-  // Helper method to get an appropriate icon for a storage location
-  IconData _getStorageIcon(Directory storage) {
-    String path = storage.path;
-
-    // Icons for different storage types
-    if (Platform.isWindows && path.contains(':')) {
-      if (path.startsWith('C:')) {
-        return EvaIcons.monitor;
-      }
-      return EvaIcons.hardDriveOutline;
-    }
-
-    // Android/Linux paths
-    if (path == '/') {
-      return EvaIcons.shieldOutline;
-    }
-
-    if (path == '/storage/emulated/0' || path == '/sdcard') {
-      return EvaIcons.smartphone;
-    }
-
-    if (path.startsWith('/storage/')) {
-      return EvaIcons.saveOutline;
-    }
-
-    // Default icon
-    return EvaIcons.folderOutline;
   }
 }

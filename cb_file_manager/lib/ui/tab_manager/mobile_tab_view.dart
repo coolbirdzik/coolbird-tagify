@@ -7,6 +7,10 @@ import 'tab_manager.dart';
 import 'tab_data.dart';
 import '../screens/settings/settings_screen.dart';
 import 'tabbed_folder_list_screen.dart';
+import '../screens/network_browsing/network_connection_screen.dart';
+import '../screens/network_browsing/network_browser_screen.dart';
+import '../screens/network_browsing/smb_browser_screen.dart'; // Added import for SMBBrowserScreen
+import '../../bloc/network_browsing/network_browsing_bloc.dart';
 
 /// Giao diện kiểu Chrome cho thiết bị di động, hiển thị thanh địa chỉ ở trên
 /// và một nút hiển thị số lượng tab bên cạnh
@@ -53,7 +57,7 @@ class MobileTabView extends StatelessWidget {
                 Expanded(
                   child: state.tabs.isEmpty
                       ? _buildEmptyTabsView(context)
-                      : _buildTabContent(state),
+                      : _buildTabContent(context, state),
                 ),
               ],
             ),
@@ -654,25 +658,71 @@ class MobileTabView extends StatelessWidget {
     );
   }
 
-  Widget _buildTabContent(TabManagerState state) {
+  Widget _buildTabContent(BuildContext context, TabManagerState state) {
     final activeTab = state.activeTab;
     if (activeTab == null) return Container();
 
-    return Container(
-      key: ValueKey(activeTab.id), // Đảm bảo rebuild khi tab thay đổi
-      child: Navigator(
-        key: activeTab.navigatorKey,
-        onGenerateRoute: (settings) {
-          return MaterialPageRoute(
-            settings: settings,
-            builder: (context) => TabContentScreen(
-              path: activeTab.path,
-              tabId: activeTab.id,
-            ),
-          );
-        },
-      ),
-    );
+    if (activeTab.path == '#network') {
+      // Path for displaying connection manager
+      return BlocProvider<NetworkBrowsingBloc>.value(
+        key: ValueKey('${activeTab.id}_network_connection_screen'),
+        value: context.read<NetworkBrowsingBloc>(),
+        child: const NetworkConnectionScreen(),
+      );
+    } else if (activeTab.path == '#smb') {
+      // Path for the dedicated SMB Browser Screen (discovery and connection management)
+      return BlocProvider<NetworkBrowsingBloc>.value(
+        key: ValueKey('${activeTab.id}_smb_browser_screen'),
+        value: context.read<
+            NetworkBrowsingBloc>(), // Use the shared BLoC from TabMainScreen
+        child: SMBBrowserScreen(
+          tabId: activeTab.id,
+          // SMBBrowserScreen uses SystemScreen which handles its own AppBar
+        ),
+      );
+    } else if (activeTab.path.startsWith('#network/')) {
+      // Path for browsing a specific network location (e.g., #network/service_id/actual_path)
+      // This will be used by NetworkBrowserScreen for SMB, FTP, WebDAV browsing after connection.
+      if (activeTab.path.length <= '#network/'.length ||
+          activeTab.path == '#network/') {
+        return BlocProvider<NetworkBrowsingBloc>.value(
+          key: ValueKey(
+              '${activeTab.id}_network_connection_fallback_incomplete_path'),
+          value: context.read<NetworkBrowsingBloc>(),
+          child: const NetworkConnectionScreen(),
+        );
+      }
+
+      return BlocProvider<NetworkBrowsingBloc>.value(
+        key: ValueKey(
+            '${activeTab.id}_network_browser_screen_${activeTab.path}'),
+        value: context.read<NetworkBrowsingBloc>(),
+        child: NetworkBrowserScreen(
+          path: activeTab.path,
+          tabId: activeTab.id,
+          showAppBar: false,
+        ),
+      );
+    } else {
+      // Local file system path
+      return Container(
+        key: ValueKey(
+            '${activeTab.id}_local_content_${activeTab.path}'), // Key includes path for local content
+        child: Navigator(
+          key: activeTab
+              .navigatorKey, // This key should be stable for the tab's Navigator
+          onGenerateRoute: (settings) {
+            return MaterialPageRoute(
+              settings: settings,
+              builder: (context) => TabContentScreen(
+                path: activeTab.path,
+                tabId: activeTab.id,
+              ),
+            );
+          },
+        ),
+      );
+    }
   }
 
   /// Hiển thị dialog cho phép người dùng thay đổi đường dẫn

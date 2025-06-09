@@ -1,0 +1,82 @@
+28:  }) : super(key: key);
+32:}
+57:      }
+58:    });
+59:  }
+68:          "\n\n=== PATH CHANGED ===\nFrom: ${oldWidget.path}\nTo: ${widget.path}\n");
+73:    }
+74:  }
+80:  }
+88:    }
+94:    }
+99:    });
+106:      debugPrint("NetworkBrowserScreen: Loading content from: ${widget.path}");
+114:        });
+117:      }
+123:    } else {
+127:      });
+129:    }
+130:  }
+138:    });
+140:  }
+150:      },
+158:      },
+165:          });
+167:              "NetworkBrowserScreen: Loading finished, has directories: ${state.directories?.length ?? 0}, has files: ${state.files?.length ?? 0}");
+168:        }
+176:          });
+187:        }
+188:      },
+208:        }
+255:        }
+288:        }
+319:      },
+321:  }
+337:        },
+351:          });
+354:        },
+405:          });
+406:        },
+469:        },
+493:          }
+494:        },
+541:  }
+549:    });
+555:  }
+577:    }
+578:  }
+600:    }
+601:  }
+608:    }
+610:  }
+630:            },
+636:  }
+648:            Text('Path: ${widget.path}'),
+650:            Text('Tab ID: ${widget.tabId}'),
+663:  }
+670:  }
+694:                final newFolderPath = '${widget.path}/$folderName';
+700:              }
+702:            },
+708:  }
+713:  }
+718:  }
+793:    }
+794:  }
+805:    }
+820:        } else {
+831:        }
+832:      },
+834:  }
+840:    }
+841:  }
+848:    }
+858:    });
+859:  }
+865:      SnackBar(content: Text('Opening ${_getItemName(file.path)}')),
+867:  }
+874:  }
+875:}
+881:}
+889:  }
+890:}
