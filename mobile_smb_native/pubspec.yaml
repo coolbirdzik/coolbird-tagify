@@ -1,0 +1,46 @@
+name: mobile_smb_native
+description: A high-performance Flutter plugin for SMB/CIFS file operations using libsmb2 and Dart FFI.
+version: 2.1.0
+homepage: https://github.com/coolbird/mobile_smb_native
+
+environment:
+  sdk: '>=3.1.0 <4.0.0'
+  flutter: ">=3.3.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  plugin_platform_interface: ^2.0.2
+  ffi: ^2.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^2.0.0
+
+# For information on the generic Dart part of this file, see the
+# following page: https://dart.dev/tools/pub/pubspec
+
+# The following section is specific to Flutter packages.
+flutter:
+  # This section identifies this Flutter project as a plugin project.
+  # The 'pluginClass' specifies the class (in Java, Kotlin, Swift, Objective-C, etc.)
+  # which should be registered in the plugin registry. This is required for
+  # using method channels.
+  # The Android package name to use when the 'package' entry in
+  # android/src/main/AndroidManifest.xml is not specified. Defaults to the package name
+  # from the pubspec.yaml
+  plugin:
+    platforms:
+      windows:
+        pluginClass: MobileSmbNativePluginCApi
+      linux:
+        pluginClass: MobileSmbNativePlugin
+      macos:
+        pluginClass: MobileSmbNativePlugin
+      # Mobile support with stub implementation
+      android:
+        package: com.coolbird.mobile_smb_native
+        pluginClass: MobileSmbNativePlugin
+      ios:
+        pluginClass: MobileSmbNativePlugin
