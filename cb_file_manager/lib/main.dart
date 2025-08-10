@@ -16,6 +16,7 @@ import 'helpers/folder_thumbnail_service.dart'; // Import thumbnail service
 import 'helpers/video_thumbnail_helper.dart'; // Import our video thumbnail helper
 import 'helpers/frame_timing_optimizer.dart'; // Import our new frame timing optimizer
 import 'helpers/batch_tag_manager.dart'; // Import batch tag manager
+import 'services/video_player_optimizer.dart'; // Import video player optimizer
 import 'models/database/database_manager.dart'; // Import database manager
 import 'models/database/network_credentials.dart'; // Import network credentials model
 import 'services/network_credentials_service.dart'; // Import network credentials service
@@ -23,6 +24,7 @@ import 'config/app_theme.dart'; // Import global theme configuration
 import 'package:flutter_localizations/flutter_localizations.dart'; // Import for localization
 import 'config/language_controller.dart'; // Import our language controller
 import 'config/languages/app_localizations_delegate.dart'; // Import our localization delegate
+import 'services/streaming_service_manager.dart'; // Import streaming service manager
 
 // Global access to test the video thumbnail screen (for development)
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
@@ -57,7 +59,6 @@ void main() async {
     // Add a frame callback to help with frame pacing
     SchedulerBinding.instance.addPostFrameCallback((_) {
       FrameTimingOptimizer().optimizeImageRendering();
-      SchedulerBinding.instance.scheduleFrame();
     });
 
     // Tối ưu ImageCache để quản lý bộ nhớ tốt hơn khi scroll
@@ -69,11 +70,18 @@ void main() async {
     // Initialize Media Kit with proper audio configuration
     MediaKit.ensureInitialized();
 
+    // Initialize video player optimizer for better SMB streaming performance
+    final videoOptimizer = VideoPlayerOptimizer();
+    await videoOptimizer.initialize();
+
     // Initialize our audio helper to ensure sound works
     if (Platform.isWindows) {
       debugPrint('Setting up Windows-specific audio configuration');
       await MediaKitAudioHelper.initialize();
     }
+
+    // Initialize streaming service manager
+    await StreamingServiceManager.initialize();
 
     // Initialize window_manager if on desktop platform
     if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
@@ -130,9 +138,10 @@ void main() async {
       } else {
         debugPrint('Database manager already initialized');
       }
-
-      // Khởi tạo NetworkCredentialsService
-      await NetworkCredentialsService().init(dbManager.getStore()!);
+      final store = dbManager.getStore();
+      if (store != null) {
+        await NetworkCredentialsService().init(store);
+      }
 
       // Khởi tạo các hệ thống phụ thuộc khác
       await BatchTagManager.initialize();
@@ -159,6 +168,8 @@ void main() async {
 
     // Initialize language controller
     await LanguageController().initialize();
+
+    // Streaming functionality is now handled directly by StreamingHelper with network services
 
     runApp(const CBFileApp());
   }, (error, stackTrace) {

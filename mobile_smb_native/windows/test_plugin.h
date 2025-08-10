@@ -6,26 +6,28 @@
 
 #include <memory>
 
-namespace test_plugin {
+namespace test_plugin
+{
 
-class TestPlugin : public flutter::Plugin {
- public:
-  static void RegisterWithRegistrar(flutter::PluginRegistrarWindows *registrar);
+    class TestPlugin : public flutter::Plugin
+    {
+    public:
+        static void RegisterWithRegistrar(flutter::PluginRegistrarWindows *registrar);
 
-  TestPlugin();
+        TestPlugin();
 
-  virtual ~TestPlugin();
+        virtual ~TestPlugin();
 
-  // Disallow copy and assign.
-  TestPlugin(const TestPlugin&) = delete;
-  TestPlugin& operator=(const TestPlugin&) = delete;
+        // Disallow copy and assign.
+        TestPlugin(const TestPlugin &) = delete;
+        TestPlugin &operator=(const TestPlugin &) = delete;
 
-  // Called when a method is called on this plugin's channel from Dart.
-  void HandleMethodCall(
-      const flutter::MethodCall<flutter::EncodableValue> &method_call,
-      std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result);
-};
+        // Called when a method is called on this plugin's channel from Dart.
+        void HandleMethodCall(
+            const flutter::MethodCall<flutter::EncodableValue> &method_call,
+            std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result);
+    };
 
-}  // namespace test_plugin
+} // namespace test_plugin
 
-#endif  // FLUTTER_PLUGIN_TEST_PLUGIN_H_
+#endif // FLUTTER_PLUGIN_TEST_PLUGIN_H_

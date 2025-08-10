@@ -58,7 +58,7 @@ class ExternalAppHelper {
       }
       return false;
     } catch (e) {
-      debugPrint('Error opening file with app: $e');
+      // debugPrint('Error opening file with app: $e');
       return false;
     }
   }
@@ -83,7 +83,7 @@ class ExternalAppHelper {
         );
       }).toList();
     } catch (e) {
-      debugPrint('Error getting Android apps: $e');
+      // debugPrint('Error getting Android apps: $e');
       return [];
     }
   }
@@ -213,7 +213,7 @@ class ExternalAppHelper {
 
       return apps;
     } catch (e) {
-      debugPrint('Error getting Windows apps: $e');
+      // debugPrint('Error getting Windows apps: $e');
       return [];
     }
   }
@@ -242,7 +242,7 @@ class ExternalAppHelper {
       ui.Image? nativeIcon = await WindowsAppIcon.extractIconFromFile(execPath);
 
       if (nativeIcon != null) {
-        // Create image widget using the native icon
+        // debugPrint('Error getting Windows app icon: $e');
         final Widget iconWidget = RawImage(
           image: nativeIcon,
           width: 36,
@@ -254,7 +254,7 @@ class ExternalAppHelper {
         return iconWidget;
       }
     } catch (e) {
-      debugPrint('Error getting Windows app icon: $e');
+      // ...existing code...
     }
 
     // Fallback to using appropriate built-in icons based on app name
@@ -318,7 +318,7 @@ class ExternalAppHelper {
 
       return result ?? false;
     } catch (e) {
-      debugPrint('Error opening file with system chooser: $e');
+      // ...existing code...
       return false;
     }
   }

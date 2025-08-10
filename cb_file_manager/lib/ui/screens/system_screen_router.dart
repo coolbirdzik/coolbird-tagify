@@ -79,10 +79,8 @@ class SystemScreenRouter {
       if (_cachedWidgets.containsKey(cacheKey)) {
         // Only log once to avoid spamming
         if (!_loggedKeys.contains(cacheKey)) {
-          debugPrint(
-              'Using cached tag search widget for path: $path in tab: $tabId');
-          _loggedKeys.add(cacheKey);
-        }
+            _loggedKeys.add(cacheKey);
+          }
         return _cachedWidgets[cacheKey]!;
       }
 
@@ -99,8 +97,7 @@ class SystemScreenRouter {
         TagManager.clearCache();
 
         // Log once for initialization
-        debugPrint(
-            'SystemScreenRouter: Initializing global tag search for: "$tag"');
+        _loggedKeys.add(cacheKey);
 
         // Create a unique bloc for this search
         return BlocProvider(
@@ -125,29 +122,25 @@ class SystemScreenRouter {
 
     // Handle network paths that might follow special format #network/TYPE/HOST/...
     if (path.startsWith('#network/')) {
-      debugPrint("SystemScreenRouter: Treating path as a network path: $path");
+      _loggedKeys.add(cacheKey);
       return _handleNetworkPath(context, path, tabId);
     }
 
     // Fallback for unknown system paths
-    return _buildErrorWidget(context, 'Unknown system path: $path');
+    return _buildErrorWidget(context, 'Unknown system path: $path', cacheKey: cacheKey);
   }
 
   /// Handles network paths (smb://, ftp://, etc.)
   static Widget _handleNetworkPath(
       BuildContext context, String path, String tabId) {
+    // Create a cache key from the tab ID and path
+    final String cacheKey = '$tabId:$path';
     try {
-      debugPrint("SystemScreenRouter: Đang xử lý đường dẫn mạng: $path");
-
-      // Create a cache key from the tab ID and path
-      final String cacheKey = '$tabId:$path';
 
       // Check if we already have a cached widget for this network path
       if (_cachedWidgets.containsKey(cacheKey)) {
         // Only log once to avoid spamming
         if (!_loggedKeys.contains(cacheKey)) {
-          debugPrint(
-              'Using cached network widget for path: $path in tab: $tabId');
           _loggedKeys.add(cacheKey);
         }
         return _cachedWidgets[cacheKey]!;
@@ -166,7 +159,6 @@ class SystemScreenRouter {
         final parts = path.substring('#network/'.length).split('/');
         if (parts.isNotEmpty) {
           serviceType = parts[0];
-          debugPrint("SystemScreenRouter: Đây là loại dịch vụ: $serviceType");
 
           // Add special handling for FTP paths without connection
           if (serviceType.toUpperCase() == "FTP" &&
@@ -213,13 +205,10 @@ class SystemScreenRouter {
         }
       } else if (path.contains('://')) {
         serviceType = path.split('://')[0].toUpperCase();
-        debugPrint("SystemScreenRouter: Phát hiện protocol: $serviceType");
       }
 
       // Create a TabbedFolderListScreen with network folder browsing capability
       // This will make it look and behave like a regular folder, but with network paths
-      debugPrint(
-          "SystemScreenRouter: Đang tạo NetworkBrowserScreen cho path: $path");
 
       Widget networkBrowserWidget = NetworkBrowserScreen(
         key: ValueKey(cacheKey), // Use cache key as widget key for stability
@@ -233,9 +222,9 @@ class SystemScreenRouter {
 
       return networkBrowserWidget;
     } catch (e) {
-      debugPrint('Error handling network path: $e');
+      _loggedKeys.add(cacheKey);
       // Fallback for navigation errors
-      return _buildErrorWidget(context, 'Không thể mở đường dẫn mạng: $path');
+      return _buildErrorWidget(context, 'Không thể mở đường dẫn mạng: $path', cacheKey: cacheKey);
     }
   }
 
@@ -254,7 +243,7 @@ class SystemScreenRouter {
   }
 
   /// Builds an error widget for unknown paths
-  static Widget _buildErrorWidget(BuildContext context, String message) {
+  static Widget _buildErrorWidget(BuildContext context, String message, {String? cacheKey}) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -286,7 +275,9 @@ class SystemScreenRouter {
                     tabBloc.add(SwitchToTab(tabBloc.state.tabs.first.id));
                   }
                 } catch (e) {
-                  debugPrint('Error navigating back: $e');
+                  if (cacheKey != null) {
+                    _loggedKeys.add(cacheKey);
+                  }
                 }
               }
             },
@@ -319,11 +310,9 @@ class SystemScreenRouter {
       // Remove only entries for this tab
       _cachedWidgets.removeWhere((key, _) => key.startsWith('$specificTabId:'));
       _loggedKeys.removeWhere((key) => key.startsWith('$specificTabId:'));
-      debugPrint('Cleared widget cache for tab: $specificTabId');
     } else {
       _cachedWidgets.clear();
       _loggedKeys.clear();
-      debugPrint('Cleared all widget caches');
     }
   }
 
@@ -337,7 +326,6 @@ class SystemScreenRouter {
       // Remove this specific path from cache
       _cachedWidgets.remove(cacheKey);
       _loggedKeys.remove(cacheKey);
-      debugPrint('Refreshed system path: $path in tab: $tabId');
     } else if (tabId != null) {
       // Clear all paths for this tab
       clearWidgetCache(tabId);

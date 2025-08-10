@@ -669,9 +669,9 @@ class MobileSMBService implements ISmbService {
 
     try {
       final smbPath = _getSmbPathFromTabPath(tabPath);
-      debugPrint(
-        'MobileSMBService: Generating thumbnail for: $smbPath (size: $size)',
-      );
+      // debugPrint(
+      //   'MobileSMBService: Generating thumbnail for: $smbPath (size: $size)',
+      // );
 
       // Use the mobile_smb_native service to generate thumbnail
       final smbService = SmbNativeService.instance;
@@ -697,21 +697,21 @@ class MobileSMBService implements ISmbService {
         height: size,
       );
 
-      if (thumbnailData != null) {
-        debugPrint('Successfully generated thumbnail for $smbPath');
-      } else {
-        debugPrint('Failed to generate thumbnail for $smbPath');
-      }
+      // if (thumbnailData != null) {
+      //   debugPrint('Successfully generated thumbnail for $smbPath');
+      // } else {
+      //   debugPrint('Failed to generate thumbnail for $smbPath');
+      // }
 
       if (thumbnailData != null && thumbnailData.isNotEmpty) {
-        debugPrint(
-          'MobileSMBService: Successfully generated thumbnail (${thumbnailData.length} bytes)',
-        );
+        // debugPrint(
+        //   'MobileSMBService: Successfully generated thumbnail (${thumbnailData.length} bytes)',
+        // );
         return thumbnailData;
       } else {
-        debugPrint(
-          'MobileSMBService: Thumbnail generation returned null or empty data',
-        );
+        // debugPrint(
+        //   'MobileSMBService: Thumbnail generation returned null or empty data',
+        // );
         return null;
       }
     } catch (e) {

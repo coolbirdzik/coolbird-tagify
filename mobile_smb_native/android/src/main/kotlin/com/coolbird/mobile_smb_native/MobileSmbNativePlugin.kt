@@ -9,14 +9,21 @@ import io.flutter.plugin.common.MethodChannel.Result
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.EventChannel.EventSink
 import io.flutter.plugin.common.EventChannel.StreamHandler
-import kotlinx.coroutines.*
-import jcifs.smb.*
-import jcifs.context.SingletonContext
-import jcifs.config.PropertyConfiguration
-import java.util.*
-import java.io.ByteArrayOutputStream
-import java.io.InputStream
+import android.content.Context
+import android.view.Surface
 import android.util.Log
+import java.util.Properties
+import java.io.InputStream
+import java.io.ByteArrayOutputStream
+import jcifs.context.SingletonContext
+import jcifs.smb.NtlmPasswordAuthenticator
+import jcifs.smb.SmbFile
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
 
 /** MobileSmbNativePlugin */
@@ -54,6 +61,8 @@ class MobileSmbNativePlugin: FlutterPlugin, MethodCallHandler {
     
     // Initialize JCIFS configuration
     initializeJcifs()
+
+    // VLC platform view registration removed - now using flutter_vlc_player
   }
 
   private fun initializeJcifs() {

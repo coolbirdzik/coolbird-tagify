@@ -144,7 +144,6 @@ class _TagManagementSectionState extends State<TagManagementSection> {
       try {
         currentTags = await TagManager.getTags(widget.filePath);
       } catch (e) {
-        debugPrint('Error loading tags: $e');
         currentTags = [];
       }
     }
@@ -162,8 +161,6 @@ class _TagManagementSectionState extends State<TagManagementSection> {
     if (!mounted) return;
 
     try {
-      debugPrint("TagManagementSection: Saving changes for ${widget.filePath}");
-
       // Get tags to add (those in _selectedTags but not in _originalTags)
       List<String> tagsToAdd =
           _selectedTags.where((tag) => !_originalTags.contains(tag)).toList();
@@ -171,9 +168,6 @@ class _TagManagementSectionState extends State<TagManagementSection> {
       // Get tags to remove (those in _originalTags but not in _selectedTags)
       List<String> tagsToRemove =
           _originalTags.where((tag) => !_selectedTags.contains(tag)).toList();
-
-      debugPrint(
-          "TagManagementSection: Adding tags: $tagsToAdd, Removing tags: $tagsToRemove");
 
       // Process removals
       for (String tag in tagsToRemove) {

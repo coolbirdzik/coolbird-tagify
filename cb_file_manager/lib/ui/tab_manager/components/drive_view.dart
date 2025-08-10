@@ -331,7 +331,6 @@ class DriveView extends StatelessWidget {
         'usageRatio': usageRatio,
       };
     } catch (e) {
-      debugPrint('Error getting drive space info: $e');
       return {
         'totalStr': '',
         'freeStr': '',

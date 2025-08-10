@@ -112,7 +112,6 @@ class _WindowsAudioFixState extends State<WindowsAudioFix> {
       // Notify parent with the working config
       _applyAudioConfig(output);
     } catch (e) {
-      debugPrint('Error testing audio output $output: $e');
       setState(() {
         _testStatus = 'Audio output $output failed: $e';
         _isTestingAudio = false;

@@ -68,6 +68,18 @@
       "languageVersion": "3.7"
     },
     {
+      "name": "flutter_vlc_player",
+      "rootUri": "file:///C:/Users/ngtan/AppData/Local/Pub/Cache/hosted/pub.dev/flutter_vlc_player-7.4.3",
+      "packageUri": "lib/",
+      "languageVersion": "3.7"
+    },
+    {
+      "name": "flutter_vlc_player_platform_interface",
+      "rootUri": "file:///C:/Users/ngtan/AppData/Local/Pub/Cache/hosted/pub.dev/flutter_vlc_player_platform_interface-2.0.5",
+      "packageUri": "lib/",
+      "languageVersion": "3.7"
+    },
+    {
       "name": "leak_tracker",
       "rootUri": "file:///C:/Users/ngtan/AppData/Local/Pub/Cache/hosted/pub.dev/leak_tracker-10.0.9",
       "packageUri": "lib/",

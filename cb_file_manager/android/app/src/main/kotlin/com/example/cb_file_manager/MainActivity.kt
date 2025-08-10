@@ -14,12 +14,16 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.io.ByteArrayOutputStream
 import java.io.File
+import com.coolbird.cb_file_manager.MemoryManagementPlugin
 
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "cb_file_manager/external_apps"
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        // Register MemoryManagementPlugin
+        flutterEngine.plugins.add(MemoryManagementPlugin())
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {

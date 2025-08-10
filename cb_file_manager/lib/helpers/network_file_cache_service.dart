@@ -80,8 +80,9 @@ class NetworkFileCacheService {
       // Create a buffer to collect data
       final buffer = <int>[];
       int totalBytes = 0;
-      final maxSize =
-          maxBytes ?? 512 * 1024 - 8; // Slightly under 512KB isolate limit
+      final maxSize = maxBytes ??
+          16 * 1024 * 1024 -
+              8; // Slightly under 16MB for video streaming buffering
 
       try {
         await for (final chunk in fileStream) {
@@ -164,13 +165,14 @@ class NetworkFileCacheService {
         if (totalBytes >= bufferInfo.nextCachingThreshold) {
           _cacheBufferData(cacheKey, buffer);
           bufferInfo.nextCachingThreshold =
-              totalBytes + 256 * 1024; // Cache every 256KB
+              totalBytes + 4096 * 1024; // Cache every 4MB for video streaming
         }
       },
       onError: (error) {
         debugPrint('Error in network stream: $error');
         if (!targetController.isClosed) {
           targetController.addError(error);
+          targetController.close();
         }
       },
       onDone: () async {
@@ -258,7 +260,8 @@ class _StreamBufferInfo {
   final List<int> buffer;
   final StreamController<List<int>> controller;
   final String path;
-  int nextCachingThreshold = 256 * 1024; // 256KB initial threshold
+  int nextCachingThreshold =
+      4096 * 1024; // 4MB initial threshold for video streaming
 
   _StreamBufferInfo(this.buffer, this.controller, this.path);
 }

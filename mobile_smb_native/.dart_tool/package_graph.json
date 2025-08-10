@@ -9,6 +9,7 @@
       "dependencies": [
         "ffi",
         "flutter",
+        "flutter_vlc_player",
         "plugin_platform_interface"
       ],
       "devDependencies": [
@@ -242,6 +243,24 @@
       "name": "sky_engine",
       "version": "0.0.0",
       "dependencies": []
+    },
+    {
+      "name": "flutter_vlc_player",
+      "version": "7.4.3",
+      "dependencies": [
+        "flutter",
+        "flutter_vlc_player_platform_interface",
+        "meta"
+      ]
+    },
+    {
+      "name": "flutter_vlc_player_platform_interface",
+      "version": "2.0.5",
+      "dependencies": [
+        "flutter",
+        "meta",
+        "plugin_platform_interface"
+      ]
     }
   ],
   "configVersion": 1

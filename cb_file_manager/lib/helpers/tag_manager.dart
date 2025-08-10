@@ -60,6 +60,12 @@ class TagManager {
     _tagChangeController.add(filePath);
   }
 
+  /// Dispose resources
+  void dispose() {
+    _tagChangesController.close();
+    _tagChangeController.close();
+  }
+
   // Private singleton constructor
   TagManager._();
 

@@ -11,6 +11,8 @@
 #include <memory>
 #include <stdexcept>
 #include <sstream>
+#include <thread>
+#include <future>
 
 // PIMPL implementation for libsmb2
 class Smb2ClientWrapper::Impl
@@ -25,7 +27,12 @@ public:
     bool connected;
     std::string share_url;
 
-    Impl() : context(nullptr), connected(false)
+    // Streaming options
+    size_t chunk_size;
+    size_t buffer_size;
+    bool enable_caching;
+
+    Impl() : context(nullptr), connected(false), chunk_size(64 * 1024), buffer_size(2 * 1024 * 1024), enable_caching(true)
     {
         // Initialize libsmb2 context
         context = smb2_init_context();
@@ -131,9 +138,7 @@ smb2fh *Smb2ClientWrapper::openFile(const std::string &path)
     if (!file_handle)
     {
         std::cerr << "Failed to open file: " << path << " - " << smb2_get_error(pImpl->context) << std::endl;
-        return nullptr;
     }
-
     return file_handle;
 }
 
@@ -163,7 +168,7 @@ bool Smb2ClientWrapper::seekFile(smb2fh *handle, uint64_t offset)
         return false;
     }
 
-    int64_t result = smb2_lseek(pImpl->context, handle, offset, SEEK_SET, nullptr);
+    int result = smb2_lseek(pImpl->context, handle, offset, SEEK_SET, nullptr);
     return result >= 0;
 }
 
@@ -175,12 +180,42 @@ uint64_t Smb2ClientWrapper::getFileSize(smb2fh *handle)
     }
 
     struct smb2_stat_64 st;
-    if (smb2_fstat(pImpl->context, handle, &st) < 0)
+    int result = smb2_fstat(pImpl->context, handle, &st);
+    if (result < 0)
     {
         return 0;
     }
 
-    return static_cast<uint64_t>(st.smb2_size);
+    return st.smb2_size;
+}
+
+bool Smb2ClientWrapper::fileExists(const std::string &path)
+{
+    if (!pImpl->context || !pImpl->connected)
+    {
+        return false;
+    }
+
+    struct smb2_stat_64 st;
+    int result = smb2_stat(pImpl->context, path.c_str(), &st);
+    return result >= 0;
+}
+
+bool Smb2ClientWrapper::isDirectory(const std::string &path)
+{
+    if (!pImpl->context || !pImpl->connected)
+    {
+        return false;
+    }
+
+    struct smb2_stat_64 st;
+    int result = smb2_stat(pImpl->context, path.c_str(), &st);
+    if (result < 0)
+    {
+        return false;
+    }
+
+    return (st.smb2_type == SMB2_TYPE_DIRECTORY);
 }
 
 // Directory operations
@@ -196,62 +231,23 @@ std::vector<FileInfo> Smb2ClientWrapper::listDirectory(const std::string &path)
     smb2dir *dir = smb2_opendir(pImpl->context, path.c_str());
     if (!dir)
     {
-        std::cerr << "Failed to open directory: " << path << " - " << smb2_get_error(pImpl->context) << std::endl;
         return files;
     }
 
     struct smb2dirent *entry;
     while ((entry = smb2_readdir(pImpl->context, dir)) != nullptr)
     {
-        // Skip . and .. entries
-        if (strcmp(entry->name, ".") == 0 || strcmp(entry->name, "..") == 0)
-        {
-            continue;
-        }
-
         FileInfo file_info;
         file_info.name = entry->name;
         file_info.path = path + "/" + entry->name;
         file_info.size = entry->st.smb2_size;
         file_info.modified_time = entry->st.smb2_mtime;
         file_info.is_directory = (entry->st.smb2_type == SMB2_TYPE_DIRECTORY);
-
         files.push_back(file_info);
     }
 
     smb2_closedir(pImpl->context, dir);
     return files;
-}
-
-// Utility functions
-bool Smb2ClientWrapper::fileExists(const std::string &path)
-{
-    if (!pImpl->context || !pImpl->connected)
-    {
-        return false;
-    }
-
-    struct smb2_stat_64 st;
-    int result = smb2_stat(pImpl->context, path.c_str(), &st);
-    return result >= 0 && st.smb2_type == SMB2_TYPE_FILE;
-}
-
-bool Smb2ClientWrapper::directoryExists(const std::string &path)
-{
-    if (!pImpl->context || !pImpl->connected)
-    {
-        return false;
-    }
-
-    struct smb2_stat_64 st;
-    int result = smb2_stat(pImpl->context, path.c_str(), &st);
-    return result >= 0 && st.smb2_type == SMB2_TYPE_DIRECTORY;
-}
-
-// Get SMB2 context for direct access
-smb2_context *Smb2ClientWrapper::getContext() const
-{
-    return pImpl->context;
 }
 
 // Get SMB version information
@@ -353,4 +349,124 @@ bool Smb2ClientWrapper::setReadAhead(smb2fh *handle, size_t read_ahead_size)
     // For now, we'll rely on the OS and network layer optimizations
 
     return true;
+}
+
+// NEW: Enhanced read-range operations for VLC-style streaming
+size_t Smb2ClientWrapper::readRange(smb2fh *handle, uint8_t *buffer, size_t buffer_size,
+                                    uint64_t start_offset, uint64_t end_offset)
+{
+    if (!handle || !buffer || !pImpl->context)
+    {
+        return 0;
+    }
+
+    // Calculate the range size
+    uint64_t range_size = end_offset - start_offset;
+    if (range_size > buffer_size)
+    {
+        range_size = buffer_size;
+    }
+
+    // Seek to start offset
+    if (!seekFile(handle, start_offset))
+    {
+        return 0;
+    }
+
+    // Read the range
+    int bytes_read = smb2_read(pImpl->context, handle, buffer, range_size);
+    return bytes_read > 0 ? static_cast<size_t>(bytes_read) : 0;
+}
+
+size_t Smb2ClientWrapper::readRangeAsync(smb2fh *handle, uint8_t *buffer, size_t buffer_size,
+                                         uint64_t start_offset, uint64_t end_offset)
+{
+    // For now, implement as synchronous read
+    // In a real implementation, this would use async I/O
+    return readRange(handle, buffer, buffer_size, start_offset, end_offset);
+}
+
+bool Smb2ClientWrapper::prefetchRange(smb2fh *handle, uint64_t start_offset, uint64_t end_offset)
+{
+    if (!handle || !pImpl->context)
+    {
+        return false;
+    }
+
+    // For now, just seek to the start offset to prepare for reading
+    // In a real implementation, this would trigger background prefetching
+    return seekFile(handle, start_offset);
+}
+
+bool Smb2ClientWrapper::setStreamingOptions(smb2fh *handle, size_t chunk_size, size_t buffer_size, bool enable_caching)
+{
+    if (!handle || !pImpl->context)
+    {
+        return false;
+    }
+
+    // Store streaming options
+    pImpl->chunk_size = chunk_size;
+    pImpl->buffer_size = buffer_size;
+    pImpl->enable_caching = enable_caching;
+
+    return true;
+}
+
+// NEW: SMB URL generation for direct VLC streaming
+std::string Smb2ClientWrapper::generateDirectUrl(const std::string &path)
+{
+    if (!pImpl->connected)
+    {
+        return "";
+    }
+
+    std::ostringstream url;
+    url << "smb://" << pImpl->server << "/" << pImpl->share;
+
+    // Add path if provided
+    if (!path.empty())
+    {
+        if (path[0] != '/')
+        {
+            url << "/";
+        }
+        url << path;
+    }
+
+    return url.str();
+}
+
+std::string Smb2ClientWrapper::generateUrlWithCredentials(const std::string &path,
+                                                          const std::string &username, const std::string &password)
+{
+    if (!pImpl->connected)
+    {
+        return "";
+    }
+
+    std::ostringstream url;
+    url << "smb://" << username << ":" << password << "@" << pImpl->server << "/" << pImpl->share;
+
+    // Add path if provided
+    if (!path.empty())
+    {
+        if (path[0] != '/')
+        {
+            url << "/";
+        }
+        url << path;
+    }
+
+    return url.str();
+}
+
+std::string Smb2ClientWrapper::getConnectionUrl()
+{
+    if (!pImpl->connected)
+    {
+        return "";
+    }
+
+    return pImpl->share_url;
 }

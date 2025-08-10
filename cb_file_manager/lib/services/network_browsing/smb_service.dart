@@ -22,7 +22,8 @@ class SMBFileStream extends Stream<List<int>> {
   final int _chunkSize;
   bool _closed = false;
 
-  SMBFileStream(this._bindings, this._handle, [this._chunkSize = 256 * 1024]);
+  SMBFileStream(this._bindings, this._handle,
+      [this._chunkSize = 8192 * 1024]); // 8MB chunks for video streaming
 
   @override
   StreamSubscription<List<int>> listen(
@@ -60,21 +61,29 @@ class SMBFileStream extends Stream<List<int>> {
               Uint8List.fromList(result.data.asTypedList(result.bytes_read));
           _bindings.freeReadResultData(result.data);
 
-          controller.add(chunkData);
+          if (!controller.isClosed) {
+            controller.add(chunkData);
+          }
         } else {
           if (result.bytes_read < 0) {
             // Error
-            controller.addError(Exception("Error reading file chunk"));
+            if (!controller.isClosed) {
+              controller.addError(Exception("Error reading file chunk"));
+            }
           }
           // End of file
           break;
         }
       }
     } catch (e) {
-      controller.addError(e);
+      if (!controller.isClosed) {
+        controller.addError(e);
+      }
     } finally {
       _close();
-      controller.close();
+      if (!controller.isClosed) {
+        controller.close();
+      }
     }
   }
 
@@ -405,7 +414,7 @@ class SMBService implements NetworkServiceBase {
     try {
       while (true) {
         final result = _bindings.readFileChunk(
-            handle, 256 * 1024); // 256KB chunks for better performance
+            handle, 8192 * 1024); // 8MB chunks for video streaming performance
         if (result.bytes_read > 0) {
           // Copy the bytes into Dart-managed memory BEFORE freeing the native buffer
           final chunkData =

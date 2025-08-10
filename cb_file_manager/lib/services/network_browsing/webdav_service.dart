@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
 import 'package:path/path.dart' as path;
@@ -157,8 +158,11 @@ class WebDAVService implements NetworkServiceBase {
   }
 
   @override
-  Future<File> getFileWithProgress(String remotePath, String localPath,
-      void Function(double progress)? onProgress) async {
+  Future<File> getFileWithProgress(
+    String remotePath,
+    String localPath,
+    void Function(double progress)? onProgress,
+  ) async {
     // For WebDAV, we don't have a progress-based implementation yet
     // Just call the regular method and simulate progress updates
     if (onProgress != null) {
@@ -183,8 +187,11 @@ class WebDAVService implements NetworkServiceBase {
   }
 
   @override
-  Future<bool> putFileWithProgress(String localPath, String remotePath,
-      void Function(double progress)? onProgress) async {
+  Future<bool> putFileWithProgress(
+    String localPath,
+    String remotePath,
+    void Function(double progress)? onProgress,
+  ) async {
     // For WebDAV, we don't have a progress-based implementation yet
     // Just call the regular method and simulate progress updates
     if (onProgress != null) {
@@ -238,6 +245,12 @@ class WebDAVService implements NetworkServiceBase {
   Future<int?> getFileSize(String remotePath) async {
     // WebDAV file size would require a HEAD request in a real implementation
     // For now, return null to indicate size is unknown
+    return null;
+  }
+
+  @override
+  Future<Uint8List?> getThumbnail(String remotePath, int size) async {
+    // WebDAV doesn't support thumbnail generation, return null
     return null;
   }
 }

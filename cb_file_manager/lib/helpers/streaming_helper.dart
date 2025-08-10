@@ -11,7 +11,8 @@ import 'package:path/path.dart' as p;
 import 'file_type_helper.dart';
 import 'network_file_cache_service.dart';
 import 'vlc_direct_smb_helper.dart';
-import '../helpers/libsmb2_streaming_helper.dart';
+// import '../helpers/libsmb2_streaming_helper.dart';
+import 'native_vlc_direct_helper.dart';
 
 /// Class để lưu trữ kết quả mở file
 class FileOpenResult {
@@ -133,35 +134,42 @@ class StreamingHelper {
       debugPrint('StreamingHelper: File extension: $fileExtension');
       debugPrint('StreamingHelper: File type: $fileType');
 
-      // Priority 1: Attempt LibSMB2 Direct streaming for OptimizedSMBService
-      debugPrint('StreamingHelper: Checking for LibSMB2 Direct streaming...');
+      // Priority 1: Attempt Native VLC Direct streaming (highest priority)
       debugPrint(
-          'StreamingHelper: service is OptimizedSMBService: ${service.runtimeType.toString() == "OptimizedSMBService"}');
-      debugPrint('StreamingHelper: fileType: $fileType');
-      debugPrint(
-          'StreamingHelper: LibSmb2StreamingHelper.canStreamDirectly(fileType): ${LibSmb2StreamingHelper.canStreamDirectly(fileType)}');
+          'StreamingHelper: Checking for Native VLC Direct streaming...');
       if (service is ISmbService &&
-          LibSmb2StreamingHelper.isServiceSupported(service) &&
-          LibSmb2StreamingHelper.canStreamDirectly(fileType)) {
+          NativeVlcDirectHelper.canStreamDirectly(fileType)) {
         try {
-          debugPrint('StreamingHelper: ✅ Attempting LibSMB2 Direct streaming');
-          await LibSmb2StreamingHelper.openMediaWithLibSmb2Streaming(
-            context: context,
-            smbPath: remotePath,
-            fileName: fileName,
+          final canUseNative =
+              await NativeVlcDirectHelper.canUseNativeVlcDirect(
             fileType: fileType,
             smbService: service,
           );
-          // If LibSMB2 player is launched, we return a success result indicating this
-          return FileOpenResult(success: true, viewerLaunched: true);
+
+          if (canUseNative) {
+            debugPrint(
+                'StreamingHelper: ✅ Attempting Native VLC Direct streaming');
+            await NativeVlcDirectHelper.openMediaWithNativeVlcDirect(
+              context: context,
+              smbPath: remotePath,
+              fileName: fileName,
+              fileType: fileType,
+              smbService: service,
+            );
+            return FileOpenResult(success: true, viewerLaunched: true);
+          } else {
+            debugPrint(
+                'StreamingHelper: ❌ Native VLC Direct not available, trying LibSMB2');
+          }
         } catch (e) {
           debugPrint(
-              'StreamingHelper: ❌ LibSMB2 Direct streaming failed: $e. Trying VLC Direct SMB fallback.');
-          // If it fails, try VLC Direct SMB as fallback
+              'StreamingHelper: ❌ Native VLC Direct streaming failed: $e. Trying LibSMB2 fallback.');
         }
       }
 
-      // Priority 2: Fallback to VLC Direct SMB streaming for other SMB services
+      // LibSMB2 streaming removed - now using flutter_vlc_player for SMB direct streaming
+
+      // Priority 3: Fallback to VLC Direct SMB streaming for other SMB services
       debugPrint('StreamingHelper: Checking for VLC Direct SMB fallback...');
       if (service is ISmbService &&
           VlcDirectSmbHelper.canStreamDirectly(fileType)) {
@@ -200,7 +208,7 @@ class StreamingHelper {
         );
       }
 
-      // Priority 3: Try openFileStream for other cases
+      // Priority 4: Try openFileStream for other cases
       debugPrint(
           'StreamingHelper: DECISION - Using openFileStream method (optimized)');
       debugPrint('StreamingHelper: Calling service.openFileStream...');
@@ -411,28 +419,7 @@ class StreamingHelper {
       debugPrint(
           'StreamingHelper: Can stream directly: ${VlcDirectSmbHelper.canStreamDirectly(result.fileType!)}');
 
-      // Ưu tiên LibSMB2 Direct streaming cho OptimizedSMBService
-      if (_currentNetworkService is ISmbService &&
-          LibSmb2StreamingHelper.isServiceSupported(
-              _currentNetworkService as ISmbService) &&
-          LibSmb2StreamingHelper.canStreamDirectly(result.fileType!)) {
-        try {
-          debugPrint(
-              'StreamingHelper: ✅ ALL CONDITIONS MET - Attempting LibSMB2 Direct streaming');
-          debugPrint('StreamingHelper: Using remotePath: $remotePath');
-          await LibSmb2StreamingHelper.openMediaWithLibSmb2Streaming(
-            context: context,
-            smbPath: remotePath,
-            fileName: fileName,
-            fileType: result.fileType!,
-            smbService: _currentNetworkService as ISmbService,
-          );
-          return;
-        } catch (e) {
-          debugPrint('StreamingHelper: ❌ LibSMB2 Direct streaming failed: $e');
-          // Tiếp tục với VLC Direct SMB fallback
-        }
-      }
+      // LibSMB2 streaming removed - now using flutter_vlc_player for SMB
 
       // Fallback: VLC Direct SMB streaming
       if (_currentNetworkService is ISmbService &&

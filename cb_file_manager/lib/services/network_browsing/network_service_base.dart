@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 /// Base class for all network services
 abstract class NetworkServiceBase {
@@ -34,15 +35,21 @@ abstract class NetworkServiceBase {
   Future<File> getFile(String remotePath, String localPath);
 
   /// Get file from remote path to local path with progress updates
-  Future<File> getFileWithProgress(String remotePath, String localPath,
-      void Function(double progress)? onProgress);
+  Future<File> getFileWithProgress(
+    String remotePath,
+    String localPath,
+    void Function(double progress)? onProgress,
+  );
 
   /// Put file from local path to remote path
   Future<bool> putFile(String localPath, String remotePath);
 
   /// Put file from local path to remote path with progress updates
-  Future<bool> putFileWithProgress(String localPath, String remotePath,
-      void Function(double progress)? onProgress);
+  Future<bool> putFileWithProgress(
+    String localPath,
+    String remotePath,
+    void Function(double progress)? onProgress,
+  );
 
   /// Delete a file at the given path
   Future<bool> deleteFile(String path);
@@ -67,6 +74,9 @@ abstract class NetworkServiceBase {
 
   /// Get file size without downloading (optional, returns null if not supported)
   Future<int?> getFileSize(String remotePath) async => null;
+
+  /// Generate thumbnail for image or video file (optional, returns null if not supported)
+  Future<Uint8List?> getThumbnail(String remotePath, int size) async => null;
 }
 
 /// Result of a connection attempt

@@ -132,7 +132,7 @@ extern "C"
             for (auto &ctx_pair : g_contexts)
             {
                 ctx_pair.second->closeFile(it->second);
-                break; // File handle is closed, no need to continue
+                break;
             }
             g_file_handles.erase(it);
         }
@@ -210,44 +210,7 @@ extern "C"
         return 0;
     }
 
-    // SMB version and connection info functions
-    char *smb_get_version(SmbContext *context)
-    {
-        if (!context)
-        {
-            return allocate_string("Unknown");
-        }
-
-        void *context_id = reinterpret_cast<void *>(context);
-        auto it = g_contexts.find(context_id);
-        if (it != g_contexts.end())
-        {
-            std::string version = it->second->getSmbVersion();
-            return allocate_string(version);
-        }
-
-        return allocate_string("Unknown");
-    }
-
-    char *smb_get_connection_info(SmbContext *context)
-    {
-        if (!context)
-        {
-            return allocate_string("Not connected");
-        }
-
-        void *context_id = reinterpret_cast<void *>(context);
-        auto it = g_contexts.find(context_id);
-        if (it != g_contexts.end())
-        {
-            std::string info = it->second->getConnectionInfo();
-            return allocate_string(info);
-        }
-
-        return allocate_string("Not connected");
-    }
-
-    // Optimized video streaming operations
+    // Optimized streaming operations
     SmbFileHandle *smb_open_file_for_streaming(SmbContext *context, const char *path)
     {
         if (!context || !path)
@@ -324,6 +287,163 @@ extern "C"
         return SMB_ERROR_UNKNOWN;
     }
 
+    // NEW: Enhanced read-range operations for VLC-style streaming
+    int smb_read_range(SmbFileHandle *file_handle, uint8_t *buffer, size_t buffer_size,
+                       uint64_t start_offset, uint64_t end_offset, size_t *bytes_read)
+    {
+        if (!file_handle || !buffer || !bytes_read)
+        {
+            return SMB_ERROR_INVALID_PARAMETER;
+        }
+
+        void *handle_id = reinterpret_cast<void *>(file_handle);
+        auto it = g_file_handles.find(handle_id);
+        if (it == g_file_handles.end())
+        {
+            return SMB_ERROR_FILE_NOT_FOUND;
+        }
+
+        // Find the context that owns this file handle
+        for (auto &ctx_pair : g_contexts)
+        {
+            size_t read_bytes = ctx_pair.second->readRange(it->second, buffer, buffer_size, start_offset, end_offset);
+            *bytes_read = read_bytes;
+            return SMB_SUCCESS;
+        }
+
+        return SMB_ERROR_UNKNOWN;
+    }
+
+    int smb_read_range_async(SmbFileHandle *file_handle, uint8_t *buffer, size_t buffer_size,
+                             uint64_t start_offset, uint64_t end_offset, size_t *bytes_read)
+    {
+        if (!file_handle || !buffer || !bytes_read)
+        {
+            return SMB_ERROR_INVALID_PARAMETER;
+        }
+
+        void *handle_id = reinterpret_cast<void *>(file_handle);
+        auto it = g_file_handles.find(handle_id);
+        if (it == g_file_handles.end())
+        {
+            return SMB_ERROR_FILE_NOT_FOUND;
+        }
+
+        // Find the context that owns this file handle
+        for (auto &ctx_pair : g_contexts)
+        {
+            size_t read_bytes = ctx_pair.second->readRangeAsync(it->second, buffer, buffer_size, start_offset, end_offset);
+            *bytes_read = read_bytes;
+            return SMB_SUCCESS;
+        }
+
+        return SMB_ERROR_UNKNOWN;
+    }
+
+    int smb_prefetch_range(SmbFileHandle *file_handle, uint64_t start_offset, uint64_t end_offset)
+    {
+        if (!file_handle)
+        {
+            return SMB_ERROR_INVALID_PARAMETER;
+        }
+
+        void *handle_id = reinterpret_cast<void *>(file_handle);
+        auto it = g_file_handles.find(handle_id);
+        if (it == g_file_handles.end())
+        {
+            return SMB_ERROR_FILE_NOT_FOUND;
+        }
+
+        // Find the context that owns this file handle
+        for (auto &ctx_pair : g_contexts)
+        {
+            bool success = ctx_pair.second->prefetchRange(it->second, start_offset, end_offset);
+            return success ? SMB_SUCCESS : SMB_ERROR_UNKNOWN;
+        }
+
+        return SMB_ERROR_UNKNOWN;
+    }
+
+    int smb_set_streaming_options(SmbFileHandle *file_handle, size_t chunk_size, size_t buffer_size, int enable_caching)
+    {
+        if (!file_handle)
+        {
+            return SMB_ERROR_INVALID_PARAMETER;
+        }
+
+        void *handle_id = reinterpret_cast<void *>(file_handle);
+        auto it = g_file_handles.find(handle_id);
+        if (it == g_file_handles.end())
+        {
+            return SMB_ERROR_FILE_NOT_FOUND;
+        }
+
+        // Find the context that owns this file handle
+        for (auto &ctx_pair : g_contexts)
+        {
+            bool success = ctx_pair.second->setStreamingOptions(it->second, chunk_size, buffer_size, enable_caching != 0);
+            return success ? SMB_SUCCESS : SMB_ERROR_UNKNOWN;
+        }
+
+        return SMB_ERROR_UNKNOWN;
+    }
+
+    // NEW: SMB URL generation for direct VLC streaming
+    char *smb_generate_direct_url(SmbContext *context, const char *path)
+    {
+        if (!context || !path)
+        {
+            return nullptr;
+        }
+
+        void *context_id = reinterpret_cast<void *>(context);
+        auto it = g_contexts.find(context_id);
+        if (it == g_contexts.end())
+        {
+            return nullptr;
+        }
+
+        std::string url = it->second->generateDirectUrl(path);
+        return allocate_string(url);
+    }
+
+    char *smb_generate_url_with_credentials(SmbContext *context, const char *path,
+                                            const char *username, const char *password)
+    {
+        if (!context || !path || !username || !password)
+        {
+            return nullptr;
+        }
+
+        void *context_id = reinterpret_cast<void *>(context);
+        auto it = g_contexts.find(context_id);
+        if (it == g_contexts.end())
+        {
+            return nullptr;
+        }
+
+        std::string url = it->second->generateUrlWithCredentials(path, username, password);
+        return allocate_string(url);
+    }
+
+    char *smb_get_connection_url(SmbContext *context)
+    {
+        if (!context)
+        {
+            return nullptr;
+        }
+
+        void *context_id = reinterpret_cast<void *>(context);
+        auto it = g_contexts.find(context_id);
+        if (it == g_contexts.end())
+        {
+            return nullptr;
+        }
+
+        std::string url = it->second->getConnectionUrl();
+        return allocate_string(url);
+    }
+
     // Directory operations
     SmbDirectoryResult smb_list_directory(SmbContext *context, const char *path)
     {
@@ -391,43 +511,52 @@ extern "C"
             return;
         }
 
-        // Free individual file info strings
         for (size_t i = 0; i < result->count; ++i)
         {
-            free(result->files[i].name);
-            free(result->files[i].path);
+            smb_free_string(result->files[i].name);
+            smb_free_string(result->files[i].path);
         }
 
-        // Free the array
         free(result->files);
         result->files = nullptr;
         result->count = 0;
     }
 
-    // Thumbnail generation (stub for now)
+    // Thumbnail generation
     ThumbnailResult smb_generate_thumbnail(SmbContext *context, const char *path, int width, int height)
     {
-        ThumbnailResult result = {nullptr, 0, 0, 0, SMB_ERROR_THUMBNAIL_GENERATION};
+        ThumbnailResult result = {nullptr, 0, 0, 0, SMB_ERROR_INVALID_PARAMETER};
 
-        // TODO: Implement thumbnail generation using FFmpeg
-        // For now, return error to indicate feature not implemented
+        if (!context || !path)
+        {
+            return result;
+        }
 
+        // For now, return stub result
+        // TODO: Implement actual thumbnail generation
+        result.error_code = SMB_ERROR_THUMBNAIL_GENERATION;
         return result;
     }
 
     void smb_free_thumbnail_result(ThumbnailResult *result)
     {
-        if (!result || !result->data)
+        if (!result)
         {
             return;
         }
 
-        free(result->data);
-        result->data = nullptr;
+        if (result->data)
+        {
+            free(result->data);
+            result->data = nullptr;
+        }
+
         result->size = 0;
+        result->width = 0;
+        result->height = 0;
     }
 
-    // Error handling
+    // Utility functions
     const char *smb_get_error_message(int error_code)
     {
         switch (error_code)
@@ -435,7 +564,7 @@ extern "C"
         case SMB_SUCCESS:
             return "Success";
         case SMB_ERROR_CONNECTION:
-            return "Connection error";
+            return "Connection failed";
         case SMB_ERROR_AUTHENTICATION:
             return "Authentication failed";
         case SMB_ERROR_FILE_NOT_FOUND:
@@ -461,7 +590,7 @@ extern "C"
         }
     }
 
-    // Get native SMB context for media streaming
+    // Native context access for media streaming
     void *smb_get_native_context(SmbContext *context)
     {
         if (!context)
@@ -473,11 +602,10 @@ extern "C"
         auto it = g_contexts.find(context_id);
         if (it != g_contexts.end())
         {
-            // Return the underlying libsmb2 context
-            return it->second->getContext();
+            // Return the native context pointer
+            return it->second.get();
         }
 
         return nullptr;
     }
-
-} // extern "C"
+}

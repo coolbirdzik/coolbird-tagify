@@ -42,6 +42,12 @@ class NetworkDiscoveryService {
   List<NetworkDevice> get discoveredDevices =>
       List.unmodifiable(_discoveredDevices);
 
+  /// Dispose resources
+  void dispose() {
+    _deviceStreamController.close();
+    debugPrint('NetworkDiscoveryService: Disposed resources');
+  }
+
   /// Cache for recently discovered devices to avoid re-scanning
   final Map<String, NetworkDevice> _deviceCache = {};
   static const Duration _cacheExpiry = Duration(minutes: 5);
@@ -61,8 +67,6 @@ class NetworkDiscoveryService {
       final localIps = await _getAllLocalIps();
 
       if (localIps.isEmpty) {
-        debugPrint(
-            'NetworkDiscoveryService: Could not get any local IP address');
         _isScanning = false;
         return _discoveredDevices;
       }
@@ -74,7 +78,6 @@ class NetworkDiscoveryService {
         // Extract the subnet (e.g., from 192.168.1.5 to 192.168.1)
         final ipParts = ip.split('.');
         if (ipParts.length != 4) {
-          debugPrint('NetworkDiscoveryService: Invalid IP format: $ip');
           continue; // Skip to the next IP
         }
 
@@ -93,7 +96,7 @@ class NetworkDiscoveryService {
         await _scanHostsOptimized(hosts);
       }
     } catch (e) {
-      debugPrint('NetworkDiscoveryService: Error during network scan: $e');
+      // Error during network scan
     } finally {
       _isScanning = false;
     }
@@ -167,12 +170,6 @@ class NetworkDiscoveryService {
         _scanHostFast(host).then((_) {
           activeScans--;
           completedScans++;
-
-          // Log progress every 25 completed scans
-          if (completedScans % 25 == 0) {
-            debugPrint(
-                'NetworkDiscoveryService: Scanned $completedScans/$totalHosts hosts');
-          }
         });
       }
 
@@ -225,8 +222,6 @@ class NetworkDiscoveryService {
 
     // If either port is open, add the device immediately
     if (isSmbPort || isNetbiosPort) {
-      debugPrint('NetworkDiscoveryService: Found SMB device at $host');
-
       // Prevent adding duplicate devices
       if (_discoveredDevices.any((device) => device.ipAddress == host)) {
         return;
@@ -234,9 +229,18 @@ class NetworkDiscoveryService {
 
       // Get hostname asynchronously without blocking
       _getHostnameAsync(host).then((deviceName) {
+        // Create a better device name if hostname resolution failed
+        String displayName;
+        if (deviceName != null) {
+          displayName = deviceName;
+        } else {
+          // Use a more descriptive name than just 'Unknown'
+          displayName = 'SMB Server (${host})';
+        }
+
         final device = NetworkDevice(
           ipAddress: host,
-          name: deviceName ?? 'Unknown',
+          name: displayName,
           type: NetworkDeviceType.smb,
           hasSmbPort: isSmbPort,
           hasNetbiosPort: isNetbiosPort,
@@ -266,13 +270,21 @@ class NetworkDiscoveryService {
     }
   }
 
-  /// Asynchronous hostname resolution
+  /// Asynchronous hostname resolution with improved timeout and fallback
   Future<String?> _getHostnameAsync(String ipAddress) async {
     try {
+      // Increase timeout for better results, especially on mobile networks
       final result = await InternetAddress(ipAddress)
           .reverse()
-          .timeout(const Duration(milliseconds: 200));
-      return result.host;
+          .timeout(const Duration(milliseconds: 500));
+
+      // If hostname is empty or just the IP address, return null to use fallback
+      final hostname = result.host;
+      if (hostname.isEmpty || hostname == ipAddress) {
+        return null;
+      }
+
+      return hostname;
     } catch (e) {
       return null;
     }
@@ -294,7 +306,7 @@ class NetworkDiscoveryService {
         }
       }
     } catch (e) {
-      debugPrint("NetworkDiscoveryService: Error getting local IPs: $e");
+      // Error getting local IPs
     }
     return ips;
   }
@@ -304,9 +316,29 @@ class NetworkDiscoveryService {
     _deviceCache.clear();
   }
 
-  /// Dispose the service and close streams
-  void dispose() {
-    _deviceStreamController.close();
+  /// Update SMB version for a specific device
+  Future<void> updateSmbVersion(String ipAddress, String smbVersion) async {
+    // Update in discovered devices list
+    final deviceIndex =
+        _discoveredDevices.indexWhere((d) => d.ipAddress == ipAddress);
+    if (deviceIndex != -1) {
+      final oldDevice = _discoveredDevices[deviceIndex];
+      final updatedDevice = NetworkDevice(
+        ipAddress: oldDevice.ipAddress,
+        name: oldDevice.name,
+        type: oldDevice.type,
+        hasSmbPort: oldDevice.hasSmbPort,
+        hasNetbiosPort: oldDevice.hasNetbiosPort,
+        smbVersion: smbVersion,
+      );
+      _discoveredDevices[deviceIndex] = updatedDevice;
+
+      // Update cache
+      _deviceCache[ipAddress] = updatedDevice;
+
+      // Emit updated device
+      _deviceStreamController.add(updatedDevice);
+    }
   }
 }
 
@@ -317,6 +349,7 @@ class NetworkDevice {
   final NetworkDeviceType type;
   final bool hasSmbPort;
   final bool hasNetbiosPort;
+  final String? smbVersion; // SMB version information
   final DateTime _discoveredAt;
 
   NetworkDevice({
@@ -325,6 +358,7 @@ class NetworkDevice {
     required this.type,
     this.hasSmbPort = false,
     this.hasNetbiosPort = false,
+    this.smbVersion,
   }) : _discoveredAt = DateTime.now();
 
   @override

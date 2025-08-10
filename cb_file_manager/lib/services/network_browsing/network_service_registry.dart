@@ -1,6 +1,8 @@
 import 'dart:convert'; // For Uri encoding
+import 'dart:io';
 import 'network_service_base.dart';
 import 'smb_service.dart'; // Reverted back to the original smb_service
+import 'mobile_smb_service.dart'; // Mobile SMB service for Android/iOS
 import 'ftp_service.dart';
 import 'webdav_service.dart';
 import 'package:flutter/foundation.dart';
@@ -13,7 +15,12 @@ class NetworkServiceRegistry {
 
   NetworkServiceRegistry._() {
     // Register all available services
-    _registerService(SMBService()); // Reverted back to the original SMBService
+    // Use MobileSMBService for mobile platforms, SMBService for desktop
+    if (Platform.isAndroid || Platform.isIOS) {
+      _registerService(MobileSMBService());
+    } else {
+      _registerService(SMBService()); // Original SMBService for Windows/Desktop
+    }
     _registerService(FTPService());
     _registerService(WebDAVService());
   }
@@ -59,14 +66,11 @@ class NetworkServiceRegistry {
   }) async {
     final service = getServiceByName(serviceName);
     if (service == null) {
-      debugPrint("ServiceRegistry: Service not found: $serviceName");
       return ConnectionResult(
         success: false,
         errorMessage: 'Service not found: $serviceName',
       );
     }
-
-    debugPrint("ServiceRegistry: Connecting to $serviceName $host...");
 
     // The service.connect() method will establish the connection
     // and its ConnectionResult.connectedPath will be the service's internal base path (e.g., smb://host/share)
@@ -84,8 +88,6 @@ class NetworkServiceRegistry {
       _activeConnections[serviceBasePath] =
           service; // Store with its native base path as key
 
-      debugPrint("ServiceRegistry: Connected to $serviceBasePath");
-
       // Construct the tab-friendly path
       String type = service.serviceName.toUpperCase(); // SMB, FTP, WEBDAV
 
@@ -93,7 +95,6 @@ class NetworkServiceRegistry {
       if (type == "FTP") {
         String hostComponent = Uri.encodeComponent(host);
         String tabPath = '#network/$type/$hostComponent/';
-        debugPrint("ServiceRegistry: Created FTP tab path: $tabPath");
         return ConnectionResult(
           success: true,
           connectedPath: tabPath,
@@ -107,16 +108,11 @@ class NetworkServiceRegistry {
       // Đơn giản hóa đường dẫn tab
       String tabPath = '#network/$type/$hostComponent/';
 
-      debugPrint(
-          "ServiceRegistry: Created tab path: $tabPath for $serviceBasePath");
-
       return ConnectionResult(
         success: true,
         connectedPath: tabPath, // Return the transformed #network/... path
       );
     } else {
-      debugPrint(
-          "ServiceRegistry: Connection failed: ${serviceConnectionResult.errorMessage}");
       return serviceConnectionResult; // Return original error result
     }
   }
@@ -124,40 +120,28 @@ class NetworkServiceRegistry {
   /// Get a connected service by its path prefix
   NetworkServiceBase? getServiceForPath(String tabPath) {
     if (!tabPath.startsWith('#network/')) {
-      debugPrint("ServiceRegistry: Not a network path: $tabPath");
       return null;
     }
 
     final parts = tabPath.substring('#network/'.length).split('/');
     if (parts.length < 2) {
-      debugPrint("ServiceRegistry: Invalid network path format: $tabPath");
       return null; // Needs at least Type and Host
     }
 
     String serviceType = parts[0].toUpperCase(); // SMB, FTP, WEBDAV
     String hostComponent = Uri.decodeComponent(parts[1]);
 
-    // More detailed logging for debugging
-    debugPrint(
-        "\nServiceRegistry: Finding $serviceType service for $hostComponent");
-    debugPrint(
-        "ServiceRegistry: Active connections: ${_activeConnections.keys}");
-
     // For FTP connections, we need special handling
     if (serviceType == "FTP") {
-      debugPrint("ServiceRegistry: FTP path detected, looking for FTP service");
-
       // Log all available FTP services for debugging
       bool anyFtpFound = false;
       for (var entry in _activeConnections.entries) {
         if (entry.value.serviceName.toUpperCase() == "FTP") {
           anyFtpFound = true;
-          debugPrint("ServiceRegistry: Found FTP connection: ${entry.key}");
         }
       }
 
       if (!anyFtpFound) {
-        debugPrint("ServiceRegistry: No FTP connections active!");
         return null;
       }
 
@@ -165,7 +149,6 @@ class NetworkServiceRegistry {
       for (var entry in _activeConnections.entries) {
         final service = entry.value;
         if (service.serviceName.toUpperCase() == "FTP") {
-          debugPrint("ServiceRegistry: Using FTP service for $tabPath");
           return service;
         }
       }
@@ -200,27 +183,36 @@ class NetworkServiceRegistry {
           } catch (_) {}
         }
 
+        // Special handling for SMB services without share in connectedPath
+        // but with share in the requested path
+        if (!hostMatches && serviceType == "SMB") {
+          try {
+            final uri = Uri.tryParse(serviceBasePath);
+            if (uri != null) {
+              if (uri.host == hostComponent) {
+                // Host matches exactly, this is likely the right service
+                // even if the share part doesn't match (share might be in the path)
+                hostMatches = true;
+              }
+            }
+          } catch (_) {}
+        }
+
         if (typeMatches && hostMatches) {
           return service;
         }
       }
     }
 
-    debugPrint("ServiceRegistry: No service found for $tabPath");
     return null;
   }
 
   /// Disconnect from a specific network path
   Future<void> disconnect(String tabPath) async {
-    debugPrint("NetworkServiceRegistry: Disconnecting from $tabPath");
-
     // We need to find the original serviceBasePath from the tabPath to remove it
     final service = getServiceForPath(
         tabPath); // This should now correctly find the service
     if (service != null) {
-      debugPrint(
-          "NetworkServiceRegistry: Found service for disconnection: ${service.serviceName}");
-
       // Find the key (serviceBasePath) associated with this service instance IF NEEDED.
       // However, service.basePath should give the original key if service instances are unique per connection.
       // Let's assume service.basePath is the key used in _activeConnections.
@@ -231,25 +223,17 @@ class NetworkServiceRegistry {
           // A more robust way would be if getServiceForPath could also return the key it found.
           // For now, if SmbService holds its host/share, its basePath should be smb://host/share
           serviceKeyToRemove = key;
-          debugPrint(
-              "NetworkServiceRegistry: Found service key to remove: $key");
         }
       });
 
       if (serviceKeyToRemove != null) {
         await service.disconnect();
         _activeConnections.remove(serviceKeyToRemove);
-        debugPrint(
-            "NetworkServiceRegistry: Disconnected and removed service: $serviceKeyToRemove");
       } else {
         // Fallback to use service.basePath
         await service.disconnect();
         _activeConnections.remove(service.basePath);
-        debugPrint(
-            "NetworkServiceRegistry: Disconnected using service.basePath: ${service.basePath}");
       }
-    } else {
-      debugPrint("NetworkServiceRegistry: No service found for path: $tabPath");
     }
   }
 
@@ -282,14 +266,10 @@ class NetworkServiceRegistry {
         // Check if we're already connected to this service via getServiceForPath
         final connectedService = getServiceForPath(tabPath);
         if (connectedService != null) {
-          debugPrint(
-              "NetworkServiceRegistry: Path $tabPath confirmed as network path (connected)");
           return true;
         }
 
         // Service type exists but not connected yet - still a valid network path
-        debugPrint(
-            "NetworkServiceRegistry: Path $tabPath is a valid network path format (not connected)");
         return true;
       }
     }

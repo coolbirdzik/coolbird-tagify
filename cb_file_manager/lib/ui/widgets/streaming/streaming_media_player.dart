@@ -1,13 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'package:flutter/foundation.dart';
+import 'dart:io' show Platform;
+
+import 'package:flutter_vlc_player/flutter_vlc_player.dart';
 import 'dart:io';
+import 'package:flutter/services.dart';
 import 'dart:typed_data';
 import 'dart:async';
 import '../../../helpers/file_type_helper.dart';
 import '../../components/stream_speed_indicator.dart';
 import '../../components/buffer_info_widget.dart';
-import '../../utils/streaming_ui_helper.dart';
+import '../../components/video_player/common_controls_overlay.dart';
 
 /// Widget để phát media từ streaming URL hoặc file stream
 class StreamingMediaPlayer extends StatefulWidget {
@@ -82,8 +87,8 @@ class StreamingMediaPlayer extends StatefulWidget {
 }
 
 class _StreamingMediaPlayerState extends State<StreamingMediaPlayer> {
-  late final Player _player;
-  late final VideoController _videoController;
+  Player? _player;
+  VideoController? _videoController;
   bool _isLoading = true;
   String? _errorMessage;
   bool _showSpeedIndicator = false;
@@ -91,6 +96,18 @@ class _StreamingMediaPlayerState extends State<StreamingMediaPlayer> {
   StreamController<List<int>>? _streamController;
   int _totalBytesBuffered = 0;
   int _chunkCountBuffered = 0;
+  bool _useFlutterVlc = false;
+  VlcPlayerController? _vlcController;
+  // VLC state (single definition)
+  bool _vlcListenerAttached = false;
+  bool _vlcPlaying = false;
+  Duration _vlcPosition = Duration.zero;
+  Duration _vlcDuration = Duration.zero;
+  double _vlcVolume = 70.0;
+  bool _vlcMuted = false;
+  bool _isFullScreen = false;
+  bool _showControls = true;
+  Timer? _hideControlsTimer;
 
   @override
   void initState() {
@@ -98,57 +115,193 @@ class _StreamingMediaPlayerState extends State<StreamingMediaPlayer> {
     _initializePlayer();
   }
 
+  void _startHideControlsTimer() {
+    _hideControlsTimer?.cancel();
+    _hideControlsTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted && _isFullScreen) {
+        setState(() {
+          _showControls = false;
+        });
+      }
+    });
+  }
+
+  void _showControlsWithTimer() {
+    if (!mounted) return;
+    setState(() {
+      _showControls = true;
+    });
+    _startHideControlsTimer();
+  }
+
+  Future<void> _toggleFullScreen() async {
+    setState(() {
+      _isFullScreen = !_isFullScreen;
+    });
+    if (_isFullScreen) {
+      _showControlsWithTimer();
+      await SystemChrome.setPreferredOrientations([
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ]);
+      await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    } else {
+      await SystemChrome.setPreferredOrientations(DeviceOrientation.values);
+      await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    }
+  }
+
+  Widget _buildVlcControlsOverlay() {
+    final pos = _vlcPosition;
+    final dur = _vlcDuration.inMilliseconds > 0
+        ? _vlcDuration
+        : const Duration(seconds: 1);
+    final progress = dur.inMilliseconds > 0
+        ? (pos.inMilliseconds / dur.inMilliseconds).clamp(0.0, 1.0)
+        : 0.0;
+
+    String fmt(Duration d) {
+      String two(int n) => n.toString().padLeft(2, '0');
+      return '${two(d.inHours)}:${two(d.inMinutes.remainder(60))}:${two(d.inSeconds.remainder(60))}';
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.bottomCenter,
+          end: Alignment.topCenter,
+          colors: [
+            Colors.black.withOpacity(0.8),
+            Colors.black.withOpacity(0.3),
+            Colors.transparent,
+          ],
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Text(fmt(pos),
+                  style: const TextStyle(color: Colors.white, fontSize: 12)),
+              Expanded(
+                child: Slider(
+                  value: progress,
+                  onChanged: (v) async {
+                    final targetMs = (dur.inMilliseconds * v).toInt();
+                    await _vlcController
+                        ?.seekTo(Duration(milliseconds: targetMs));
+                  },
+                  activeColor: Colors.redAccent,
+                  inactiveColor: Colors.white30,
+                ),
+              ),
+              Text(fmt(_vlcDuration),
+                  style: const TextStyle(color: Colors.white, fontSize: 12)),
+            ],
+          ),
+          Row(
+            children: [
+              IconButton(
+                icon: Icon(_vlcPlaying ? Icons.pause : Icons.play_arrow,
+                    color: Colors.white, size: 30),
+                onPressed: () async {
+                  if (_vlcPlaying) {
+                    await _vlcController?.pause();
+                  } else {
+                    await _vlcController?.play();
+                  }
+                },
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _initializePlayer() async {
     try {
-      // Configure player with options for better SMB streaming
-      _player = Player(
-        configuration: PlayerConfiguration(
-          // Increase buffer size for better streaming performance
-          bufferSize: 10 * 1024 * 1024, // 10MB buffer
-        ),
-      );
-      _videoController = VideoController(_player);
+      // If on Android and an SMB MRL is provided, prefer flutter_vlc_player (direct LibVLC)
+      if (!kIsWeb && Platform.isAndroid && widget.smbMrl != null) {
+        _useFlutterVlc = true;
+        setState(() {
+          _isLoading = false;
+        });
+        return;
+      }
 
-      // Lắng nghe trạng thái player
-      _player.stream.buffering.listen((buffering) {
-        if (mounted) {
-          setState(() {
-            _isLoading = buffering;
-          });
-        }
-      });
+      // Chỉ khởi tạo player nếu chưa tồn tại
+      if (_player == null) {
+        // Configure player with options for better SMB streaming
+        _player = Player(
+          configuration: PlayerConfiguration(
+            // Increase buffer size for better streaming performance
+            bufferSize: 10 * 1024 * 1024, // 10MB buffer
+            // Add SMB-specific options to player configuration
+            // Note: media_kit may not support all these options directly
+          ),
+        );
+        _videoController = VideoController(_player!);
 
-      _player.stream.error.listen((error) {
-        debugPrint('StreamingMediaPlayer: Player error received: $error');
-        if (mounted) {
-          setState(() {
-            _errorMessage = 'Player error: $error';
-            _isLoading = false;
-          });
-        }
-      });
+        // Lắng nghe trạng thái player
+        _player!.stream.buffering.listen((buffering) {
+          if (mounted) {
+            setState(() {
+              _isLoading = buffering;
+            });
+          }
+        });
+
+        _player!.stream.error.listen((error) {
+          debugPrint('StreamingMediaPlayer: Player error received: $error');
+          if (mounted) {
+            setState(() {
+              _errorMessage = 'Player error: $error';
+              _isLoading = false;
+            });
+          }
+        });
+      }
 
       // Mở media từ streaming URL, SMB MRL hoặc file stream
       if (widget.streamingUrl != null) {
-        await _player.open(Media(widget.streamingUrl!));
+        await _player!.open(Media(widget.streamingUrl!));
       } else if (widget.smbMrl != null) {
         // Streaming trực tiếp từ SMB MRL như VLC
         debugPrint(
             'StreamingMediaPlayer: Opening SMB MRL directly: ${widget.smbMrl}');
-        
+
+        // Test SMB URL format
+        _testSmbUrlFormat(widget.smbMrl!);
+
         // Create Media with options to allow unsafe playlists for SMB
+        // Try different approaches for media_kit options
         final media = Media(
           widget.smbMrl!,
+          // Try passing options as httpHeaders for SMB
+          httpHeaders: {
+            'User-Agent': 'VLC/3.0.0 LibVLC/3.0.0',
+          },
+          // Also try extras with different format
           extras: {
-            '--load-unsafe-playlists': '',
-            '--network-caching': '1000',
-            '--file-caching': '1000',
-            '--live-caching': '1000',
+            'load-unsafe-playlists': '',
+            'network-caching': '3000',
+            'file-caching': '3000',
           },
         );
-        
-        await _player.open(media);
-        debugPrint('StreamingMediaPlayer: SMB MRL opened successfully');
+
+        try {
+          await _player!.open(media);
+          debugPrint('StreamingMediaPlayer: SMB MRL opened successfully');
+        } catch (e) {
+          debugPrint('StreamingMediaPlayer: Direct SMB failed: $e');
+          debugPrint('StreamingMediaPlayer: Falling back to HTTP proxy...');
+
+          // Fallback to HTTP proxy if direct SMB fails
+          await _openWithHttpProxy();
+        }
       } else if (widget.fileStream != null) {
         // Tạo broadcast stream để có thể listen nhiều lần
         _streamController = StreamController<List<int>>.broadcast();
@@ -162,7 +315,7 @@ class _StreamingMediaPlayerState extends State<StreamingMediaPlayer> {
 
         debugPrint(
             'StreamingMediaPlayer: Stream buffering completed, opening media player...');
-        await _player.open(Media(tempFile.path));
+        await _player!.open(Media(tempFile.path));
 
         debugPrint('StreamingMediaPlayer: Media player opened successfully');
       }
@@ -184,20 +337,7 @@ class _StreamingMediaPlayerState extends State<StreamingMediaPlayer> {
     }
   }
 
-  Future<File> _createTempFileFromStream(Stream<List<int>> stream) async {
-    final tempDir = Directory.systemTemp;
-    final tempFile = File(
-      '${tempDir.path}/temp_media_${DateTime.now().millisecondsSinceEpoch}',
-    );
-
-    final sink = tempFile.openWrite();
-    await for (final chunk in stream) {
-      sink.add(chunk);
-    }
-    await sink.close();
-
-    return tempFile;
-  }
+  // Deprecated simple stream-to-file helper (unused)
 
   Future<File> _createTempFileFromStreamImproved(
       Stream<List<int>> stream) async {
@@ -224,11 +364,10 @@ class _StreamingMediaPlayerState extends State<StreamingMediaPlayer> {
 
       // Add timeout protection
       bool hasReceivedData = false;
-      DateTime lastChunkTime = DateTime.now();
 
       await for (final chunk in stream) {
         hasReceivedData = true;
-        lastChunkTime = DateTime.now();
+        // track last data time if needed
 
         if (chunk.isEmpty) {
           debugPrint(
@@ -241,7 +380,7 @@ class _StreamingMediaPlayerState extends State<StreamingMediaPlayer> {
         chunkCount++;
 
         // Broadcast chunk to UI widgets
-        _streamController?.add(chunk);
+        _streamController!.add(chunk);
 
         // Log progress for debugging
         if (chunkCount % 10 == 0) {
@@ -309,7 +448,11 @@ class _StreamingMediaPlayerState extends State<StreamingMediaPlayer> {
 
   @override
   void dispose() {
-    _player.dispose();
+    try {
+      _vlcController?.dispose();
+    } catch (_) {}
+    _hideControlsTimer?.cancel();
+    _player?.dispose();
     _streamController?.close();
     super.dispose();
   }
@@ -436,13 +579,110 @@ class _StreamingMediaPlayerState extends State<StreamingMediaPlayer> {
   }
 
   Widget _buildVideoPlayer() {
+    if (_useFlutterVlc && widget.smbMrl != null) {
+      // Render flutter_vlc_player directly for smb:// playback on Android
+      final original = widget.smbMrl!;
+      final uri = Uri.parse(original);
+      final creds =
+          uri.userInfo.isNotEmpty ? uri.userInfo.split(':') : const <String>[];
+      final user = creds.isNotEmpty ? Uri.decodeComponent(creds[0]) : null;
+      final pwd = creds.length > 1 ? Uri.decodeComponent(creds[1]) : null;
+      // Strip credentials from URL to avoid '@' interfering with host parsing
+      final cleanUrl = uri.replace(userInfo: '').toString();
+
+      _vlcController ??= VlcPlayerController.network(
+        cleanUrl,
+        hwAcc: HwAcc.full,
+        autoPlay: true,
+        options: VlcPlayerOptions(
+          advanced: VlcAdvancedOptions([
+            '--network-caching=2000',
+          ]),
+          extras: [
+            if (user != null) '--smb-user=$user',
+            if (pwd != null) '--smb-pwd=$pwd',
+          ],
+        ),
+      );
+      if (!_vlcListenerAttached) {
+        _vlcListenerAttached = true;
+        _vlcController!.addListener(() {
+          final v = _vlcController!.value;
+          if (!mounted) return;
+          setState(() {
+            _vlcPlaying = v.isPlaying;
+            _vlcPosition = v.position ?? Duration.zero;
+            _vlcDuration = v.duration ?? Duration.zero;
+          });
+        });
+      }
+
+      return Stack(
+        children: [
+          GestureDetector(
+            onTap: () {
+              if (_isFullScreen) _showControlsWithTimer();
+            },
+            onDoubleTap: _toggleFullScreen,
+            child: Center(
+              child: AspectRatio(
+                aspectRatio: 16 / 9,
+                child: VlcPlayer(
+                  controller: _vlcController!,
+                  aspectRatio: 16 / 9,
+                  placeholder: const Center(child: CircularProgressIndicator()),
+                ),
+              ),
+            ),
+          ),
+          if (!_isFullScreen || _showControls)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: CommonVideoControlsOverlay(
+                position: _vlcPosition,
+                duration: _vlcDuration,
+                isPlaying: _vlcPlaying,
+                onPlayPause: () async {
+                  if (_vlcPlaying) {
+                    await _vlcController?.pause();
+                  } else {
+                    await _vlcController?.play();
+                  }
+                },
+                onSeek: (v) async {
+                  final targetMs = (_vlcDuration.inMilliseconds * v).toInt();
+                  await _vlcController
+                      ?.seekTo(Duration(milliseconds: targetMs));
+                },
+                hasPrev: false,
+                hasNext: false,
+                onPrev: null,
+                onNext: null,
+                volume: _vlcVolume,
+                onVolumeChange: (val) async {
+                  setState(() {
+                    _vlcVolume = val;
+                    _vlcMuted = val <= 0.1;
+                  });
+                  await _vlcController?.setVolume(val.toInt());
+                },
+                onToggleFullscreen: _toggleFullScreen,
+                onScreenshot: null,
+              ),
+            ),
+        ],
+      );
+    }
+
     return Stack(
       children: [
         Center(
           child: AspectRatio(
             aspectRatio: 16 / 9, // Default aspect ratio
             child: Video(
-              controller: _videoController,
+              controller: _videoController!,
               controls: AdaptiveVideoControls,
             ),
           ),
@@ -666,8 +906,12 @@ class _StreamingMediaPlayerState extends State<StreamingMediaPlayer> {
   }
 
   Widget _buildAudioControls() {
+    if (_player == null) {
+      return const SizedBox.shrink();
+    }
+
     return StreamBuilder<bool>(
-      stream: _player.stream.playing,
+      stream: _player!.stream.playing,
       builder: (context, snapshot) {
         final isPlaying = snapshot.data ?? false;
 
@@ -675,7 +919,7 @@ class _StreamingMediaPlayerState extends State<StreamingMediaPlayer> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             IconButton(
-              onPressed: () => _player.previous(),
+              onPressed: () => _player!.previous(),
               icon: const Icon(
                 Icons.skip_previous,
                 color: Colors.white,
@@ -684,7 +928,7 @@ class _StreamingMediaPlayerState extends State<StreamingMediaPlayer> {
             ),
             const SizedBox(width: 16),
             IconButton(
-              onPressed: () => _player.playOrPause(),
+              onPressed: () => _player!.playOrPause(),
               icon: Icon(
                 isPlaying
                     ? Icons.pause_circle_filled
@@ -695,13 +939,88 @@ class _StreamingMediaPlayerState extends State<StreamingMediaPlayer> {
             ),
             const SizedBox(width: 16),
             IconButton(
-              onPressed: () => _player.next(),
+              onPressed: () => _player!.next(),
               icon: const Icon(Icons.skip_next, color: Colors.white, size: 32),
             ),
           ],
         );
       },
     );
+  }
+
+  /// Test SMB URL format for media_kit compatibility
+  void _testSmbUrlFormat(String url) {
+    debugPrint('=== StreamingMediaPlayer SMB URL Test ===');
+    debugPrint('URL: $url');
+
+    // Check if URL starts with smb://
+    if (!url.startsWith('smb://')) {
+      debugPrint('❌ ERROR: URL does not start with smb://');
+      return;
+    }
+
+    // Parse URL components
+    try {
+      final uri = Uri.parse(url);
+      debugPrint('✅ URL parsing successful');
+      debugPrint('Scheme: ${uri.scheme}');
+      debugPrint('Host: ${uri.host}');
+      debugPrint('Port: ${uri.port}');
+      debugPrint('Path: ${uri.path}');
+      debugPrint('User info: ${uri.userInfo}');
+
+      // Check for special characters in path
+      final path = uri.path;
+      if (path.contains('%')) {
+        debugPrint('⚠️ WARNING: URL contains encoded characters');
+        debugPrint('Decoded path: ${Uri.decodeComponent(path)}');
+      }
+
+      // Check for credentials
+      if (uri.userInfo.isNotEmpty) {
+        debugPrint('✅ URL contains credentials');
+        final parts = uri.userInfo.split(':');
+        if (parts.length == 2) {
+          debugPrint('Username: ${parts[0]}');
+          debugPrint('Password: ${'*' * parts[1].length}');
+        }
+      } else {
+        debugPrint('⚠️ WARNING: URL does not contain credentials');
+      }
+    } catch (e) {
+      debugPrint('❌ ERROR: Failed to parse URL: $e');
+    }
+
+    debugPrint('=== End StreamingMediaPlayer SMB URL Test ===');
+  }
+
+  /// Fallback method to open SMB via HTTP proxy
+  Future<void> _openWithHttpProxy() async {
+    try {
+      debugPrint('StreamingMediaPlayer: Opening SMB via HTTP proxy...');
+
+      // For now, just show an error message
+      // In a real implementation, you would start an HTTP proxy server
+      // and stream the SMB content through it
+
+      if (mounted) {
+        setState(() {
+          _errorMessage =
+              'Direct SMB streaming failed. HTTP proxy fallback not implemented yet.';
+          _isLoading = false;
+        });
+      }
+
+      debugPrint('StreamingMediaPlayer: HTTP proxy fallback not implemented');
+    } catch (e) {
+      debugPrint('StreamingMediaPlayer: HTTP proxy error: $e');
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'HTTP proxy error: $e';
+          _isLoading = false;
+        });
+      }
+    }
   }
 }
 

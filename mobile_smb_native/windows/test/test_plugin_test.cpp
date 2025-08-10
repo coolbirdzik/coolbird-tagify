@@ -10,34 +10,39 @@
 
 #include "test_plugin.h"
 
-namespace test_plugin {
-namespace test {
+namespace test_plugin
+{
+    namespace test
+    {
 
-namespace {
+        namespace
+        {
 
-using flutter::EncodableMap;
-using flutter::EncodableValue;
-using flutter::MethodCall;
-using flutter::MethodResultFunctions;
+            using flutter::EncodableMap;
+            using flutter::EncodableValue;
+            using flutter::MethodCall;
+            using flutter::MethodResultFunctions;
 
-}  // namespace
+        } // namespace
 
-TEST(TestPlugin, GetPlatformVersion) {
-  TestPlugin plugin;
-  // Save the reply value from the success callback.
-  std::string result_string;
-  plugin.HandleMethodCall(
-      MethodCall("getPlatformVersion", std::make_unique<EncodableValue>()),
-      std::make_unique<MethodResultFunctions<>>(
-          [&result_string](const EncodableValue* result) {
-            result_string = std::get<std::string>(*result);
-          },
-          nullptr, nullptr));
+        TEST(TestPlugin, GetPlatformVersion)
+        {
+            TestPlugin plugin;
+            // Save the reply value from the success callback.
+            std::string result_string;
+            plugin.HandleMethodCall(
+                MethodCall("getPlatformVersion", std::make_unique<EncodableValue>()),
+                std::make_unique<MethodResultFunctions<>>(
+                    [&result_string](const EncodableValue *result)
+                    {
+                        result_string = std::get<std::string>(*result);
+                    },
+                    nullptr, nullptr));
 
-  // Since the exact string varies by host, just ensure that it's a string
-  // with the expected format.
-  EXPECT_TRUE(result_string.rfind("Windows ", 0) == 0);
-}
+            // Since the exact string varies by host, just ensure that it's a string
+            // with the expected format.
+            EXPECT_TRUE(result_string.rfind("Windows ", 0) == 0);
+        }
 
-}  // namespace test
-}  // namespace test_plugin
+    } // namespace test
+} // namespace test_plugin

@@ -99,7 +99,6 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
       await _loadAllTags();
     } catch (e) {
       // Handle initialization error
-      debugPrint('Error initializing: $e');
     } finally {
       if (mounted) {
         setState(() {
@@ -123,7 +122,7 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
         });
       }
     } catch (e) {
-      debugPrint('Error loading tags: $e');
+    } finally {
       if (mounted) {
         setState(() {
           _allTags = [];
@@ -288,8 +287,6 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
         ),
       );
 
-      debugPrint('Bắt đầu tìm kiếm với tag: "$tag"');
-
       // Xóa cache để đảm bảo kết quả mới nhất
       TagManager.clearCache();
 
@@ -299,8 +296,6 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
       // 1. Try TagManager first
       try {
         final results = await TagManager.findFilesByTagGlobally(tag);
-        debugPrint(
-            'TagManager: Tìm thấy ${results.length} file với tag "$tag"');
 
         // Process results from TagManager
         for (var entity in results) {
@@ -313,23 +308,17 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
                   'path': path,
                   'name': pathlib.basename(path),
                 });
-                debugPrint('Thêm file từ TagManager: $path');
               }
             } catch (e) {
               // Just log errors and continue
-              debugPrint('Lỗi khi kiểm tra file từ TagManager: $e');
             }
           }
         }
-      } catch (e) {
-        debugPrint('Lỗi khi tìm kiếm với TagManager: $e');
-      }
+      } catch (e) {}
 
       // 2. Try database directly
       try {
         final taggedFiles = await _database.findFilesByTag(tag);
-        debugPrint(
-            'Database: Tìm thấy ${taggedFiles.length} file với tag "$tag"');
 
         for (var path in taggedFiles) {
           // Skip if we already have this path from TagManager
@@ -345,23 +334,14 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
                 'path': path,
                 'name': pathlib.basename(path),
               });
-              debugPrint('Thêm file từ Database: $path');
             }
           } catch (e) {
             // Just log errors and continue
-            debugPrint('Lỗi khi kiểm tra file từ Database: $e');
           }
         }
-      } catch (e) {
-        debugPrint('Lỗi khi tìm kiếm trong Database: $e');
-      }
+      } catch (e) {}
 
       // Log detailed file info list for debugging
-      debugPrint('Kết quả cuối cùng: ${fileInfoList.length} files');
-      for (var file in fileInfoList) {
-        debugPrint('  - ${file['path']}');
-      }
-
       // Cập nhật UI
       if (mounted) {
         setState(() {
@@ -380,19 +360,20 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
         );
       }
     } catch (e) {
-      debugPrint('Error trong tìm kiếm trực tiếp: $e');
       if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Lỗi khi tìm kiếm: $e'),
+            content: Text('Lỗi khi tìm kiếm: ${e.toString()}'),
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 3),
           ),
         );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
       }
     }
   }
@@ -502,13 +483,6 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
         _clearTagSelection();
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text(localizations.errorDeletingTag
-                  .replaceAll('%s', e.toString()))),
-        );
-      }
     } finally {
       if (mounted) {
         setState(() {
@@ -1785,22 +1759,14 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
                 ),
               );
             }
-          } catch (e) {
-            debugPrint('Error opening folder in tab: $e');
-            // Nếu không thể mở trong tab, có thể thực hiện xử lý fallback ở đây
-          }
+          } catch (e) {}
         } else {
           // Xử lý khi không trong môi trường tab
           // Điều này phụ thuộc vào cách ứng dụng của bạn điều hướng
           // Ví dụ: bạn có thể pop màn hình hiện tại và mở thư mục
           Navigator.of(context).pop();
         }
-      } catch (e) {
-        debugPrint('Error opening folder: $e');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error opening folder: $e')),
-        );
-      }
+      } catch (e) {}
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Folder not found: $folderPath')),

@@ -330,16 +330,12 @@ class _LazyVideoThumbnailState extends State<LazyVideoThumbnail>
           !_isLoading &&
           !widget.placeholderOnly &&
           !_isThumbnailGenerated) {
-        debugPrint(
-            '[Thumbnail] Widget became visible, loading thumbnail for ${widget.videoPath}');
         _loadThumbnail(isPriority: true);
       } else if (_wasAttempted &&
           _thumbnailPathNotifier.value == null &&
           !_isLoading &&
           !widget.placeholderOnly &&
           !_isThumbnailGenerated) {
-        debugPrint(
-            '[Thumbnail] Widget became visible, regenerating thumbnail for ${widget.videoPath}');
         _loadThumbnail(forceRegenerate: true, isPriority: true);
       }
     } else if (_visibilityNotifier.value) {

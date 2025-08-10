@@ -123,26 +123,12 @@ class FtpClient {
     } catch (e) {
       debugPrint('Error during disconnect: $e');
     }
+  }
 
-    try {
-      if (_dataSocket != null) {
-        await _dataSocket!.close();
-        _dataSocket = null;
-      }
-    } catch (e) {
-      debugPrint('Error closing data socket: $e');
-    }
-
-    try {
-      if (_passiveServer != null) {
-        await _passiveServer!.close();
-        _passiveServer = null;
-      }
-    } catch (e) {
-      debugPrint('Error closing passive server: $e');
-    }
-
-    _currentDirectory = null;
+  /// Dispose resources
+  void dispose() {
+    _responseController.close();
+    debugPrint('FTPClient: Disposed resources');
   }
 
   /// Sends a NOOP command to keep the connection alive

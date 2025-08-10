@@ -175,13 +175,8 @@ class TabManagerBloc extends Bloc<TabEvent, TabManagerState> {
 
     // If the path is the same as the current path, don't update
     if (currentTab.path == event.newPath) {
-      debugPrint(
-          "TabManagerBloc: Skipping tab path update - path unchanged: ${event.newPath}");
       return;
     }
-
-    debugPrint(
-        "TabManagerBloc: Updating tab path from ${currentTab.path} to ${event.newPath}");
 
     final tabs = state.tabs.map((tab) {
       if (tab.id == event.tabId) {
@@ -373,8 +368,6 @@ class TabNavigator {
       tabBloc.add(UpdateTabPath(tabId, path));
       // Add path to tab history as well
       tabBloc.add(AddToTabHistory(tabId, path));
-    } else {
-      debugPrint("TabNavigator: Skipping path update - path unchanged: $path");
     }
   }
 

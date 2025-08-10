@@ -17,7 +17,7 @@ A Flutter plugin for SMB (Server Message Block) file sharing on mobile platforms
   s.public_header_files = 'Classes/**/*.h'
   s.dependency 'Flutter'
   s.platform = :ios, '11.0'
-  
+
   # Configure C++ compilation
   s.pod_target_xcconfig = {
     'DEFINES_MODULE' => 'YES',

@@ -329,8 +329,6 @@ class _SearchBarState extends State<SearchBar> {
   void _applySelectedTag(String tag) {
     if (!mounted) return;
 
-    debugPrint('Applying selected tag: $tag');
-
     // Cập nhật text input với tag đã chọn
     final text = _searchController.text;
     final hashIndex = text.lastIndexOf('#');
@@ -350,8 +348,6 @@ class _SearchBarState extends State<SearchBar> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _searchFocusNode.requestFocus();
     });
-
-    debugPrint('Applied tag. New text: $newText');
   }
 
   // Phân tích chuỗi tìm kiếm để trích xuất nhiều tag
@@ -441,7 +437,6 @@ class _SearchBarState extends State<SearchBar> {
 
       // Check if user wants a global search
       if (_isGlobalSearch) {
-        debugPrint('Searching for multiple tags globally: $tags');
         // Use the new event for global multi-tag search
         if (tags.length == 1) {
           // If only one tag, use the existing single tag search
@@ -451,7 +446,6 @@ class _SearchBarState extends State<SearchBar> {
           folderListBloc.add(SearchByMultipleTagsGlobally(tags));
         }
       } else {
-        debugPrint('Searching for multiple tags in current directory: $tags');
         // Use the new event for local multi-tag search
         if (tags.length == 1) {
           // If only one tag, use the existing single tag search
@@ -463,7 +457,6 @@ class _SearchBarState extends State<SearchBar> {
       }
     } else {
       // Tìm kiếm theo tên file
-      debugPrint('Searching by filename: "$query"');
       folderListBloc.add(SearchByFileName(query));
     }
   }

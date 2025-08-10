@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import '../models/database/network_credentials.dart';
 import '../objectbox.g.dart';
 import 'dart:convert';
+import 'dart:io';
 
 /// Service để quản lý thông tin đăng nhập mạng lưu trong ObjectBox
 class NetworkCredentialsService {
@@ -17,11 +18,18 @@ class NetworkCredentialsService {
 
   /// Khởi tạo service với tham chiếu đến ObjectBox store
   Future<void> init(Store store) async {
-    if (_isInitialized) return;
+    if (_isInitialized) {
+      return;
+    }
 
-    _credentialsBox = Box<NetworkCredentials>(store);
-    _isInitialized = true;
-    debugPrint('NetworkCredentialsService initialized successfully');
+    try {
+      _credentialsBox = Box<NetworkCredentials>(store);
+      _isInitialized = true;
+    } catch (e, stackTrace) {
+      debugPrint('NetworkCredentialsService: Error initializing: $e');
+      debugPrint('NetworkCredentialsService: Stack trace: $stackTrace');
+      rethrow;
+    }
   }
 
   /// Lưu thông tin đăng nhập mới
@@ -34,9 +42,9 @@ class NetworkCredentialsService {
     String? domain,
     Map<String, dynamic>? additionalOptions,
   }) async {
-    _checkInitialized();
-
     try {
+      _checkInitialized();
+
       // Tạo đối tượng cần lưu
       final credentials = NetworkCredentials(
         serviceType: serviceType,
@@ -51,7 +59,6 @@ class NetworkCredentialsService {
       );
 
       // Tìm thông tin đăng nhập có sẵn bằng cách lấy tất cả rồi lọc thủ công
-      // Cách này không hiệu quả nhưng sẽ giúp tránh lỗi
       final allCredentials = _credentialsBox.getAll();
 
       NetworkCredentials? existingCredentials;
@@ -72,13 +79,29 @@ class NetworkCredentialsService {
         existingCredentials.additionalOptions = credentials.additionalOptions;
         existingCredentials.lastConnected = DateTime.now();
 
-        return _credentialsBox.put(existingCredentials);
+        try {
+          final result = _credentialsBox.put(existingCredentials);
+          return result;
+        } catch (e) {
+          debugPrint(
+              'NetworkCredentialsService: Error updating existing credential: $e');
+          rethrow;
+        }
       } else {
         // Lưu thông tin đăng nhập mới
-        return _credentialsBox.put(credentials);
+        try {
+          final result = _credentialsBox.put(credentials);
+          return result;
+        } catch (e) {
+          debugPrint(
+              'NetworkCredentialsService: Error saving new credential: $e');
+          rethrow;
+        }
       }
-    } catch (e) {
-      debugPrint('Error saving network credentials: $e');
+    } catch (e, stackTrace) {
+      debugPrint(
+          'NetworkCredentialsService: Error saving network credentials: $e');
+      debugPrint('NetworkCredentialsService: Stack trace: $stackTrace');
       rethrow;
     }
   }
@@ -100,20 +123,38 @@ class NetworkCredentialsService {
       // Lấy tất cả thông tin đăng nhập và lọc thủ công
       final allCredentials = _credentialsBox.getAll();
 
+      // Tìm credential phù hợp nhất - ưu tiên exact match
+      NetworkCredentials? bestMatch;
+
       for (var cred in allCredentials) {
+        // Chuẩn hóa host của credential để so sánh
+        final credNormalizedHost = cred.host
+            .replaceAll(RegExp(r'^[a-z]+://'), '')
+            .replaceAll(RegExp(r':\d+$'), '');
+
         bool serviceMatches = cred.serviceType == serviceType;
+        bool hostMatches = credNormalizedHost ==
+            normalizedHost; // Exact match thay vì contains
 
-        bool hostMatches = cred.host.contains(normalizedHost);
-
-        bool usernameMatches =
-            username == null || username.isEmpty || cred.username == username;
-
-        if (serviceMatches && hostMatches && usernameMatches) {
-          return cred;
+        if (serviceMatches && hostMatches) {
+          // Nếu username được chỉ định, ưu tiên exact match
+          if (username != null && username.isNotEmpty) {
+            if (cred.username == username) {
+              return cred; // Exact match - return ngay
+            }
+          } else {
+            // Nếu không chỉ định username, lấy credential có username không trống
+            if (cred.username.isNotEmpty) {
+              if (bestMatch == null ||
+                  cred.lastConnected.isAfter(bestMatch.lastConnected)) {
+                bestMatch = cred;
+              }
+            }
+          }
         }
       }
 
-      return null;
+      return bestMatch;
     } catch (e) {
       debugPrint('Error finding credentials: $e');
       return null;

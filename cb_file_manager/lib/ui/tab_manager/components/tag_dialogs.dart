@@ -22,8 +22,6 @@ void showAddTagToFileDialog(BuildContext context, String filePath) {
     // Clear tag cache immediately
     TagManager.clearCache();
 
-    debugPrint("Sending tag notification for path: $filePath");
-
     // Notify the application about tag changes so any listening components can update
     // Add a special prefix if we need to preserve scroll position
     if (preserveScroll) {
@@ -213,8 +211,6 @@ void showDeleteTagDialog(
                             bloc.add(RemoveTagFromFile(filePath, selectedTag!));
                           } catch (e) {
                             // Bloc not available in this context - it's okay, just continue
-                            debugPrint(
-                                'FolderListBloc not available in this context: $e');
                           }
 
                           // Directly notify with a special prefix to indicate
@@ -303,9 +299,7 @@ void showBatchAddTagDialog(BuildContext context, List<String> selectedFiles) {
           TagManager.instance.notifyTagChanged("preserve_scroll:$file");
         }
       }
-    } catch (e) {
-      debugPrint('Error refreshing parent UI: $e');
-    }
+    } catch (e) {}
   }
 
   // Create BatchTagManager instance and find common tags
@@ -574,8 +568,6 @@ void showBatchAddTagDialog(BuildContext context, List<String> selectedFiles) {
                               }
                             } catch (e) {
                               // Bloc not available in this context - it's okay, just continue
-                              debugPrint(
-                                  'FolderListBloc not available in batch tag dialog: $e');
                             }
                           }
 
@@ -978,9 +970,7 @@ void showRemoveTagsDialog(BuildContext context, List<String> filePaths) {
           TagManager.instance.notifyTagChanged("preserve_scroll:$file");
         }
       }
-    } catch (e) {
-      debugPrint('Error refreshing parent UI: $e');
-    }
+    } catch (e) {}
   }
 
   showDialog(
@@ -1093,8 +1083,6 @@ class _RemoveTagsChipDialogState extends State<RemoveTagsChipDialog> {
             }
           } catch (e) {
             // Bloc not available in this context - it's okay, just continue
-            debugPrint(
-                'FolderListBloc not available in this context for tag removal: $e');
           }
         }
       }

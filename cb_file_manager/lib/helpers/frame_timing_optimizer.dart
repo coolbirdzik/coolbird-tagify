@@ -57,8 +57,8 @@ class FrameTimingOptimizer {
 
     // Schedule a microtask to yield to the event loop
     scheduleMicrotask(() {
-      // Schedule a new frame to ensure the UI thread stays responsive
-      SchedulerBinding.instance.scheduleFrame();
+      // Ensure the UI thread stays responsive without infinite loops
+      SchedulerBinding.instance.ensureVisualUpdate();
     });
   }
 
@@ -75,14 +75,9 @@ class FrameTimingOptimizer {
 
   /// Internal method to ensure consistent frame timing
   void _ensureConsistentFrameTiming() {
-    // Register a persistent frame callback
-    SchedulerBinding.instance.addPersistentFrameCallback((timeStamp) {
-      // This callback runs after every frame is drawn
-      // and helps maintain consistent frame timing
-    });
-
-    // Schedule the first frame
-    SchedulerBinding.instance.scheduleFrame();
+    // Simple frame timing optimization without infinite loops
+    // Just ensure the visual update is scheduled properly
+    SchedulerBinding.instance.ensureVisualUpdate();
   }
 
   /// Call this when scrolling through lists with thumbnails
@@ -92,10 +87,8 @@ class FrameTimingOptimizer {
 
     // Ensure proper render scheduling during scrolling
     SchedulerBinding.instance.addPostFrameCallback((_) {
-      // Schedule a frame with slight delay to prevent back-to-back frames
-      Timer(const Duration(milliseconds: 5), () {
-        SchedulerBinding.instance.scheduleFrame();
-      });
+      // Simple optimization without infinite loops
+      SchedulerBinding.instance.ensureVisualUpdate();
     });
   }
 }

@@ -35,8 +35,9 @@ class ThumbnailWidgetCache {
       _allThumbnailsLoadedController.stream;
 
   static const int _maxCacheSize = 300; // Increased cache size
-  static const Duration _cacheRetentionTime =
-      Duration(minutes: 30); // Increased retention time
+  static const Duration _cacheRetentionTime = Duration(
+    minutes: 30,
+  ); // Increased retention time
 
   Widget? getCachedThumbnailWidget(String path) {
     final widget = _thumbnailWidgets[path];
@@ -91,6 +92,9 @@ class ThumbnailWidgetCache {
 
   void dispose() {
     _thumbnailReadyController.close();
+    _allThumbnailsLoadedController.close();
+    clearCache();
+    debugPrint('ThumbnailWidgetCache: Disposed resources');
   }
 
   void _cleanupCacheIfNeeded() {
@@ -169,13 +173,19 @@ class ThumbnailLoader extends StatefulWidget {
   static void forceResetPendingCount() {
     pendingThumbnailCount = 0;
     _pendingTasksController.add(0);
-    debugPrint('ThumbnailLoader: Force reset pending count to 0');
   }
 
   // Method to clean up static resources
   static void disposeStatic() {
     _pendingTasksController.close();
     ThumbnailWidgetCache._allThumbnailsLoadedController.close();
+    debugPrint('ThumbnailLoader: Disposed static resources');
+  }
+
+  // Static method to reset failed attempts (useful for network reconnection)
+  static void resetFailedAttempts() {
+    _ThumbnailLoaderState._failedAttempts.clear();
+    _ThumbnailLoaderState._lastAttemptTime.clear();
   }
 
   const ThumbnailLoader({
@@ -213,6 +223,12 @@ class _ThumbnailLoaderState extends State<ThumbnailLoader>
   static final _throttler = <String, DateTime>{};
   static const _throttleInterval = Duration(milliseconds: 200);
 
+  // Track failed attempts with retry limits and backoff
+  static final _failedAttempts = <String, int>{};
+  static final _lastAttemptTime = <String, DateTime>{};
+  static const int _maxRetries = 3;
+  static const Duration _retryBackoff = Duration(seconds: 2);
+
   // Limit how many thumbnails can be loaded at once per screen
   static int _activeLoaders = 0;
   static const int _maxActiveLoaders =
@@ -239,8 +255,6 @@ class _ThumbnailLoaderState extends State<ThumbnailLoader>
     // Listen for thumbnail ready notifications
     _thumbnailReadySubscription = _cache.onThumbnailReady.listen((path) {
       if (_widgetMounted && mounted && path == widget.filePath) {
-        debugPrint(
-            'Received thumbnail ready notification for ${widget.filePath}');
         final cachedPath = _cache.getCachedThumbnailPath(widget.filePath);
         if (cachedPath != null && File(cachedPath).existsSync()) {
           setState(() {
@@ -311,12 +325,22 @@ class _ThumbnailLoaderState extends State<ThumbnailLoader>
     _loadTimer?.cancel();
     _refreshTimer?.cancel();
 
+    // Clear retry tracking for this path
+    _failedAttempts.remove(widget.filePath);
+    _lastAttemptTime.remove(widget.filePath);
+
     // Mark this path as invisible (lower priority)
     if (widget.filePath.startsWith('#network/')) {
       NetworkThumbnailHelper().markInvisible(widget.filePath);
     }
 
     super.dispose();
+  }
+
+  // Static method to reset failed attempts (useful for network reconnection)
+  static void resetFailedAttempts() {
+    _failedAttempts.clear();
+    _lastAttemptTime.clear();
   }
 
   // Tránh tải lại thumbnail không cần thiết
@@ -351,15 +375,41 @@ class _ThumbnailLoaderState extends State<ThumbnailLoader>
       return; // Avoid unnecessary reloads
     }
 
+    // Check retry limits and backoff
+    final now = DateTime.now();
+    final lastAttempt = _lastAttemptTime[path];
+    final failedCount = _failedAttempts[path] ?? 0;
+
+    // Skip if we've exceeded max retries
+    if (failedCount >= _maxRetries) {
+      _hasErrorNotifier.value = true;
+      _isLoadingNotifier.value = false;
+      return;
+    }
+
+    // Skip if we tried too recently (exponential backoff)
+    if (lastAttempt != null) {
+      final backoffDelay = Duration(
+        seconds: _retryBackoff.inSeconds * (failedCount + 1),
+      );
+      if (now.difference(lastAttempt) < backoffDelay) {
+        return;
+      }
+    }
+
     // Đánh dấu đang tải
     setState(() {
       _isLoadingNotifier.value = true;
       _hasErrorNotifier.value = false;
     });
 
+    // Track this attempt
+    _lastAttemptTime[path] = now;
+
     try {
       if (path.isEmpty) {
         _hasErrorNotifier.value = true;
+        _failedAttempts[path] = failedCount + 1;
         return;
       }
 
@@ -394,15 +444,19 @@ class _ThumbnailLoaderState extends State<ThumbnailLoader>
       if (!_widgetMounted) return;
 
       if (thumbPath != null) {
+        // Reset failed count on success
+        _failedAttempts.remove(path);
         setState(() {
           _networkThumbnailPath = thumbPath;
           _isLoadingNotifier.value = false;
         });
       } else {
+        _failedAttempts[path] = failedCount + 1;
         _hasErrorNotifier.value = true;
       }
     } catch (e) {
       if (!_widgetMounted) return;
+      _failedAttempts[path] = failedCount + 1;
       _hasErrorNotifier.value = true;
     }
   }
@@ -543,10 +597,11 @@ class _ThumbnailLoaderState extends State<ThumbnailLoader>
         _cache.markGeneratingThumbnail(widget.filePath);
         _activeLoaders++;
 
-        // Increment pending thumbnail count
+        // Increment pending thumbnail count only when actually starting
         ThumbnailLoader.pendingThumbnailCount++;
-        ThumbnailLoader._pendingTasksController
-            .add(ThumbnailLoader.pendingThumbnailCount);
+        ThumbnailLoader._pendingTasksController.add(
+          ThumbnailLoader.pendingThumbnailCount,
+        );
 
         // Use NetworkThumbnailHelper to generate the thumbnail
         NetworkThumbnailHelper()
@@ -573,8 +628,9 @@ class _ThumbnailLoaderState extends State<ThumbnailLoader>
 
           // Decrement pending thumbnail count
           ThumbnailLoader.pendingThumbnailCount--;
-          ThumbnailLoader._pendingTasksController
-              .add(ThumbnailLoader.pendingThumbnailCount);
+          ThumbnailLoader._pendingTasksController.add(
+            ThumbnailLoader.pendingThumbnailCount,
+          );
         }).catchError((error) {
           if (_widgetMounted) {
             _isLoadingNotifier.value = false;
@@ -585,8 +641,9 @@ class _ThumbnailLoaderState extends State<ThumbnailLoader>
 
           // Decrement pending thumbnail count
           ThumbnailLoader.pendingThumbnailCount--;
-          ThumbnailLoader._pendingTasksController
-              .add(ThumbnailLoader.pendingThumbnailCount);
+          ThumbnailLoader._pendingTasksController.add(
+            ThumbnailLoader.pendingThumbnailCount,
+          );
         });
       }
 
@@ -615,10 +672,7 @@ class _ThumbnailLoaderState extends State<ThumbnailLoader>
 
           // Only log errors if they're not related to BackgroundIsolateBinaryMessenger
           if (error is! String ||
-              !error.contains('BackgroundIsolateBinaryMessenger')) {
-            debugPrint(
-                'ThumbnailLoader: Error generating video thumbnail for ${widget.filePath}: $error');
-          }
+              !error.contains('BackgroundIsolateBinaryMessenger')) {}
         }
       },
       fallbackBuilder: () => _buildFallbackWidget(),
@@ -675,16 +729,14 @@ class _ThumbnailLoaderState extends State<ThumbnailLoader>
           _cache.markGeneratingThumbnail(widget.filePath);
           _activeLoaders++;
 
-          // Increment pending thumbnail count
+          // Increment pending thumbnail count only when actually starting
           ThumbnailLoader.pendingThumbnailCount++;
-          ThumbnailLoader._pendingTasksController
-              .add(ThumbnailLoader.pendingThumbnailCount);
+          ThumbnailLoader._pendingTasksController.add(
+            ThumbnailLoader.pendingThumbnailCount,
+          );
 
           NetworkThumbnailHelper()
-              .generateThumbnail(
-                widget.filePath,
-                size: 128,
-              )
+              .generateThumbnail(widget.filePath, size: 128)
               .timeout(const Duration(seconds: 6))
               .then((path) {
             if (_widgetMounted && path != null) {
@@ -704,9 +756,27 @@ class _ThumbnailLoaderState extends State<ThumbnailLoader>
 
             // Decrement pending thumbnail count
             ThumbnailLoader.pendingThumbnailCount--;
-            ThumbnailLoader._pendingTasksController
-                .add(ThumbnailLoader.pendingThumbnailCount);
+            ThumbnailLoader._pendingTasksController.add(
+              ThumbnailLoader.pendingThumbnailCount,
+            );
           }).catchError((error) {
+            // Check if this is a skip exception (backoff)
+            if (error.toString().contains('ThumbnailSkippedException')) {
+              // Don't update error state for skipped thumbnails
+              if (_widgetMounted) {
+                _isLoadingNotifier.value = false;
+              }
+              _cache.markThumbnailGenerated(widget.filePath);
+              _activeLoaders--;
+
+              // Decrement counter since we incremented it at the start
+              ThumbnailLoader.pendingThumbnailCount--;
+              ThumbnailLoader._pendingTasksController.add(
+                ThumbnailLoader.pendingThumbnailCount,
+              );
+              return; // Don't log or update error state
+            }
+
             if (_widgetMounted) {
               _isLoadingNotifier.value = false;
               _hasErrorNotifier.value = true;
@@ -716,8 +786,13 @@ class _ThumbnailLoaderState extends State<ThumbnailLoader>
 
             // Decrement pending thumbnail count
             ThumbnailLoader.pendingThumbnailCount--;
-            ThumbnailLoader._pendingTasksController
-                .add(ThumbnailLoader.pendingThumbnailCount);
+            ThumbnailLoader._pendingTasksController.add(
+              ThumbnailLoader.pendingThumbnailCount,
+            );
+
+            // Only log errors if they're not related to BackgroundIsolateBinaryMessenger
+            if (error is! String ||
+                !error.contains('BackgroundIsolateBinaryMessenger')) {}
           });
         }
 
@@ -767,33 +842,21 @@ class _ThumbnailLoaderState extends State<ThumbnailLoader>
       return Container(
         color: Colors.black12,
         child: const Center(
-          child: Icon(
-            EvaIcons.videoOutline,
-            size: 36,
-            color: Colors.red,
-          ),
+          child: Icon(EvaIcons.videoOutline, size: 36, color: Colors.red),
         ),
       );
     } else if (widget.isImage) {
       return Container(
         color: Colors.black12,
         child: const Center(
-          child: Icon(
-            EvaIcons.imageOutline,
-            size: 36,
-            color: Colors.blue,
-          ),
+          child: Icon(EvaIcons.imageOutline, size: 36, color: Colors.blue),
         ),
       );
     } else {
       return Container(
         color: Colors.black12,
         child: const Center(
-          child: Icon(
-            EvaIcons.fileOutline,
-            size: 36,
-            color: Colors.grey,
-          ),
+          child: Icon(EvaIcons.fileOutline, size: 36, color: Colors.grey),
         ),
       );
     }
@@ -802,12 +865,12 @@ class _ThumbnailLoaderState extends State<ThumbnailLoader>
   // Helper để lấy video thumbnail
   Future<String?> _getVideoThumbnail(String path) async {
     try {
-      return await VideoThumbnailHelper.getThumbnail(path,
-          isPriority: true, forceRegenerate: false);
-    } catch (e) {
-      debugPrint('Error getting video thumbnail: $e');
-      return null;
-    }
+      return await VideoThumbnailHelper.getThumbnail(
+        path,
+        isPriority: true,
+        forceRegenerate: false,
+      );
+    } catch (e) {}
   }
 
   // Helper để kiểm tra file có phải là video không

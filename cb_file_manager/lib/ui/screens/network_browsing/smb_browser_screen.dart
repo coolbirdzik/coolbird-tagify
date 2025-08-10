@@ -12,6 +12,7 @@ import '../../../bloc/network_browsing/network_browsing_event.dart';
 import '../../../bloc/network_browsing/network_browsing_state.dart';
 import '../../../services/network_browsing/network_discovery_service.dart';
 import '../../../services/network_browsing/network_service_registry.dart'; // Added import for registry
+import '../../../services/network_browsing/mobile_smb_service.dart'; // Added import for mobile SMB service
 import '../../tab_manager/tab_manager.dart';
 import '../../utils/fluent_background.dart';
 import '../system_screen.dart';
@@ -51,6 +52,11 @@ class _SMBBrowserScreenState extends State<SMBBrowserScreen>
   // Thêm bloc local để không phụ thuộc vào context
   late NetworkBrowsingBloc _networkBloc;
   bool _isLocalBloc = false;
+
+  // SMB version tracking
+  String _smbVersion = 'Unknown';
+  String _connectionInfo = 'Not connected';
+  bool _isLoadingVersion = false;
 
   // AutomaticKeepAliveClientMixin implementation
   @override
@@ -99,8 +105,13 @@ class _SMBBrowserScreenState extends State<SMBBrowserScreen>
         setState(() {
           // Force rebuild để cập nhật active connections
         });
+        // Update SMB version info when connections change
+        _updateSmbVersionInfo();
       }
     });
+
+    // Update SMB version info on init
+    _updateSmbVersionInfo();
   }
 
   @override
@@ -181,6 +192,9 @@ class _SMBBrowserScreenState extends State<SMBBrowserScreen>
           _hasScanned = true; // Đánh dấu đã scan
           _updateCacheFromState();
         });
+
+        // Start SMB version detection for discovered devices
+        _detectSmbVersionsForDevices();
       }
     } catch (e) {
       if (mounted) {
@@ -206,6 +220,63 @@ class _SMBBrowserScreenState extends State<SMBBrowserScreen>
       _updateCacheFromState();
     });
     await _startNetworkScan();
+  }
+
+  /// Get SMB version and connection info for display
+  Future<void> _updateSmbVersionInfo() async {
+    if (_isLoadingVersion) return;
+
+    setState(() {
+      _isLoadingVersion = true;
+    });
+
+    try {
+      // Get SMB service from registry
+      final smbService = _registry.getServiceByName('SMB');
+      if (smbService != null && smbService is MobileSMBService) {
+        // Try to get SMB version from mobile service
+        final version = await smbService.getSmbVersion();
+        final info = await smbService.getConnectionInfo();
+
+        if (mounted) {
+          setState(() {
+            _smbVersion = version;
+            _connectionInfo = info;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Failed to get SMB version info: $e');
+      if (mounted) {
+        setState(() {
+          _smbVersion = 'Unknown';
+          _connectionInfo = 'Connection info unavailable';
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingVersion = false;
+        });
+      }
+    }
+  }
+
+  /// Detect SMB versions for discovered devices
+  Future<void> _detectSmbVersionsForDevices() async {
+    if (_discoveredDevices.isEmpty) return;
+
+    try {
+      for (final device in _discoveredDevices) {
+        // Try to detect SMB version for each device
+        // This is a placeholder implementation
+        // In a real implementation, you would attempt to connect to each device
+        // and determine its SMB version
+        debugPrint('Detecting SMB version for device: ${device.name}');
+      }
+    } catch (e) {
+      debugPrint('Error detecting SMB versions: $e');
+    }
   }
 
   Future<void> _openWindowsNetworkSettings() async {
@@ -458,6 +529,81 @@ class _SMBBrowserScreenState extends State<SMBBrowserScreen>
                       Text(
                         'SMB servers you are connected to',
                         style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                      const SizedBox(height: 8),
+                      // SMB Version Info
+                      Container(
+                        padding: const EdgeInsets.all(12.0),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .surfaceVariant
+                              .withOpacity(0.3),
+                          borderRadius: BorderRadius.circular(8.0),
+                          border: Border.all(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .outline
+                                .withOpacity(0.2),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              EvaIcons.infoOutline,
+                              size: 16,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    'SMB Version: $_smbVersion',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodyMedium
+                                        ?.copyWith(
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                  ),
+                                  if (_connectionInfo != 'Not connected')
+                                    Text(
+                                      _connectionInfo,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall
+                                          ?.copyWith(
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .onSurfaceVariant,
+                                          ),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                ],
+                              ),
+                            ),
+                            if (_isLoadingVersion)
+                              const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            else
+                              IconButton(
+                                icon: const Icon(EvaIcons.refreshOutline,
+                                    size: 16),
+                                onPressed: _updateSmbVersionInfo,
+                                tooltip: 'Refresh SMB version info',
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                              ),
+                          ],
+                        ),
                       ),
                     ],
                   ),
@@ -842,6 +988,21 @@ class _SMBBrowserScreenState extends State<SMBBrowserScreen>
                                   ),
                                 ),
                             ],
+                          ),
+                        if (device.smbVersion != null)
+                          Container(
+                            margin: const EdgeInsets.only(top: 4),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              'SMB ${device.smbVersion}',
+                              style: const TextStyle(
+                                  fontSize: 10, color: Colors.blue),
+                            ),
                           ),
                       ],
                     ),

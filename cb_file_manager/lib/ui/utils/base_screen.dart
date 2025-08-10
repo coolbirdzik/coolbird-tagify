@@ -87,7 +87,7 @@ class _BaseScreenState extends State<BaseScreen> {
         });
       }
     } catch (e) {
-      debugPrint('Error loading drawer preferences: $e');
+      // debugPrint('Error loading drawer preferences: $e');
     }
   }
 
@@ -98,7 +98,7 @@ class _BaseScreenState extends State<BaseScreen> {
       await prefs.init();
       await prefs.setDrawerPinned(isPinned);
     } catch (e) {
-      debugPrint('Error saving drawer pinned state: $e');
+      // debugPrint('Error saving drawer pinned state: $e');
     }
   }
 

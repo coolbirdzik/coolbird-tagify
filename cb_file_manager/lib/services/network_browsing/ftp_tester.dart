@@ -12,9 +12,6 @@ class FTPTester {
     String? password,
     int port = 21,
   }) async {
-    debugPrint("=== FTP TEST START ===");
-    debugPrint("Connecting to FTP: $host:$port with user $username");
-
     final result = <Map<String, dynamic>>[];
 
     try {
@@ -27,21 +24,16 @@ class FTPTester {
       );
 
       // Kết nối
-      debugPrint("Attempting to connect...");
       final connected = await ftpClient.connect();
       if (!connected) {
         throw Exception("Connection failed");
       }
-      debugPrint("Connected successfully!");
 
       // Kiểm tra thư mục hiện tại
       String? currentDir = ftpClient.currentDirectory;
-      debugPrint("Current directory: $currentDir");
 
       // Liệt kê nội dung thư mục
-      debugPrint("Listing directory content...");
       final listing = await ftpClient.listDirectory();
-      debugPrint("Got ${listing.length} items");
 
       // Duyệt qua danh sách kết quả
       for (var item in listing) {
@@ -50,8 +42,6 @@ class FTPTester {
         final size = item is File ? (await item.stat()).size : 0;
         final modified =
             item is File ? (await item.stat()).modified : DateTime.now();
-
-        debugPrint("Item: $name, Type: $type");
 
         // Thêm vào kết quả
         result.add({
@@ -64,13 +54,10 @@ class FTPTester {
 
       // Ngắt kết nối
       await ftpClient.disconnect();
-      debugPrint("Disconnected successfully");
     } catch (e) {
-      debugPrint("FTP TEST ERROR: $e");
       result.add({'error': e.toString()});
     }
 
-    debugPrint("=== FTP TEST END ===");
     return result;
   }
 }

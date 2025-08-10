@@ -17,6 +17,9 @@ import 'package:eva_icons_flutter/eva_icons_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:cb_file_manager/ui/widgets/thumbnail_loader.dart';
+import 'package:cb_file_manager/helpers/file_type_helper.dart';
+import 'package:cb_file_manager/ui/utils/file_type_utils.dart';
 
 class FileGridItem extends StatelessWidget {
   final FileSystemEntity file;
@@ -53,7 +56,11 @@ class FileGridItem extends StatelessWidget {
       fit: StackFit.expand,
       children: [
         // The content that does NOT change on selection
-        ThumbnailContent(file: file),
+        ThumbnailLoader(
+          filePath: file.path,
+          isVideo: FileTypeUtils.isVideoFile(file.path),
+          isImage: FileTypeUtils.isImageFile(file.path),
+        ),
 
         // The content that DOES change on selection
         Positioned.fill(
@@ -62,20 +69,31 @@ class FileGridItem extends StatelessWidget {
             child: InkWell(
               borderRadius: BorderRadius.circular(8.0),
               onTap: () {
-                final isShiftPressed = RawKeyboard.instance.keysPressed
-                        .contains(LogicalKeyboardKey.shiftLeft) ||
-                    RawKeyboard.instance.keysPressed
-                        .contains(LogicalKeyboardKey.shiftRight);
-                final isCtrlPressed = RawKeyboard.instance.keysPressed
-                        .contains(LogicalKeyboardKey.controlLeft) ||
-                    RawKeyboard.instance.keysPressed
-                        .contains(LogicalKeyboardKey.controlRight);
+                final isShiftPressed =
+                    RawKeyboard.instance.keysPressed.contains(
+                          LogicalKeyboardKey.shiftLeft,
+                        ) ||
+                        RawKeyboard.instance.keysPressed.contains(
+                          LogicalKeyboardKey.shiftRight,
+                        );
+                final isCtrlPressed = RawKeyboard.instance.keysPressed.contains(
+                      LogicalKeyboardKey.controlLeft,
+                    ) ||
+                    RawKeyboard.instance.keysPressed.contains(
+                      LogicalKeyboardKey.controlRight,
+                    );
 
-                toggleFileSelection(
-                  file.path,
-                  shiftSelect: isShiftPressed,
-                  ctrlSelect: isCtrlPressed,
-                );
+                // If in selection mode or modifier keys pressed, handle selection
+                if (isSelectionMode || isShiftPressed || isCtrlPressed) {
+                  toggleFileSelection(
+                    file.path,
+                    shiftSelect: isShiftPressed,
+                    ctrlSelect: isCtrlPressed,
+                  );
+                } else {
+                  // Single tap opens file when not in selection mode
+                  onFileTap?.call(file as File, false);
+                }
               },
               onLongPress: toggleSelectionMode,
               onDoubleTap: () => onFileTap?.call(file as File, false),

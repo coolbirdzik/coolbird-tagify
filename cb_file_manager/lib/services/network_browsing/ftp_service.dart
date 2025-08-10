@@ -83,7 +83,8 @@ class FTPService implements NetworkServiceBase {
       }
 
       debugPrint(
-          'FTPService: Connecting to $host with passive mode: $usePassiveMode');
+        'FTPService: Connecting to $host with passive mode: $usePassiveMode',
+      );
 
       // Create and connect to FTP server
       final client = FtpServiceAdapter(
@@ -102,7 +103,8 @@ class FTPService implements NetworkServiceBase {
       try {
         final files = await client.listDirectory();
         debugPrint(
-            'FTPService: Successfully listed ${files.length} files/directories');
+          'FTPService: Successfully listed ${files.length} files/directories',
+        );
       } catch (e) {
         debugPrint('FTPService: Error listing directory: $e');
 
@@ -113,11 +115,13 @@ class FTPService implements NetworkServiceBase {
         try {
           final files = await client.listDirectory();
           debugPrint(
-              'FTPService: Successfully listed ${files.length} files/directories after toggling mode');
+            'FTPService: Successfully listed ${files.length} files/directories after toggling mode',
+          );
         } catch (e2) {
           // If it still fails after toggling, revert back and continue
           debugPrint(
-              'FTPService: Error listing directory after toggling mode: $e2');
+            'FTPService: Error listing directory after toggling mode: $e2',
+          );
           await client.setPassiveMode(usePassiveMode);
         }
       }
@@ -137,10 +141,7 @@ class FTPService implements NetworkServiceBase {
       // Start keep-alive timer
       _startKeepAlive();
 
-      return ConnectionResult(
-        success: true,
-        connectedPath: basePath,
-      );
+      return ConnectionResult(success: true, connectedPath: basePath);
     } catch (e) {
       debugPrint('FTPService: Connection error: $e');
       _connected = false;
@@ -192,7 +193,8 @@ class FTPService implements NetworkServiceBase {
         debugPrint("FTPService: Sending NOOP to keep connection alive.");
         _ftpClient!.sendNoop().catchError((e) {
           debugPrint(
-              "FTPService: Keep-alive NOOP failed: $e. Connection lost.");
+            "FTPService: Keep-alive NOOP failed: $e. Connection lost.",
+          );
           _connected = false;
           _connectionError = "Connection lost: Keep-alive failed.";
           timer.cancel();
@@ -225,7 +227,8 @@ class FTPService implements NetworkServiceBase {
         debugPrint("FTPService: Raw item: $item (${item.runtimeType})");
         if (item is FtpFileInfo) {
           debugPrint(
-              "  - FtpFileInfo: ${item.path} (isDir: ${item.isDirectory})");
+            "  - FtpFileInfo: ${item.path} (isDir: ${item.isDirectory})",
+          );
         }
       }
 
@@ -238,13 +241,15 @@ class FTPService implements NetworkServiceBase {
           // Create appropriate path for UI
           final uiPath = _convertFtpPathToUIPath(item.path);
           debugPrint(
-              "FTPService: Converting FtpFileInfo path ${item.path} -> $uiPath");
+            "FTPService: Converting FtpFileInfo path ${item.path} -> $uiPath",
+          );
 
           if (item.isDirectory) {
             final dir = Directory(uiPath);
             result.add(dir);
             debugPrint(
-                "FTPService: Added directory: $uiPath (${dir.runtimeType})");
+              "FTPService: Added directory: $uiPath (${dir.runtimeType})",
+            );
           } else {
             final file = File(uiPath);
             result.add(file);
@@ -257,13 +262,15 @@ class FTPService implements NetworkServiceBase {
           final dir = Directory(uiPath);
           result.add(dir);
           debugPrint(
-              "FTPService: Added directory from Directory: $uiPath (${dir.runtimeType})");
+            "FTPService: Added directory from Directory: $uiPath (${dir.runtimeType})",
+          );
         } else if (item is File) {
           final uiPath = _convertFtpPathToUIPath(item.path);
           final file = File(uiPath);
           result.add(file);
           debugPrint(
-              "FTPService: Added file from File: $uiPath (${file.runtimeType})");
+            "FTPService: Added file from File: $uiPath (${file.runtimeType})",
+          );
         } else {
           // For unknown types, try to determine based on the path
           String itemPath = '';
@@ -278,7 +285,8 @@ class FTPService implements NetworkServiceBase {
           }
 
           debugPrint(
-              "FTPService: Unknown item type, extracted path: '$itemPath'");
+            "FTPService: Unknown item type, extracted path: '$itemPath'",
+          );
 
           if (itemPath.isNotEmpty) {
             final uiPath = _convertFtpPathToUIPath(itemPath);
@@ -288,12 +296,14 @@ class FTPService implements NetworkServiceBase {
               final dir = Directory(uiPath);
               result.add(dir);
               debugPrint(
-                  "FTPService: Added directory from unknown type: $uiPath (${dir.runtimeType})");
+                "FTPService: Added directory from unknown type: $uiPath (${dir.runtimeType})",
+              );
             } else {
               final file = File(uiPath);
               result.add(file);
               debugPrint(
-                  "FTPService: Added file from unknown type: $uiPath (${file.runtimeType})");
+                "FTPService: Added file from unknown type: $uiPath (${file.runtimeType})",
+              );
             }
           }
         }
@@ -306,7 +316,8 @@ class FTPService implements NetworkServiceBase {
       final processedResult = [...directories, ...files];
 
       debugPrint(
-          "FTPService: Final result - ${directories.length} directories, ${files.length} files");
+        "FTPService: Final result - ${directories.length} directories, ${files.length} files",
+      );
 
       // Log all the paths in the final result for debugging
       debugPrint("FTPService: Final paths:");
@@ -345,7 +356,8 @@ class FTPService implements NetworkServiceBase {
     // If the path is already a UI path, return it
     if (ftpPath.startsWith('#network/')) {
       debugPrint(
-          "FTPService: Path '$ftpPath' is already a UI path, no conversion needed");
+        "FTPService: Path '$ftpPath' is already a UI path, no conversion needed",
+      );
       return ftpPath;
     }
 
@@ -357,7 +369,8 @@ class FTPService implements NetworkServiceBase {
 
     final uiPath = '#network/FTP/$hostPart$normalizedPath';
     debugPrint(
-        "FTPService: Converted FTP path '$ftpPath' to UI path '$uiPath'");
+      "FTPService: Converted FTP path '$ftpPath' to UI path '$uiPath'",
+    );
     return uiPath;
   }
 
@@ -387,10 +400,14 @@ class FTPService implements NetworkServiceBase {
   }
 
   @override
-  Future<File> getFileWithProgress(String remotePath, String localPath,
-      void Function(double progress)? onProgress) async {
+  Future<File> getFileWithProgress(
+    String remotePath,
+    String localPath,
+    void Function(double progress)? onProgress,
+  ) async {
     debugPrint(
-        "FTPService: Getting file with progress: $remotePath -> $localPath");
+      "FTPService: Getting file with progress: $remotePath -> $localPath",
+    );
 
     if (!_connected || _ftpClient == null) {
       throw Exception('Not connected to FTP server');
@@ -409,16 +426,19 @@ class FTPService implements NetworkServiceBase {
         final fileName = path.basename(normalizedPath);
 
         debugPrint(
-            "FTPService: Getting file size from parent directory: $parentDir, filename: $fileName");
+          "FTPService: Getting file size from parent directory: $parentDir, filename: $fileName",
+        );
 
         final filesList = await _ftpClient!.listDirectory(parentDir);
         debugPrint(
-            "FTPService: Found ${filesList.length} entries in parent directory");
+          "FTPService: Found ${filesList.length} entries in parent directory",
+        );
 
         // Debug output all files in directory
         for (var item in filesList) {
           debugPrint(
-              "FTPService: Directory entry: ${item.runtimeType} - ${item.path}");
+            "FTPService: Directory entry: ${item.runtimeType} - ${item.path}",
+          );
         }
 
         // Find matching file by name
@@ -458,22 +478,26 @@ class FTPService implements NetworkServiceBase {
             // If we don't know the size, just report bytes received
             // Note: this isn't a true percentage but helps show activity
             onProgress(
-                -1.0); // Use negative value to indicate indeterminate progress
+              -1.0,
+            ); // Use negative value to indicate indeterminate progress
           }
         }
       }
 
       debugPrint("FTPService: Starting download with progress tracking...");
       // Download with progress
-      final fileData = await _ftpClient!
-          .downloadFileWithProgress(normalizedPath, progressCallback);
+      final fileData = await _ftpClient!.downloadFileWithProgress(
+        normalizedPath,
+        progressCallback,
+      );
 
       if (fileData == null) {
         throw Exception('Failed to download file: $normalizedPath');
       }
 
       debugPrint(
-          "FTPService: Download complete, writing ${fileData.length} bytes to local file");
+        "FTPService: Download complete, writing ${fileData.length} bytes to local file",
+      );
       // Write to local file
       await localFile.writeAsBytes(fileData);
 
@@ -506,8 +530,11 @@ class FTPService implements NetworkServiceBase {
   }
 
   @override
-  Future<bool> putFileWithProgress(String localPath, String remotePath,
-      void Function(double progress)? onProgress) async {
+  Future<bool> putFileWithProgress(
+    String localPath,
+    String remotePath,
+    void Function(double progress)? onProgress,
+  ) async {
     if (!_connected || _ftpClient == null) {
       throw Exception('Not connected to FTP server');
     }
@@ -744,6 +771,12 @@ class FTPService implements NetworkServiceBase {
 
     return null;
   }
+
+  @override
+  Future<Uint8List?> getThumbnail(String remotePath, int size) async {
+    // FTP doesn't support thumbnail generation, return null
+    return null;
+  }
 }
 
 // Helper class for dynamic loading
@@ -753,6 +786,7 @@ class Class {
   Class(this._name);
 
   dynamic get FTPConnect => throw Exception(
-      'FTP functionality requires the ftpconnect package. '
-      'Please ensure it is properly installed and configured in pubspec.yaml.');
+        'FTP functionality requires the ftpconnect package. '
+        'Please ensure it is properly installed and configured in pubspec.yaml.',
+      );
 }

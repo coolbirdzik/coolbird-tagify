@@ -9,8 +9,10 @@ class NetworkFolderContextMenu {
     required VoidCallback onCreateFolder,
     required VoidCallback onUploadFile,
   }) {
-    final RenderBox overlay =
-        Overlay.of(context).context.findRenderObject() as RenderBox;
+    final RenderObject? renderObject = Overlay.of(
+      context,
+    ).context.findRenderObject();
+    final RenderBox overlay = renderObject as RenderBox;
 
     showMenu(
       context: context,

@@ -281,6 +281,11 @@ class VideoThumbnailHelper {
     _cacheChangedController.add(null);
   }
 
+  /// Dispose resources
+  static void dispose() {
+    _cacheChangedController.close();
+  }
+
   // Track which paths have been logged to avoid spamming logs
   static final Set<String> _loggedPaths = {};
   static DateTime _lastLogCleanup = DateTime.now();

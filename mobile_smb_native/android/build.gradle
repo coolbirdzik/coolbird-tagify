@@ -25,7 +25,7 @@ apply plugin: 'com.android.library'
 apply plugin: 'kotlin-android'
 
 android {
-    namespace 'com.example.mobile_smb_native'
+    namespace 'com.coolbird.mobile_smb_native'
     compileSdkVersion 34
 
     compileOptions {
@@ -70,7 +70,5 @@ android {
 dependencies {
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
     implementation 'eu.agno3.jcifs:jcifs-ng:2.1.9'
-    
-    // LibVLC for Android media streaming
-    implementation 'org.videolan.android:libvlc-all:4.0.0-eap20'
+    // VLC dependency removed - now using flutter_vlc_player
 }

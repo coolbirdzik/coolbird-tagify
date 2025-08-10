@@ -17,6 +17,7 @@ import 'scrollable_tab_bar.dart'; // Import our custom ScrollableTabBar
 import 'mobile_tab_view.dart'; // Import giao diện mobile kiểu Chrome
 import 'package:cb_file_manager/config/translation_helper.dart'; // Import translation helper
 import 'package:cb_file_manager/ui/screens/system_screen_router.dart'; // Import system screen router
+// import 'package:cb_file_manager/widgets/test_native_streaming.dart'; // Test widget removed
 
 // Create a custom scroll behavior that supports mouse wheel scrolling
 class TabBarMouseScrollBehavior extends MaterialScrollBehavior {
@@ -651,49 +652,36 @@ class _TabScreenState extends State<TabScreen> with TickerProviderStateMixin {
 
   Future<void> _handleAddNewTab() async {
     try {
-      debugPrint("Attempting to add new tab...");
       // Nếu là Windows, tạo tab với path rỗng để hiển thị drive picker trong view
       if (Platform.isWindows) {
-        debugPrint("Adding Drives tab for Windows");
         context.read<TabManagerBloc>().add(AddTab(path: '', name: 'Drives'));
         return;
       }
 
       // Xử lý cho các hệ điều hành khác
       try {
-        debugPrint("Getting documents directory...");
         final directory = await getApplicationDocumentsDirectory();
-        debugPrint("Got directory: ${directory.path}");
 
         if (mounted) {
-          debugPrint("Adding tab with Documents path");
           final bloc = context.read<TabManagerBloc>();
           bloc.add(AddTab(path: directory.path, name: 'Documents'));
 
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted) {
-              setState(() {
-                debugPrint("Tab added successfully");
-              });
+              setState(() {});
             }
           });
-        } else {
-          debugPrint("Context is not mounted");
         }
       } catch (e) {
-        debugPrint("Error accessing directory: $e");
-
         // Fallback - try to use current directory
         if (mounted) {
           final fallbackPath = Directory.current.path;
-          debugPrint("Using fallback path: $fallbackPath");
           context
               .read<TabManagerBloc>()
               .add(AddTab(path: fallbackPath, name: 'Home'));
         }
       }
     } catch (e) {
-      debugPrint("Critical error in _handleAddNewTab: $e");
       // Last resort - try to display something
       if (mounted) {
         try {
@@ -808,6 +796,7 @@ class _TabScreenState extends State<TabScreen> with TickerProviderStateMixin {
                   );
                 },
               ),
+              // Native Streaming Test removed - using flutter_vlc_player now
             ],
           ),
         ),

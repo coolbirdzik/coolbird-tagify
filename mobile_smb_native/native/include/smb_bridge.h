@@ -74,6 +74,20 @@ extern "C"
     int smb_read_chunk_optimized(SmbFileHandle *file_handle, uint8_t *buffer, size_t buffer_size, size_t *bytes_read, uint64_t offset);
     int smb_set_read_ahead(SmbFileHandle *file_handle, size_t read_ahead_size);
 
+    // NEW: Enhanced read-range operations for VLC-style streaming
+    int smb_read_range(SmbFileHandle *file_handle, uint8_t *buffer, size_t buffer_size,
+                       uint64_t start_offset, uint64_t end_offset, size_t *bytes_read);
+    int smb_read_range_async(SmbFileHandle *file_handle, uint8_t *buffer, size_t buffer_size,
+                             uint64_t start_offset, uint64_t end_offset, size_t *bytes_read);
+    int smb_prefetch_range(SmbFileHandle *file_handle, uint64_t start_offset, uint64_t end_offset);
+    int smb_set_streaming_options(SmbFileHandle *file_handle, size_t chunk_size, size_t buffer_size, int enable_caching);
+
+    // NEW: SMB URL generation for direct VLC streaming
+    char *smb_generate_direct_url(SmbContext *context, const char *path);
+    char *smb_generate_url_with_credentials(SmbContext *context, const char *path,
+                                            const char *username, const char *password);
+    char *smb_get_connection_url(SmbContext *context);
+
     // Directory operations
     SmbDirectoryResult smb_list_directory(SmbContext *context, const char *path);
     void smb_free_directory_result(SmbDirectoryResult *result);

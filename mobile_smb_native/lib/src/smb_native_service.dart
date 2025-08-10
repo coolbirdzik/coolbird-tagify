@@ -440,6 +440,379 @@ class SmbNativeService {
       }
     }
   }
+
+  // NEW: Enhanced read-range operations for VLC-style streaming
+  /// Read a specific byte range using optimized native read-range
+  /// This is more efficient than the standard readRange for video streaming
+  Future<Uint8List?> readRangeOptimized(
+    String path, {
+    required int startOffset,
+    required int endOffset,
+    int bufferSize = 2 * 1024 * 1024, // 2MB buffer for video streaming
+  }) async {
+    if (!isConnected) {
+      throw Exception('Not connected to SMB server');
+    }
+    if (startOffset < 0 || endOffset <= startOffset) {
+      throw Exception('Invalid range: start=$startOffset, end=$endOffset');
+    }
+
+    Pointer<Void>? fileHandle;
+    try {
+      fileHandle = _ffi.openFile(_context!, path);
+      if (fileHandle == null) {
+        return null;
+      }
+
+      final fileSize = _ffi.getFileSize(fileHandle);
+      if (fileSize <= 0 || startOffset >= fileSize) {
+        return Uint8List(0);
+      }
+
+      // Clamp end offset to file size
+      final actualEndOffset = endOffset > fileSize ? fileSize : endOffset;
+      final bytesToRead = actualEndOffset - startOffset;
+
+      if (bytesToRead <= 0) {
+        return Uint8List(0);
+      }
+
+      final buffer = Uint8List(bufferSize);
+      final bytesRead =
+          _ffi.readRange(fileHandle, buffer, startOffset, actualEndOffset);
+
+      if (bytesRead > 0) {
+        return buffer.sublist(0, bytesRead);
+      }
+
+      return Uint8List(0);
+    } catch (e) {
+      debugPrint('Error reading optimized range: $e');
+      return null;
+    } finally {
+      if (fileHandle != null) {
+        _ffi.closeFile(fileHandle);
+      }
+    }
+  }
+
+  /// Read a specific byte range asynchronously (non-blocking)
+  Future<Uint8List?> readRangeAsync(
+    String path, {
+    required int startOffset,
+    required int endOffset,
+    int bufferSize = 2 * 1024 * 1024,
+  }) async {
+    if (!isConnected) {
+      throw Exception('Not connected to SMB server');
+    }
+    if (startOffset < 0 || endOffset <= startOffset) {
+      throw Exception('Invalid range: start=$startOffset, end=$endOffset');
+    }
+
+    Pointer<Void>? fileHandle;
+    try {
+      fileHandle = _ffi.openFile(_context!, path);
+      if (fileHandle == null) {
+        return null;
+      }
+
+      final fileSize = _ffi.getFileSize(fileHandle);
+      if (fileSize <= 0 || startOffset >= fileSize) {
+        return Uint8List(0);
+      }
+
+      final actualEndOffset = endOffset > fileSize ? fileSize : endOffset;
+      final bytesToRead = actualEndOffset - startOffset;
+
+      if (bytesToRead <= 0) {
+        return Uint8List(0);
+      }
+
+      final buffer = Uint8List(bufferSize);
+      final bytesRead =
+          _ffi.readRangeAsync(fileHandle, buffer, startOffset, actualEndOffset);
+
+      if (bytesRead > 0) {
+        return buffer.sublist(0, bytesRead);
+      }
+
+      return Uint8List(0);
+    } catch (e) {
+      debugPrint('Error reading async range: $e');
+      return null;
+    } finally {
+      if (fileHandle != null) {
+        _ffi.closeFile(fileHandle);
+      }
+    }
+  }
+
+  /// Prefetch a byte range for better streaming performance
+  Future<bool> prefetchRange(
+    String path, {
+    required int startOffset,
+    required int endOffset,
+  }) async {
+    if (!isConnected) {
+      return false;
+    }
+    if (startOffset < 0 || endOffset <= startOffset) {
+      return false;
+    }
+
+    Pointer<Void>? fileHandle;
+    try {
+      fileHandle = _ffi.openFile(_context!, path);
+      if (fileHandle == null) {
+        return false;
+      }
+
+      return _ffi.prefetchRange(fileHandle, startOffset, endOffset);
+    } catch (e) {
+      debugPrint('Error prefetching range: $e');
+      return false;
+    } finally {
+      if (fileHandle != null) {
+        _ffi.closeFile(fileHandle);
+      }
+    }
+  }
+
+  /// Set streaming options for optimized video playback
+  Future<bool> setStreamingOptions(
+    String path, {
+    int chunkSize = 64 * 1024, // 64KB chunks
+    int bufferSize = 2 * 1024 * 1024, // 2MB buffer
+    bool enableCaching = true,
+  }) async {
+    if (!isConnected) {
+      return false;
+    }
+
+    Pointer<Void>? fileHandle;
+    try {
+      fileHandle = _ffi.openFile(_context!, path);
+      if (fileHandle == null) {
+        return false;
+      }
+
+      return _ffi.setStreamingOptions(
+          fileHandle, chunkSize, bufferSize, enableCaching);
+    } catch (e) {
+      debugPrint('Error setting streaming options: $e');
+      return false;
+    } finally {
+      if (fileHandle != null) {
+        _ffi.closeFile(fileHandle);
+      }
+    }
+  }
+
+  // NEW: SMB URL generation for direct VLC streaming
+  /// Generate a direct SMB URL for VLC streaming
+  /// Format: smb://server/share/path
+  String? generateDirectUrl(String path) {
+    if (!isConnected || _context == null) {
+      return null;
+    }
+
+    try {
+      return _ffi.generateDirectUrl(_context!, path);
+    } catch (e) {
+      debugPrint('Error generating direct URL: $e');
+      return null;
+    }
+  }
+
+  /// Generate SMB URL with embedded credentials for VLC streaming
+  /// Format: smb://username:password@server/share/path
+  String? generateUrlWithCredentials(
+      String path, String username, String password) {
+    if (!isConnected || _context == null) {
+      return null;
+    }
+
+    try {
+      return _ffi.generateUrlWithCredentials(
+          _context!, path, username, password);
+    } catch (e) {
+      debugPrint('Error generating URL with credentials: $e');
+      return null;
+    }
+  }
+
+  /// Get the base connection URL
+  /// Format: smb://server/share
+  String? getConnectionUrl() {
+    if (!isConnected || _context == null) {
+      return null;
+    }
+
+    try {
+      return _ffi.getConnectionUrl(_context!);
+    } catch (e) {
+      debugPrint('Error getting connection URL: $e');
+      return null;
+    }
+  }
+
+  /// Generate VLC-compatible SMB URL for direct streaming
+  /// This is the main method for creating URLs that can be passed to flutter_vlc_player
+  String? generateVlcUrl(String path, {String? username, String? password}) {
+    debugPrint('SmbNativeService: generateVlcUrl called with path: $path');
+    debugPrint(
+        'SmbNativeService: generateVlcUrl credentials - Username: $username, Password: ${password != null ? '***' : 'null'}');
+
+    if (!isConnected || _context == null) {
+      debugPrint('SmbNativeService: Not connected or context is null');
+      return null;
+    }
+
+    try {
+      // Try to use native FFI functions first
+      if (username != null && password != null) {
+        final url = _ffi.generateUrlWithCredentials(
+            _context!, path, username, password);
+        if (url != null) {
+          debugPrint('SmbNativeService: Generated URL with credentials: $url');
+          return url;
+        }
+      } else {
+        final url = _ffi.generateDirectUrl(_context!, path);
+        if (url != null) {
+          debugPrint('SmbNativeService: Generated direct URL: $url');
+          return url;
+        }
+      }
+
+      // Fallback: manually construct SMB URL if FFI functions fail
+      debugPrint(
+          'SmbNativeService: FFI functions failed, using fallback URL generation');
+
+      // Try to get connection info from the path
+      final connectionInfo = _extractConnectionInfoFromPath(path);
+      if (connectionInfo != null) {
+        final share = connectionInfo['share'];
+        final host = connectionInfo['host'];
+
+        if (share != null && host != null) {
+          // Extract the actual file path from the full path
+          String filePath;
+          if (path.startsWith('#network/SMB/')) {
+            // Remove '#network/SMB/host/share/' prefix to get the file path
+            final pathWithoutPrefix =
+                path.substring(13); // Remove '#network/SMB/'
+            final parts = pathWithoutPrefix.split('/');
+            if (parts.length > 2) {
+              // Skip host and share, get the rest as file path
+              filePath = parts.skip(2).join('/');
+            } else {
+              filePath = '';
+            }
+          } else if (path.startsWith('smb://')) {
+            // Remove 'smb://host/share/' prefix to get the file path
+            final pathWithoutScheme = path.substring(6); // Remove 'smb://'
+            final parts = pathWithoutScheme.split('/');
+            if (parts.length > 2) {
+              // Skip host and share, get the rest as file path
+              filePath = parts.skip(2).join('/');
+            } else {
+              filePath = '';
+            }
+          } else {
+            filePath = path;
+          }
+
+          // Normalize and encode path segments to avoid double-encoding
+          final pathSegments = filePath
+              .split('/')
+              .where((s) => s.isNotEmpty)
+              .map((seg) => Uri.encodeComponent(Uri.decodeComponent(seg)))
+              .toList();
+          final encodedFilePath = pathSegments.join('/');
+          final encodedShare = Uri.encodeComponent(Uri.decodeComponent(share));
+
+          if (username != null &&
+              password != null &&
+              username.isNotEmpty &&
+              username != 'guest') {
+            final encodedUser = Uri.encodeComponent(username);
+            final encodedPass = Uri.encodeComponent(password);
+            final fallbackUrl =
+                'smb://$encodedUser:$encodedPass@$host/$encodedShare/$encodedFilePath';
+            debugPrint(
+                'SmbNativeService: Generated fallback URL with credentials: $fallbackUrl');
+            return fallbackUrl;
+          } else {
+            final fallbackUrl = 'smb://$host/$encodedShare/$encodedFilePath';
+            debugPrint(
+                'SmbNativeService: Generated fallback URL without credentials: $fallbackUrl');
+            return fallbackUrl;
+          }
+        } else {
+          debugPrint(
+              'SmbNativeService: Missing host or share in connection info');
+        }
+      }
+
+      debugPrint('SmbNativeService: Could not generate SMB URL for VLC');
+      return null;
+    } catch (e) {
+      debugPrint('Error generating VLC URL: $e');
+      return null;
+    }
+  }
+
+  /// Extract connection info from SMB path
+  Map<String, String>? _extractConnectionInfoFromPath(String smbPath) {
+    try {
+      // Handle smb:// URLs
+      if (smbPath.startsWith('smb://')) {
+        final pathWithoutScheme = smbPath.substring(6); // Remove 'smb://'
+        final parts = pathWithoutScheme.split('/');
+
+        if (parts.length >= 2) {
+          final host = parts[0];
+          final share = parts[1];
+
+          debugPrint(
+              'SmbNativeService: Extracted from smb:// - Host: $host, Share: $share');
+
+          return {
+            'host': host,
+            'share': share,
+          };
+        }
+      }
+
+      // Handle #network/SMB/host/path format
+      if (smbPath.startsWith('#network/SMB/')) {
+        final pathWithoutPrefix =
+            smbPath.substring(13); // Remove '#network/SMB/'
+        final parts = pathWithoutPrefix.split('/');
+
+        if (parts.length >= 2) {
+          final host = parts[0];
+          final share = parts[1];
+
+          debugPrint(
+              'SmbNativeService: Extracted from #network/SMB/ - Host: $host, Share: $share');
+
+          return {
+            'host': host,
+            'share': share,
+          };
+        }
+      }
+
+      debugPrint('SmbNativeService: Could not parse SMB path: $smbPath');
+      return null;
+    } catch (e) {
+      debugPrint('SmbNativeService: Error extracting connection info: $e');
+      return null;
+    }
+  }
 }
 
 /// Represents a chunk of streamed file data with progress information

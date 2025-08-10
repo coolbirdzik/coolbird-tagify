@@ -22,7 +22,7 @@ class WindowsAppIcon {
       });
       return result;
     } catch (e) {
-      debugPrint('Error getting associated app path: $e');
+      // Removed debugPrint statement
       return null;
     }
   }
@@ -72,7 +72,7 @@ class WindowsAppIcon {
 
       return null;
     } catch (e) {
-      debugPrint('Error extracting icon: $e');
+      // Removed debugPrint statement
       return null;
     }
   }

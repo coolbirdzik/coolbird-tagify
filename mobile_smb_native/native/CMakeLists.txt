@@ -10,23 +10,16 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(PkgConfig QUIET)
 if(PKG_CONFIG_FOUND)
     pkg_check_modules(LIBSMB2 QUIET libsmb2)
-    pkg_check_modules(LIBVLC QUIET libvlc)
+    # LibVLC check removed - now using flutter_vlc_player
 endif()
 
-# Check for LibVLC
-if(LIBVLC_FOUND)
-    add_definitions(-DENABLE_LIBVLC)
-    message(STATUS "LibVLC found, enabling media streaming support")
-else()
-    message(WARNING "LibVLC not found, media streaming will be disabled")
-endif()
+# LibVLC support removed - now using flutter_vlc_player
 
 # Source files - using libsmb2 implementation
 set(SOURCES
     src/smb_bridge.cpp
     src/smb_client.cpp
     src/thumbnail_generator.cpp
-    src/media_streamer.cpp
 )
 
 # Include directories
@@ -53,19 +46,7 @@ else()
     target_link_libraries(smb_bridge smb2)
 endif()
 
-# Link LibVLC if available
-if(LIBVLC_FOUND)
-    target_link_libraries(smb_bridge ${LIBVLC_LIBRARIES})
-    target_compile_options(smb_bridge PRIVATE ${LIBVLC_CFLAGS_OTHER})
-    target_include_directories(smb_bridge PRIVATE ${LIBVLC_INCLUDE_DIRS})
-else()
-    # Try manual linking for common LibVLC locations
-    find_library(VLC_LIB vlc PATHS /usr/lib /usr/local/lib)
-    if(VLC_LIB)
-        target_link_libraries(smb_bridge ${VLC_LIB})
-        add_definitions(-DENABLE_LIBVLC)
-    endif()
-endif()
+# LibVLC linking removed - now using flutter_vlc_player
 
 # Platform-specific configurations
 if(WIN32)

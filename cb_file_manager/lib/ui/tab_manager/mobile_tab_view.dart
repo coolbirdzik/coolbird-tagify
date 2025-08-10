@@ -886,9 +886,6 @@ class MobileTabView extends StatelessWidget {
                               ? (currentPath.isEmpty ? 'Drives' : 'Root')
                               : lastPart;
                           tabBloc.add(UpdateTabName(tab.id, tabName));
-
-                          // Debug print to track path updates
-                          debugPrint('Navigating to path: $currentPath');
                         },
                       );
                     },
@@ -937,10 +934,6 @@ class MobileTabView extends StatelessWidget {
 
                                 // Update the tab path
                                 tabBloc.add(UpdateTabPath(tab.id, historyPath));
-
-                                // Debug print
-                                debugPrint(
-                                    'Navigating to history path: $historyPath');
                               }
                             },
                             borderRadius: BorderRadius.circular(20),

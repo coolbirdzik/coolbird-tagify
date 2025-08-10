@@ -162,7 +162,7 @@ class MobileSmbClient {
   /// Get native SMB context pointer for media streaming
   ///
   /// Returns the native context pointer as an integer address
-  /// This is used for direct media streaming with LibVLC/FFmpeg
+  /// This is used for direct media streaming
   Future<int?> getNativeContext() async {
     return await MobileSmbNativePlatform.instance.getNativeContext();
   }

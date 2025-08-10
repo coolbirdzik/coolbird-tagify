@@ -13,47 +13,59 @@
 #include <memory>
 #include <sstream>
 
-namespace test_plugin {
+namespace test_plugin
+{
 
-// static
-void TestPlugin::RegisterWithRegistrar(
-    flutter::PluginRegistrarWindows *registrar) {
-  auto channel =
-      std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
-          registrar->messenger(), "test_plugin",
-          &flutter::StandardMethodCodec::GetInstance());
+    // static
+    void TestPlugin::RegisterWithRegistrar(
+        flutter::PluginRegistrarWindows *registrar)
+    {
+        auto channel =
+            std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+                registrar->messenger(), "test_plugin",
+                &flutter::StandardMethodCodec::GetInstance());
 
-  auto plugin = std::make_unique<TestPlugin>();
+        auto plugin = std::make_unique<TestPlugin>();
 
-  channel->SetMethodCallHandler(
-      [plugin_pointer = plugin.get()](const auto &call, auto result) {
-        plugin_pointer->HandleMethodCall(call, std::move(result));
-      });
+        channel->SetMethodCallHandler(
+            [plugin_pointer = plugin.get()](const auto &call, auto result)
+            {
+                plugin_pointer->HandleMethodCall(call, std::move(result));
+            });
 
-  registrar->AddPlugin(std::move(plugin));
-}
-
-TestPlugin::TestPlugin() {}
-
-TestPlugin::~TestPlugin() {}
-
-void TestPlugin::HandleMethodCall(
-    const flutter::MethodCall<flutter::EncodableValue> &method_call,
-    std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result) {
-  if (method_call.method_name().compare("getPlatformVersion") == 0) {
-    std::ostringstream version_stream;
-    version_stream << "Windows ";
-    if (IsWindows10OrGreater()) {
-      version_stream << "10+";
-    } else if (IsWindows8OrGreater()) {
-      version_stream << "8";
-    } else if (IsWindows7OrGreater()) {
-      version_stream << "7";
+        registrar->AddPlugin(std::move(plugin));
     }
-    result->Success(flutter::EncodableValue(version_stream.str()));
-  } else {
-    result->NotImplemented();
-  }
-}
 
-}  // namespace test_plugin
+    TestPlugin::TestPlugin() {}
+
+    TestPlugin::~TestPlugin() {}
+
+    void TestPlugin::HandleMethodCall(
+        const flutter::MethodCall<flutter::EncodableValue> &method_call,
+        std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result)
+    {
+        if (method_call.method_name().compare("getPlatformVersion") == 0)
+        {
+            std::ostringstream version_stream;
+            version_stream << "Windows ";
+            if (IsWindows10OrGreater())
+            {
+                version_stream << "10+";
+            }
+            else if (IsWindows8OrGreater())
+            {
+                version_stream << "8";
+            }
+            else if (IsWindows7OrGreater())
+            {
+                version_stream << "7";
+            }
+            result->Success(flutter::EncodableValue(version_stream.str()));
+        }
+        else
+        {
+            result->NotImplemented();
+        }
+    }
+
+} // namespace test_plugin

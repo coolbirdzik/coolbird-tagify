@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
@@ -7,7 +8,7 @@ import '../../../bloc/network_browsing/network_browsing_bloc.dart';
 import '../../../bloc/network_browsing/network_browsing_event.dart';
 import '../../../bloc/network_browsing/network_browsing_state.dart';
 import '../../../services/network_browsing/smb_service.dart';
-import 'package:smb_connect/smb_connect.dart';
+// Removed smb_connect import - using mobile_smb_native instead
 import '../../../services/network_credentials_service.dart';
 import '../../../models/database/network_credentials.dart';
 
@@ -48,7 +49,7 @@ class _NetworkConnectionDialogState extends State<NetworkConnectionDialog> {
   // For SMB share selection
   bool _connectingToServer = false;
   bool _showingShareSelector = false;
-  List<SmbFile> _availableShares = [];
+  List<String> _availableShares = [];
   String? _selectedShare;
   bool _sharesLoading = false;
 
@@ -66,18 +67,33 @@ class _NetworkConnectionDialogState extends State<NetworkConnectionDialog> {
   @override
   void initState() {
     super.initState();
+    debugPrint(
+        'NetworkConnectionDialog: initState() called on platform: ${Platform.operatingSystem}');
     _selectedService = widget.initialService ?? 'SMB';
     _localBloc = NetworkBrowsingBloc();
 
     // Set the host if provided
     if (widget.initialHost != null) {
       _hostController.text = widget.initialHost!;
+      debugPrint(
+          'NetworkConnectionDialog: Initial host set to: ${widget.initialHost}');
+    } else {
+      debugPrint('NetworkConnectionDialog: No initial host provided');
     }
 
     // Set default ports based on service
     _updateDefaultPort();
-    _loadSavedCredentials();
+
+    // Load saved hosts immediately
     _loadSavedHosts(); // Load saved hosts for autocomplete
+
+    // Đảm bảo host controller đã được thiết lập trước khi tải thông tin đăng nhập
+    // Trên mobile, cần thêm delay dài hơn để đảm bảo giá trị đã được cập nhật
+    Future.delayed(const Duration(milliseconds: 500), () {
+      debugPrint(
+          'NetworkConnectionDialog: Before loading credentials, host is: ${_hostController.text}');
+      _loadSavedCredentials();
+    });
 
     // Listen to connection results
     _localBloc.stream.listen((state) {
@@ -127,13 +143,38 @@ class _NetworkConnectionDialogState extends State<NetworkConnectionDialog> {
     await Future.delayed(const Duration(milliseconds: 100));
 
     try {
+      final hostToSearch = _hostController.text.trim();
+      debugPrint(
+          'NetworkConnectionDialog: Loading saved credentials for host: "$hostToSearch", service: $_selectedService, platform: ${Platform.operatingSystem}');
+
+      if (hostToSearch.isEmpty) {
+        debugPrint(
+            'NetworkConnectionDialog: Host is empty, skipping credential load');
+        return;
+      }
+
+      // Chuẩn hóa host giống như trong NetworkCredentialsService
+      final normalizedHost = hostToSearch
+          .replaceAll(RegExp(r'^[a-z]+://'), '')
+          .replaceAll(RegExp(r':\d+$'), '');
+      debugPrint('NetworkConnectionDialog: Normalized host: "$normalizedHost"');
+
       // Tìm thông tin đăng nhập đã lưu cho dịch vụ hiện tại
       final credentials = NetworkCredentialsService().findCredentials(
         serviceType: _selectedService,
-        host: _hostController.text,
+        host: hostToSearch,
       );
 
+      debugPrint(
+          'NetworkConnectionDialog: Credentials search result: ${credentials != null ? "FOUND" : "NOT FOUND"}');
+      if (credentials != null) {
+        debugPrint(
+            'NetworkConnectionDialog: Found credentials details - host: ${credentials.host}, username: ${credentials.username}, domain: ${credentials.domain}, port: ${credentials.port}');
+      }
+
       if (credentials != null && mounted) {
+        debugPrint(
+            'NetworkConnectionDialog: Applying saved credentials for $hostToSearch - username: ${credentials.username}');
         setState(() {
           _hostController.text = credentials.host;
           _usernameController.text = credentials.username;
@@ -147,9 +188,27 @@ class _NetworkConnectionDialogState extends State<NetworkConnectionDialog> {
             _domain = credentials.domain;
           }
         });
+
+        // Kiểm tra sau khi cập nhật
+        debugPrint(
+            'NetworkConnectionDialog: After update - Username controller: "${_usernameController.text}", Password set: ${_passwordController.text.isNotEmpty}');
+      } else {
+        debugPrint(
+            'NetworkConnectionDialog: No saved credentials found for host: "$hostToSearch"');
+
+        // Kiểm tra tất cả thông tin đăng nhập đã lưu để debug
+        final allCredentials = NetworkCredentialsService()
+            .getCredentialsByServiceType(_selectedService);
+        debugPrint(
+            'NetworkConnectionDialog: Found ${allCredentials.length} saved credentials for service "$_selectedService":');
+        for (var cred in allCredentials) {
+          debugPrint(
+              '  - Host: "${cred.host}", Username: "${cred.username}", Domain: "${cred.domain}", Port: ${cred.port}');
+        }
       }
     } catch (e) {
-      debugPrint('Error loading saved credentials: $e');
+      debugPrint(
+          'NetworkConnectionDialog: Error loading saved credentials: $e');
     }
   }
 
@@ -311,7 +370,10 @@ class _NetworkConnectionDialogState extends State<NetworkConnectionDialog> {
       final password = _passwordController.text;
       final domain = _domain ?? '';
 
-      debugPrint('Connecting to SMB server: $serverAddress');
+      debugPrint(
+          'NetworkConnectionDialog: Connecting to SMB server: $serverAddress, username: $username, platform: ${Platform.operatingSystem}');
+      debugPrint(
+          'NetworkConnectionDialog: _saveCredentials value: $_saveCredentials');
 
       // Kết nối trực tiếp với SMB server mà không cần chọn share
       // Tạo event kết nối với server (không cần share)
@@ -331,8 +393,12 @@ class _NetworkConnectionDialogState extends State<NetworkConnectionDialog> {
       _localBloc.add(event);
 
       // Lưu thông tin đăng nhập nếu được chọn
+      debugPrint(
+          'NetworkConnectionDialog: Should save credentials? $_saveCredentials');
       if (_saveCredentials) {
-        NetworkCredentialsService().saveCredentials(
+        debugPrint(
+            'NetworkConnectionDialog: Saving credentials for SMB - host: $serverAddress, username: $username');
+        await NetworkCredentialsService().saveCredentials(
           serviceType: _selectedService,
           host: serverAddress,
           username: username,
@@ -342,6 +408,10 @@ class _NetworkConnectionDialogState extends State<NetworkConnectionDialog> {
               : null,
           domain: _domain,
         );
+        debugPrint('NetworkConnectionDialog: Credentials saved successfully');
+      } else {
+        debugPrint(
+            'NetworkConnectionDialog: Not saving credentials because _saveCredentials is false');
       }
     } catch (e) {
       debugPrint('Error connecting to server: $e');
@@ -467,219 +537,222 @@ class _NetworkConnectionDialogState extends State<NetworkConnectionDialog> {
               width: 400,
               child: Form(
                 key: _formKey,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Service Selection Dropdown
-                    DropdownButtonFormField<String>(
-                      value: _selectedService,
-                      decoration: const InputDecoration(
-                        labelText: 'Service Type',
-                        border: OutlineInputBorder(),
-                      ),
-                      items: const [
-                        DropdownMenuItem(value: 'SMB', child: Text('SMB')),
-                        DropdownMenuItem(value: 'FTP', child: Text('FTP')),
-                        DropdownMenuItem(
-                            value: 'WebDAV', child: Text('WebDAV')),
-                      ],
-                      onChanged: isLoading
-                          ? null
-                          : (value) {
-                              setState(() {
-                                _selectedService = value!;
-                                _updateDefaultPort();
-                                _loadSavedHosts();
-                              });
-                            },
-                    ),
-
-                    const SizedBox(height: 16),
-
-                    // Host Field with Autocomplete
-                    Autocomplete<String>(
-                      fieldViewBuilder:
-                          (context, controller, focusNode, onFieldSubmitted) {
-                        // Sync the controller with our _hostController
-                        if (controller.text != _hostController.text) {
-                          controller.text = _hostController.text;
-                        }
-                        _hostController.addListener(() {
-                          if (controller.text != _hostController.text) {
-                            controller.text = _hostController.text;
-                          }
-                        });
-
-                        return TextFormField(
-                          controller: controller,
-                          focusNode: focusNode,
-                          enabled: !isLoading,
-                          decoration: const InputDecoration(
-                            labelText: 'Host',
-                            border: OutlineInputBorder(),
-                          ),
-                          onChanged: (value) {
-                            _hostController.text = value;
-                            _loadSavedCredentials();
-                          },
-                          onFieldSubmitted: (value) {
-                            onFieldSubmitted();
-                          },
-                        );
-                      },
-                      optionsBuilder: (TextEditingValue textEditingValue) {
-                        if (textEditingValue.text.isEmpty) {
-                          return _savedHosts;
-                        }
-                        return _savedHosts.where((option) => option
-                            .toLowerCase()
-                            .contains(textEditingValue.text.toLowerCase()));
-                      },
-                      onSelected: (String option) {
-                        _hostController.text = option;
-                        _loadSavedCredentials();
-                      },
-                      optionsViewBuilder: (context, onSelected, options) {
-                        return Material(
-                          elevation: 4.0,
-                          child: ListView.builder(
-                            padding: EdgeInsets.zero,
-                            itemCount: options.length,
-                            shrinkWrap: true,
-                            itemBuilder: (BuildContext context, int index) {
-                              final option = options.elementAt(index);
-                              return ListTile(
-                                title: Text(option),
-                                trailing: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    IconButton(
-                                      icon: const Icon(EvaIcons.edit, size: 16),
-                                      onPressed: () {
-                                        // Stop dropdown from closing
-                                        Navigator.of(context).pop();
-                                        _deleteSavedHost(option);
-                                      },
-                                      tooltip: 'Delete Saved Connection',
-                                    ),
-                                  ],
-                                ),
-                                onTap: () {
-                                  onSelected(option);
-                                },
-                              );
-                            },
-                          ),
-                        );
-                      },
-                    ),
-
-                    const SizedBox(height: 16),
-
-                    // Username Field
-                    TextFormField(
-                      controller: _usernameController,
-                      enabled: !isLoading,
-                      decoration: const InputDecoration(
-                        labelText: 'Username',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-
-                    const SizedBox(height: 16),
-
-                    // Password Field
-                    TextFormField(
-                      controller: _passwordController,
-                      enabled: !isLoading,
-                      obscureText: !_showPassword,
-                      decoration: InputDecoration(
-                        labelText: 'Password',
-                        border: const OutlineInputBorder(),
-                        suffixIcon: IconButton(
-                          icon: Icon(
-                            _showPassword ? EvaIcons.eye : EvaIcons.eyeOff,
-                          ),
-                          onPressed: isLoading
-                              ? null
-                              : () {
-                                  setState(() {
-                                    _showPassword = !_showPassword;
-                                  });
-                                },
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Service Selection Dropdown
+                      DropdownButtonFormField<String>(
+                        value: _selectedService,
+                        decoration: const InputDecoration(
+                          labelText: 'Service Type',
+                          border: OutlineInputBorder(),
                         ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 16),
-
-                    // Port Field
-                    TextFormField(
-                      controller: _portController,
-                      enabled: !isLoading,
-                      decoration: const InputDecoration(
-                        labelText: 'Port (optional)',
-                        border: OutlineInputBorder(),
-                      ),
-                      keyboardType: TextInputType.number,
-                    ),
-
-                    // Show additional options based on selected service
-                    if (_selectedService == 'WebDAV') ...[
-                      const SizedBox(height: 16),
-
-                      // SSL Checkbox
-                      CheckboxListTile(
-                        title: const Text('Use SSL/TLS'),
-                        value: _useSSL,
+                        items: const [
+                          DropdownMenuItem(value: 'SMB', child: Text('SMB')),
+                          DropdownMenuItem(value: 'FTP', child: Text('FTP')),
+                          DropdownMenuItem(
+                              value: 'WebDAV', child: Text('WebDAV')),
+                        ],
                         onChanged: isLoading
                             ? null
                             : (value) {
                                 setState(() {
-                                  _useSSL = value ?? true;
-                                  if (_portController.text == '443' ||
-                                      _portController.text == '80') {
-                                    _portController.text =
-                                        _useSSL ? '443' : '80';
-                                  }
+                                  _selectedService = value!;
+                                  _updateDefaultPort();
+                                  _loadSavedHosts();
+                                });
+                              },
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      // Host Field with Autocomplete
+                      Autocomplete<String>(
+                        fieldViewBuilder:
+                            (context, controller, focusNode, onFieldSubmitted) {
+                          // Sync the controller with our _hostController
+                          if (controller.text != _hostController.text) {
+                            controller.text = _hostController.text;
+                          }
+                          _hostController.addListener(() {
+                            if (controller.text != _hostController.text) {
+                              controller.text = _hostController.text;
+                            }
+                          });
+
+                          return TextFormField(
+                            controller: controller,
+                            focusNode: focusNode,
+                            enabled: !isLoading,
+                            decoration: const InputDecoration(
+                              labelText: 'Host',
+                              border: OutlineInputBorder(),
+                            ),
+                            onChanged: (value) {
+                              _hostController.text = value;
+                              _loadSavedCredentials();
+                            },
+                            onFieldSubmitted: (value) {
+                              onFieldSubmitted();
+                            },
+                          );
+                        },
+                        optionsBuilder: (TextEditingValue textEditingValue) {
+                          if (textEditingValue.text.isEmpty) {
+                            return _savedHosts;
+                          }
+                          return _savedHosts.where((option) => option
+                              .toLowerCase()
+                              .contains(textEditingValue.text.toLowerCase()));
+                        },
+                        onSelected: (String option) {
+                          _hostController.text = option;
+                          _loadSavedCredentials();
+                        },
+                        optionsViewBuilder: (context, onSelected, options) {
+                          return Material(
+                            elevation: 4.0,
+                            child: ListView.builder(
+                              padding: EdgeInsets.zero,
+                              itemCount: options.length,
+                              shrinkWrap: true,
+                              itemBuilder: (BuildContext context, int index) {
+                                final option = options.elementAt(index);
+                                return ListTile(
+                                  title: Text(option),
+                                  trailing: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton(
+                                        icon:
+                                            const Icon(EvaIcons.edit, size: 16),
+                                        onPressed: () {
+                                          // Stop dropdown from closing
+                                          Navigator.of(context).pop();
+                                          _deleteSavedHost(option);
+                                        },
+                                        tooltip: 'Delete Saved Connection',
+                                      ),
+                                    ],
+                                  ),
+                                  onTap: () {
+                                    onSelected(option);
+                                  },
+                                );
+                              },
+                            ),
+                          );
+                        },
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      // Username Field
+                      TextFormField(
+                        controller: _usernameController,
+                        enabled: !isLoading,
+                        decoration: const InputDecoration(
+                          labelText: 'Username',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      // Password Field
+                      TextFormField(
+                        controller: _passwordController,
+                        enabled: !isLoading,
+                        obscureText: !_showPassword,
+                        decoration: InputDecoration(
+                          labelText: 'Password',
+                          border: const OutlineInputBorder(),
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _showPassword ? EvaIcons.eye : EvaIcons.eyeOff,
+                            ),
+                            onPressed: isLoading
+                                ? null
+                                : () {
+                                    setState(() {
+                                      _showPassword = !_showPassword;
+                                    });
+                                  },
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      // Port Field
+                      TextFormField(
+                        controller: _portController,
+                        enabled: !isLoading,
+                        decoration: const InputDecoration(
+                          labelText: 'Port (optional)',
+                          border: OutlineInputBorder(),
+                        ),
+                        keyboardType: TextInputType.number,
+                      ),
+
+                      // Show additional options based on selected service
+                      if (_selectedService == 'WebDAV') ...[
+                        const SizedBox(height: 16),
+
+                        // SSL Checkbox
+                        CheckboxListTile(
+                          title: const Text('Use SSL/TLS'),
+                          value: _useSSL,
+                          onChanged: isLoading
+                              ? null
+                              : (value) {
+                                  setState(() {
+                                    _useSSL = value ?? true;
+                                    if (_portController.text == '443' ||
+                                        _portController.text == '80') {
+                                      _portController.text =
+                                          _useSSL ? '443' : '80';
+                                    }
+                                  });
+                                },
+                        ),
+                      ],
+
+                      if (_selectedService == 'SMB') ...[
+                        const SizedBox(height: 16),
+
+                        // Domain Field
+                        TextFormField(
+                          enabled: !isLoading,
+                          decoration: const InputDecoration(
+                            labelText: 'Domain (optional)',
+                            border: OutlineInputBorder(),
+                          ),
+                          onChanged: (value) {
+                            _domain = value.isEmpty ? null : value;
+                          },
+                        ),
+                      ],
+
+                      const SizedBox(height: 16),
+
+                      // Save Credentials Checkbox
+                      CheckboxListTile(
+                        title: const Text('Save credentials'),
+                        subtitle: const Text(
+                            'Store login details for future connections'),
+                        value: _saveCredentials,
+                        onChanged: isLoading
+                            ? null
+                            : (value) {
+                                setState(() {
+                                  _saveCredentials = value ?? true;
                                 });
                               },
                       ),
                     ],
-
-                    if (_selectedService == 'SMB') ...[
-                      const SizedBox(height: 16),
-
-                      // Domain Field
-                      TextFormField(
-                        enabled: !isLoading,
-                        decoration: const InputDecoration(
-                          labelText: 'Domain (optional)',
-                          border: OutlineInputBorder(),
-                        ),
-                        onChanged: (value) {
-                          _domain = value.isEmpty ? null : value;
-                        },
-                      ),
-                    ],
-
-                    const SizedBox(height: 16),
-
-                    // Save Credentials Checkbox
-                    CheckboxListTile(
-                      title: const Text('Save credentials'),
-                      subtitle: const Text(
-                          'Store login details for future connections'),
-                      value: _saveCredentials,
-                      onChanged: isLoading
-                          ? null
-                          : (value) {
-                              setState(() {
-                                _saveCredentials = value ?? true;
-                              });
-                            },
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ),

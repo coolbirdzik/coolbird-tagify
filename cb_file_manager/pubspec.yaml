@@ -54,6 +54,7 @@ dependencies:
   media_kit_libs_windows_video: ^1.0.9 # Windows video support
   media_kit_libs_android_video: ^1.3.5 # Android video support
   # media_kit_libs_ios_video: ^1.1.4 # Uncomment if you need iOS support
+  flutter_vlc_player: ^7.2.0
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
@@ -73,8 +74,15 @@ dependencies:
   ffi: any
   network_info_plus: ^6.1.4
   url_launcher: ^6.3.1
-  smb_connect: ^0.0.9 # Added for SMB/CIFS network file sharingUse local path for smb_connect
+  # Removed smb_connect - using mobile_smb_native instead
+  mobile_smb_native:
+    path: ../mobile_smb_native # Local path to mobile SMB plugin
   image: ^4.5.4
+  # HTTP server for streaming files from SMB
+  shelf: ^1.4.1
+  shelf_router: ^1.1.4
+  shelf_cors_headers: ^0.1.5
+  mime: ^1.0.4
 dev_dependencies:
   flutter_test:
     sdk: flutter

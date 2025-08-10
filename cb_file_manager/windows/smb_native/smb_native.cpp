@@ -472,12 +472,14 @@ FFI_EXPORT ThumbnailResult GetThumbnail(const wchar_t *path, int32_t thumbnail_s
                                 Gdiplus::EncoderParameter compressionParam;
                                 ULONG compression = 1; // Lowest compression for speed
                                 
-                                encoderParams.Count = 1;
-                                encoderParams.Parameter[0] = compressionParam;
+                                // Initialize compressionParam first
                                 compressionParam.Guid = Gdiplus::EncoderCompression;
                                 compressionParam.Type = Gdiplus::EncoderParameterValueTypeLong;
                                 compressionParam.NumberOfValues = 1;
                                 compressionParam.Value = &compression;
+                                
+                                encoderParams.Count = 1;
+                                encoderParams.Parameter[0] = compressionParam;
 
                                 if (bitmap.Save(pStream, &clsid_png, &encoderParams) == Gdiplus::Ok)
                                 {
