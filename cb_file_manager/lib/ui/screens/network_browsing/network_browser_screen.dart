@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'dart:async'; // Add this import for Completer
-import 'dart:math'; // For math operations with drag selection and min/max functions
+// For math operations with drag selection and min/max functions
 
 import 'package:cb_file_manager/helpers/frame_timing_optimizer.dart';
 import 'package:cb_file_manager/ui/components/shared_action_bar.dart';
@@ -8,7 +8,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart'; // Import for mouse buttons
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:cb_file_manager/helpers/user_preferences.dart';
-import 'package:eva_icons_flutter/eva_icons_flutter.dart';
 import 'package:flutter/services.dart'; // Import for keyboard keys
 import 'package:cb_file_manager/ui/tab_manager/tab_manager.dart';
 import 'package:cb_file_manager/ui/utils/fluent_background.dart'; // Import the Fluent Design background
@@ -34,22 +33,12 @@ import 'package:cb_file_manager/ui/tab_manager/tab_data.dart'; // Import TabData
 import 'package:flutter/rendering.dart' show RendererBinding;
 import 'package:flutter/foundation.dart';
 import 'package:cb_file_manager/config/languages/app_localizations.dart';
-import 'package:cb_file_manager/ui/components/screen_scaffold.dart';
-import 'package:cb_file_manager/ui/screens/network_browsing/components/network_folder_context_menu.dart';
-import 'package:path/path.dart' as path;
-import 'package:file_picker/file_picker.dart';
-import 'package:cb_file_manager/helpers/video_thumbnail_helper.dart';
-import 'package:cb_file_manager/helpers/external_app_helper.dart';
-import 'package:cb_file_manager/ui/components/video_player/custom_video_player.dart';
 
-import 'package:cb_file_manager/services/network_browsing/smb_service.dart';
-import 'package:cb_file_manager/services/network_browsing/mobile_smb_service.dart';
 import 'package:path/path.dart' as p;
 import 'package:cb_file_manager/helpers/network_thumbnail_helper.dart';
 import 'package:cb_file_manager/ui/widgets/thumbnail_loader.dart';
 import 'package:cb_file_manager/ui/utils/file_type_utils.dart';
 import 'package:cb_file_manager/helpers/streaming_helper.dart';
-import 'package:cb_file_manager/services/network_browsing/network_service_registry.dart';
 
 // Helper class to listen to multiple ValueNotifiers
 class ValueListenableBuilder3<A, B, C> extends StatelessWidget {

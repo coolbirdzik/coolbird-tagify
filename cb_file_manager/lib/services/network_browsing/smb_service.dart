@@ -13,6 +13,7 @@ import 'package:image/image.dart' as img;
 import 'package:flutter/rendering.dart';
 
 import 'network_service_base.dart';
+import 'i_smb_service.dart';
 import 'smb_native_bindings.dart';
 
 /// Custom stream class for SMB file streaming
@@ -96,7 +97,7 @@ class SMBFileStream extends Stream<List<int>> {
 }
 
 /// Service for SMB (Server Message Block) network file access using native Windows APIs.
-class SMBService implements NetworkServiceBase {
+class SMBService implements ISmbService {
   static const String _smbScheme = 'smb';
 
   // Native bindings
@@ -830,4 +831,29 @@ class SMBService implements NetworkServiceBase {
   static int _thumbnailCount = 0;
   static const int _resetThresholdCount =
       40; // Ngưỡng để reset bộ đếm và dọn dẹp
+
+  @override
+  Future<String?> getSmbDirectLink(String tabPath) async {
+    if (!isConnected) return null;
+
+    try {
+      // Convert tab path to UNC path
+      final uncPath = _getUncPathFromTabPath(tabPath);
+
+      // Convert UNC path to SMB URL format
+      // Example: \\server\share\file.mp4 -> smb://server/share/file.mp4
+      final parts = uncPath.split('\\').where((p) => p.isNotEmpty).toList();
+      if (parts.length < 2) return null;
+
+      final server = parts[0];
+      final pathParts = parts.sublist(1);
+      final smbUrl = 'smb://$server/${pathParts.join('/')}';
+
+      debugPrint('Generated SMB direct link: $smbUrl');
+      return smbUrl;
+    } catch (e) {
+      debugPrint('Error generating SMB direct link: $e');
+      return null;
+    }
+  }
 }

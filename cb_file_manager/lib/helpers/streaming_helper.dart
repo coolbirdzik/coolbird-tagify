@@ -137,6 +137,8 @@ class StreamingHelper {
       // Priority 1: Attempt Native VLC Direct streaming (highest priority)
       debugPrint(
           'StreamingHelper: Checking for Native VLC Direct streaming...');
+      debugPrint(
+          'StreamingHelper: NativeVlcDirectHelper.canStreamDirectly($fileType): ${NativeVlcDirectHelper.canStreamDirectly(fileType)}');
       if (service is ISmbService &&
           NativeVlcDirectHelper.canStreamDirectly(fileType)) {
         try {
@@ -171,6 +173,8 @@ class StreamingHelper {
 
       // Priority 3: Fallback to VLC Direct SMB streaming for other SMB services
       debugPrint('StreamingHelper: Checking for VLC Direct SMB fallback...');
+      debugPrint(
+          'StreamingHelper: VlcDirectSmbHelper.canStreamDirectly($fileType): ${VlcDirectSmbHelper.canStreamDirectly(fileType)}');
       if (service is ISmbService &&
           VlcDirectSmbHelper.canStreamDirectly(fileType)) {
         try {

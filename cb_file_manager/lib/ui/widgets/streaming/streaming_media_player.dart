@@ -9,10 +9,16 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'dart:typed_data';
 import 'dart:async';
+import 'dart:math';
+import 'package:path/path.dart' as pathlib;
+import 'package:window_manager/window_manager.dart';
 import '../../../helpers/file_type_helper.dart';
 import '../../components/stream_speed_indicator.dart';
 import '../../components/buffer_info_widget.dart';
 import '../../components/video_player/common_controls_overlay.dart';
+import '../../../helpers/win32_smb_helper.dart';
+import '../../../helpers/user_preferences.dart';
+import '../../components/video_player/windows_audio_fix.dart';
 
 /// Widget để phát media từ streaming URL hoặc file stream
 class StreamingMediaPlayer extends StatefulWidget {
@@ -104,10 +110,55 @@ class _StreamingMediaPlayerState extends State<StreamingMediaPlayer> {
   Duration _vlcPosition = Duration.zero;
   Duration _vlcDuration = Duration.zero;
   double _vlcVolume = 70.0;
+  // Lưu lại volume cuối cùng > 0 để khôi phục khi unmute
+  double _lastVolume = 70.0;
   bool _vlcMuted = false;
+  bool _isRestoringVolume = false; // Flag to prevent volume listener interference during restore
   bool _isFullScreen = false;
   bool _showControls = true;
   Timer? _hideControlsTimer;
+
+  // Progressive buffering state variables
+  File? _tempFile;
+  RandomAccessFile? _tempRaf;
+  StreamSubscription<List<int>>? _bufferSub;
+  int _bytesWritten = 0;
+  bool _playerOpenedFromTemp = false;
+  Timer? _noDataTimer;
+  DateTime? _firstDataTime;
+
+  // Convert smb:// URL to Windows UNC path (e.g., \\server\share\path)
+  String _smbToUnc(String smbUrl) {
+    try {
+      final uri = Uri.parse(smbUrl);
+      final host = uri.host;
+      final segs = uri.pathSegments.where((s) => s.isNotEmpty).toList();
+      if (host.isEmpty || segs.isEmpty) {
+        return smbUrl.replaceFirst('smb://', r'\\').replaceAll('/', r'\\');
+      }
+      final path = segs.join(r'\\');
+      return r'\\' + host + r'\\' + path;
+    } catch (_) {
+      return smbUrl.replaceFirst('smb://', r'\\').replaceAll('/', r'\\');
+    }
+  }
+
+  // Normalize Windows paths (including UNC) to file:// URI for media_kit/mpv
+  String _normalizeToFileUri(String path) {
+    if (Platform.isWindows) {
+      if (path.startsWith('\\\\')) {
+        // UNC: \\server\share\path -> file://server/share/path
+        final cleaned = path.replaceAll('\\', '/');
+        final withoutLeading =
+            cleaned.startsWith('//') ? cleaned.substring(2) : cleaned;
+        return 'file://$withoutLeading';
+      }
+      // Local drive: C:\path -> file:///C:/path
+      final cleaned = path.replaceAll('\\', '/');
+      return 'file:///$cleaned';
+    }
+    return path;
+  }
 
   @override
   void initState() {
@@ -221,8 +272,78 @@ class _StreamingMediaPlayerState extends State<StreamingMediaPlayer> {
     );
   }
 
+  // Apply VLC volume settings with proper error handling
+  void _applyVlcVolumeSettings() {
+    try {
+      if (_vlcController != null && mounted) {
+        if (_vlcMuted) {
+          _vlcController!.setVolume(0);
+          debugPrint('Applied VLC mute: volume set to 0');
+        } else {
+          final volumeToApply = _vlcVolume > 0 ? _vlcVolume.toInt() : (_lastVolume > 0 ? _lastVolume.toInt() : 70);
+          _vlcController!.setVolume(volumeToApply);
+          debugPrint('Applied VLC volume: $volumeToApply (saved: ${_vlcVolume.toStringAsFixed(1)}, last: ${_lastVolume.toStringAsFixed(1)})');
+        }
+      }
+    } catch (e) {
+      debugPrint('Error applying VLC volume settings: $e');
+    }
+  }
+
+  // Apply media_kit volume settings with proper error handling
+  Future<void> _applyMediaKitVolumeSettings() async {
+    try {
+      if (_player != null && mounted) {
+        _isRestoringVolume = true; // Prevent volume listener interference
+        
+        if (_vlcMuted) {
+          await _player!.setVolume(0.0);
+          debugPrint('Applied media_kit mute: volume set to 0.0');
+        } else {
+          final volumeToApply = _vlcVolume > 0 ? _vlcVolume : (_lastVolume > 0 ? _lastVolume : 70.0);
+          await _player!.setVolume(volumeToApply);
+          debugPrint('Applied media_kit volume: $volumeToApply (saved: ${_vlcVolume.toStringAsFixed(1)}, last: ${_lastVolume.toStringAsFixed(1)})');
+        }
+        
+        // Wait a bit for volume to be applied, then re-enable listener
+        await Future.delayed(const Duration(milliseconds: 200));
+        _isRestoringVolume = false;
+        
+        // Force UI update to reflect volume changes
+        if (mounted) {
+          setState(() {});
+        }
+      }
+    } catch (e) {
+      debugPrint('Error applying media_kit volume settings: $e');
+      _isRestoringVolume = false; // Ensure flag is reset on error
+    }
+  }
+
   Future<void> _initializePlayer() async {
     try {
+      // Load saved volume and mute preferences
+      final userPreferences = UserPreferences.instance;
+      await userPreferences.init();
+
+      // Enable ObjectBox for persistent storage
+      if (!userPreferences.isUsingObjectBox()) {
+        await userPreferences.setUseObjectBox(true);
+        debugPrint('Enabled ObjectBox for UserPreferences storage');
+      }
+
+      final savedVolume = await userPreferences.getVideoPlayerVolume();
+      _lastVolume = savedVolume > 0 ? savedVolume : _lastVolume;
+      final savedMuted = await userPreferences.getVideoPlayerMute();
+
+      setState(() {
+        _vlcVolume = savedVolume;
+        _vlcMuted = savedMuted;
+      });
+
+      debugPrint(
+          'Loaded volume preferences from ObjectBox - volume: ${_vlcVolume.toStringAsFixed(1)}, muted: $_vlcMuted');
+
       // If on Android and an SMB MRL is provided, prefer flutter_vlc_player (direct LibVLC)
       if (!kIsWeb && Platform.isAndroid && widget.smbMrl != null) {
         _useFlutterVlc = true;
@@ -263,6 +384,42 @@ class _StreamingMediaPlayerState extends State<StreamingMediaPlayer> {
             });
           }
         });
+
+        // Listen to volume changes and save preferences
+        _player!.stream.volume.listen((volume) {
+          if (!mounted || _isRestoringVolume) return; // Skip during volume restore
+
+          final isMutedNow = volume <= 0.1;
+
+          // Save volume preference if not muted and volume changed significantly
+          if (!isMutedNow && (_vlcVolume - volume).abs() > 0.5) {
+            setState(() {
+              _vlcVolume = volume;
+              if (volume > 0.1) _lastVolume = volume;
+            });
+
+            userPreferences.setVideoPlayerVolume(volume).then((_) {
+              debugPrint(
+                  'Saved volume preference: ${volume.toStringAsFixed(1)}');
+            });
+          }
+
+          // Save mute state when it changes
+          if (_vlcMuted != isMutedNow) {
+            setState(() {
+              _vlcMuted = isMutedNow;
+            });
+
+            userPreferences.setVideoPlayerMute(isMutedNow).then((_) {
+              debugPrint('Saved mute state: $isMutedNow');
+            });
+          }
+        });
+
+        // Apply saved volume preferences
+        await _applyMediaKitVolumeSettings();
+        debugPrint(
+            'Applied initial volume preferences - volume: ${_vlcVolume.toStringAsFixed(1)}, muted: $_vlcMuted');
       }
 
       // Mở media từ streaming URL, SMB MRL hoặc file stream
@@ -273,51 +430,84 @@ class _StreamingMediaPlayerState extends State<StreamingMediaPlayer> {
         debugPrint(
             'StreamingMediaPlayer: Opening SMB MRL directly: ${widget.smbMrl}');
 
-        // Test SMB URL format
-        _testSmbUrlFormat(widget.smbMrl!);
+        if (!kIsWeb && Platform.isWindows) {
+          // On Windows desktop, avoid direct SMB MRL which may hang; use UNC -> file URI instead
+          final uncPath = _smbToUnc(widget.smbMrl!);
+          final fileUri = _normalizeToFileUri(uncPath);
+          debugPrint('StreamingMediaPlayer: Converted SMB to UNC: $uncPath');
+          debugPrint('StreamingMediaPlayer: Using file URI: $fileUri');
+          try {
+            await _player!
+                .open(Media(fileUri))
+                .timeout(const Duration(seconds: 12));
+            debugPrint('StreamingMediaPlayer: file URI opened successfully');
+          } on TimeoutException catch (_) {
+            debugPrint('StreamingMediaPlayer: Open timed out for $fileUri');
+            debugPrint(
+                'StreamingMediaPlayer: Trying temp file fallback on timeout...');
+            await _openWithTempFileFallback(uncPath);
+          } catch (e) {
+            debugPrint('StreamingMediaPlayer: Open failed: $e');
+            debugPrint('StreamingMediaPlayer: Trying temp file fallback...');
+            await _openWithTempFileFallback(uncPath);
+          }
+        } else {
+          // Test SMB URL format
+          _testSmbUrlFormat(widget.smbMrl!);
 
-        // Create Media with options to allow unsafe playlists for SMB
-        // Try different approaches for media_kit options
-        final media = Media(
-          widget.smbMrl!,
-          // Try passing options as httpHeaders for SMB
-          httpHeaders: {
-            'User-Agent': 'VLC/3.0.0 LibVLC/3.0.0',
-          },
-          // Also try extras with different format
-          extras: {
-            'load-unsafe-playlists': '',
-            'network-caching': '3000',
-            'file-caching': '3000',
-          },
-        );
+          // Create Media with options to allow unsafe playlists for SMB
+          final media = Media(
+            widget.smbMrl!,
+            httpHeaders: {
+              'User-Agent': 'VLC/3.0.0 LibVLC/3.0.0',
+            },
+            extras: {
+              'load-unsafe-playlists': '',
+              'network-caching': '3000',
+              'file-caching': '3000',
+            },
+          );
 
-        try {
-          await _player!.open(media);
-          debugPrint('StreamingMediaPlayer: SMB MRL opened successfully');
-        } catch (e) {
-          debugPrint('StreamingMediaPlayer: Direct SMB failed: $e');
-          debugPrint('StreamingMediaPlayer: Falling back to HTTP proxy...');
-
-          // Fallback to HTTP proxy if direct SMB fails
-          await _openWithHttpProxy();
+          try {
+            // Add timeout to prevent indefinite hang
+            await _player!.open(media).timeout(const Duration(seconds: 10));
+            debugPrint('StreamingMediaPlayer: SMB MRL opened successfully');
+          } on TimeoutException catch (_) {
+            debugPrint('StreamingMediaPlayer: Direct SMB timed out');
+            debugPrint('StreamingMediaPlayer: Falling back to HTTP proxy...');
+            await _openWithHttpProxy();
+          } catch (e) {
+            debugPrint('StreamingMediaPlayer: Direct SMB failed: $e');
+            debugPrint('StreamingMediaPlayer: Falling back to HTTP proxy...');
+            await _openWithHttpProxy();
+          }
         }
       } else if (widget.fileStream != null) {
-        // Tạo broadcast stream để có thể listen nhiều lần
+        // Progressive buffering: start playbook after initial buffer
         _streamController = StreamController<List<int>>.broadcast();
         _currentStream = _streamController!.stream;
+        debugPrint('StreamingMediaPlayer: Starting progressive buffering...');
+        await _startProgressiveBufferingAndPlay(widget.fileStream!);
+      }
 
-        debugPrint('StreamingMediaPlayer: Starting to buffer stream...');
-
-        // Tạo temporary file từ stream với improved buffering
-        final tempFile =
-            await _createTempFileFromStreamImproved(widget.fileStream!);
-
-        debugPrint(
-            'StreamingMediaPlayer: Stream buffering completed, opening media player...');
-        await _player!.open(Media(tempFile.path));
-
-        debugPrint('StreamingMediaPlayer: Media player opened successfully');
+      // Reapply saved volume after media opened with multiple attempts
+      if (_player != null) {
+        // Wait for player to be ready before applying volume
+        await Future.delayed(const Duration(milliseconds: 500));
+        await _applyMediaKitVolumeSettings();
+        
+        // Additional attempts to ensure volume is applied
+        Future.delayed(const Duration(milliseconds: 1500), () async {
+          if (_player != null && mounted) {
+            await _applyMediaKitVolumeSettings();
+          }
+        });
+        
+        Future.delayed(const Duration(milliseconds: 3000), () async {
+          if (_player != null && mounted) {
+            await _applyMediaKitVolumeSettings();
+          }
+        });
       }
 
       if (mounted) {
@@ -436,6 +626,125 @@ class _StreamingMediaPlayerState extends State<StreamingMediaPlayer> {
     }
   }
 
+  // Progressive buffering: write to temp and start playback after threshold
+  Future<void> _startProgressiveBufferingAndPlay(
+    Stream<List<int>> source, {
+    int initialBufferBytes = 2 * 1024 * 1024,
+    int flushEveryBytes = 512 * 1024,
+  }) async {
+    final tempDir = Directory.systemTemp;
+    _tempFile = File(
+      '${tempDir.path}/temp_media_${DateTime.now().millisecondsSinceEpoch}',
+    );
+    try {
+      _tempRaf = await _tempFile!.open(mode: FileMode.write);
+    } catch (e) {
+      debugPrint('StreamingMediaPlayer: Error opening temp file: $e');
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Không thể tạo tệp tạm: $e';
+        });
+      }
+      return;
+    }
+
+    _bytesWritten = 0;
+    _playerOpenedFromTemp = false;
+    _firstDataTime = null;
+    int bytesSinceFlush = 0;
+
+    _noDataTimer?.cancel();
+    _noDataTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (_firstDataTime == null) return;
+      final since = DateTime.now().difference(_firstDataTime!);
+      if (since > const Duration(seconds: 30) && _bytesWritten == 0) {
+        debugPrint('StreamingMediaPlayer: No data for 30s');
+        if (mounted) {
+          setState(() {
+            _errorMessage = 'Không nhận được dữ liệu từ luồng.';
+          });
+        }
+      }
+    });
+
+    _bufferSub = source.listen((chunk) async {
+      if (chunk.isEmpty) return;
+      _firstDataTime ??= DateTime.now();
+      try {
+        await _tempRaf!.writeFrom(chunk);
+        _bytesWritten += chunk.length;
+        bytesSinceFlush += chunk.length;
+
+        if (mounted) {
+          setState(() {
+            _totalBytesBuffered = _bytesWritten;
+            _chunkCountBuffered += 1;
+          });
+        }
+        _streamController?.add(chunk);
+
+        if (bytesSinceFlush >= flushEveryBytes) {
+          await _tempRaf!.flush();
+          bytesSinceFlush = 0;
+        }
+
+        if (!_playerOpenedFromTemp && _bytesWritten >= initialBufferBytes) {
+          _playerOpenedFromTemp = true;
+          try {
+            await _tempRaf!.flush();
+          } catch (_) {}
+          debugPrint(
+            'StreamingMediaPlayer: Opening from temp with ${_formatBytes(_bytesWritten)} buffered',
+          );
+          try {
+            await _player!.open(Media(_tempFile!.path));
+          } catch (e) {
+            debugPrint('StreamingMediaPlayer: Open error: $e');
+            if (mounted) {
+              setState(() {
+                _errorMessage = 'Lỗi mở phát: $e';
+              });
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('StreamingMediaPlayer: Write error: $e');
+        if (mounted) {
+          setState(() {
+            _errorMessage = 'Lỗi ghi dữ liệu tạm thời gian: $e';
+          });
+        }
+      }
+    }, onError: (e) async {
+      debugPrint('StreamingMediaPlayer: Buffer error: $e');
+      try {
+        await _tempRaf?.flush();
+        await _tempRaf?.close();
+      } catch (_) {}
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Lỗi luồng dữ liệu: $e';
+        });
+      }
+    }, onDone: () async {
+      debugPrint(
+        'StreamingMediaPlayer: Buffer done at ${_formatBytes(_bytesWritten)}',
+      );
+      try {
+        await _tempRaf?.flush();
+        await _tempRaf?.close();
+      } catch (_) {}
+      _tempRaf = null;
+      if (!_playerOpenedFromTemp && _tempFile != null) {
+        try {
+          await _player!.open(Media(_tempFile!.path));
+        } catch (e) {
+          debugPrint('StreamingMediaPlayer: Open on done error: $e');
+        }
+      }
+    }, cancelOnError: true);
+  }
+
   String _formatBytes(int bytes) {
     if (bytes >= 1024 * 1024) {
       return '${(bytes / 1024 / 1024).toStringAsFixed(1)} MB';
@@ -454,42 +763,106 @@ class _StreamingMediaPlayerState extends State<StreamingMediaPlayer> {
     _hideControlsTimer?.cancel();
     _player?.dispose();
     _streamController?.close();
+
+    // Progressive buffering cleanup
+    try {
+      _bufferSub?.cancel();
+    } catch (_) {}
+    try {
+      _noDataTimer?.cancel();
+    } catch (_) {}
+    try {
+      _tempRaf?.close();
+    } catch (_) {}
+    // Optionally delete temp file
+    try {
+      _tempFile?.delete();
+    } catch (_) {}
+
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
-        backgroundColor: Colors.black.withOpacity(0.7),
-        title: Text(
-          widget.fileName,
-          style: const TextStyle(color: Colors.white),
-        ),
-        iconTheme: const IconThemeData(color: Colors.white),
-        actions: [
-          // Speed indicator toggle
-          if (widget.fileStream != null)
-            IconButton(
-              icon: Icon(
-                _showSpeedIndicator ? Icons.speed : Icons.speed_outlined,
-                color: Colors.white,
-              ),
-              onPressed: () {
-                setState(() {
-                  _showSpeedIndicator = !_showSpeedIndicator;
-                });
-              },
-              tooltip: 'Toggle Speed Indicator',
-            ),
-          IconButton(
-            icon: const Icon(Icons.close),
-            onPressed: widget.onClose ?? () => Navigator.of(context).pop(),
+    return Focus(
+      autofocus: true,
+      onKeyEvent: (node, event) {
+        if (event is KeyDownEvent) {
+          // Spacebar for pause/play
+          if (event.logicalKey == LogicalKeyboardKey.space) {
+            _togglePlayPause();
+            return KeyEventResult.handled;
+          }
+          // Arrow keys for seeking
+          else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+            _seekBackward();
+            return KeyEventResult.handled;
+          }
+          else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+            _seekForward();
+            return KeyEventResult.handled;
+          }
+          // Arrow up/down for volume
+          else if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+            _increaseVolume();
+            return KeyEventResult.handled;
+          }
+          else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+            _decreaseVolume();
+            return KeyEventResult.handled;
+          }
+          // M for mute/unmute
+          else if (event.logicalKey == LogicalKeyboardKey.keyM) {
+            _toggleMute();
+            return KeyEventResult.handled;
+          }
+          // F for fullscreen
+          else if (event.logicalKey == LogicalKeyboardKey.keyF) {
+            _toggleFullScreen();
+            return KeyEventResult.handled;
+          }
+          // Escape to exit fullscreen
+          else if (event.logicalKey == LogicalKeyboardKey.escape) {
+            if (_isFullScreen) {
+              _toggleFullScreen();
+              return KeyEventResult.handled;
+            }
+          }
+        }
+        return KeyEventResult.ignored;
+      },
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        appBar: AppBar(
+          backgroundColor: Colors.black.withOpacity(0.7),
+          title: Text(
+            widget.fileName,
+            style: const TextStyle(color: Colors.white),
           ),
-        ],
+          iconTheme: const IconThemeData(color: Colors.white),
+          actions: [
+            // Speed indicator toggle
+            if (widget.fileStream != null)
+              IconButton(
+                icon: Icon(
+                  _showSpeedIndicator ? Icons.speed : Icons.speed_outlined,
+                  color: Colors.white,
+                ),
+                onPressed: () {
+                  setState(() {
+                    _showSpeedIndicator = !_showSpeedIndicator;
+                  });
+                },
+                tooltip: 'Toggle Speed Indicator',
+              ),
+            IconButton(
+              icon: const Icon(Icons.close),
+              onPressed: widget.onClose ?? () => Navigator.of(context).pop(),
+            ),
+          ],
+        ),
+        body: _buildPlayerBody(),
       ),
-      body: _buildPlayerBody(),
     );
   }
 
@@ -614,6 +987,41 @@ class _StreamingMediaPlayerState extends State<StreamingMediaPlayer> {
             _vlcPosition = v.position ?? Duration.zero;
             _vlcDuration = v.duration ?? Duration.zero;
           });
+
+          // Listen for volume changes in VLC and save preferences
+          if (v.volume != null && v.volume != _vlcVolume) {
+            final newVolume = v.volume!.toDouble();
+            final newMuted = newVolume <= 0.1;
+
+            if ((_vlcVolume - newVolume).abs() > 0.5 || _vlcMuted != newMuted) {
+            if (newVolume > 0.1) _lastVolume = newVolume;
+              _vlcVolume = newVolume;
+              _vlcMuted = newMuted;
+
+              final userPreferences = UserPreferences.instance;
+              userPreferences.setVideoPlayerVolume(newVolume).then((_) {
+                debugPrint(
+                    'Saved VLC volume preference: ${newVolume.toStringAsFixed(1)}');
+              });
+              userPreferences.setVideoPlayerMute(newMuted).then((_) {
+                debugPrint('Saved VLC mute state: $newMuted');
+              });
+            }
+          }
+        });
+
+        // Apply saved volume preferences for VLC with multiple attempts
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (_vlcController != null && mounted) {
+            _applyVlcVolumeSettings();
+          }
+        });
+        
+        // Additional attempt after 1 second to ensure volume is applied
+        Future.delayed(const Duration(milliseconds: 1500), () {
+          if (_vlcController != null && mounted) {
+            _applyVlcVolumeSettings();
+          }
         });
       }
 
@@ -635,43 +1043,7 @@ class _StreamingMediaPlayerState extends State<StreamingMediaPlayer> {
               ),
             ),
           ),
-          if (!_isFullScreen || _showControls)
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: CommonVideoControlsOverlay(
-                position: _vlcPosition,
-                duration: _vlcDuration,
-                isPlaying: _vlcPlaying,
-                onPlayPause: () async {
-                  if (_vlcPlaying) {
-                    await _vlcController?.pause();
-                  } else {
-                    await _vlcController?.play();
-                  }
-                },
-                onSeek: (v) async {
-                  final targetMs = (_vlcDuration.inMilliseconds * v).toInt();
-                  await _vlcController
-                      ?.seekTo(Duration(milliseconds: targetMs));
-                },
-                hasPrev: false,
-                hasNext: false,
-                onPrev: null,
-                onNext: null,
-                volume: _vlcVolume,
-                onVolumeChange: (val) async {
-                  setState(() {
-                    _vlcVolume = val;
-                    _vlcMuted = val <= 0.1;
-                  });
-                  await _vlcController?.setVolume(val.toInt());
-                },
-                onToggleFullscreen: _toggleFullScreen,
-                onScreenshot: null,
-              ),
-            ),
+          if (!_isFullScreen || _showControls) _buildCustomControls(),
         ],
       );
     }
@@ -683,10 +1055,12 @@ class _StreamingMediaPlayerState extends State<StreamingMediaPlayer> {
             aspectRatio: 16 / 9, // Default aspect ratio
             child: Video(
               controller: _videoController!,
-              controls: AdaptiveVideoControls,
+              controls: NoVideoControls,
             ),
           ),
         ),
+        // Custom controls overlay
+        if (!_isFullScreen || _showControls) _buildCustomControls(),
         // Speed indicator overlay
         if (_showSpeedIndicator && _currentStream != null)
           Positioned(
@@ -1019,6 +1393,682 @@ class _StreamingMediaPlayerState extends State<StreamingMediaPlayer> {
           _errorMessage = 'HTTP proxy error: $e';
           _isLoading = false;
         });
+      }
+    }
+  }
+
+  // Windows-only: fallback by buffering SMB to a temp file using Win32SmbHelper
+  Future<void> _openWithTempFileFallback(String uncPath) async {
+    if (kIsWeb || !Platform.isWindows) {
+      await _openWithHttpProxy();
+      return;
+    }
+    if (_player == null) return;
+
+    try {
+      debugPrint(
+          'StreamingMediaPlayer: _openWithTempFileFallback for $uncPath');
+      final helper = Win32SmbHelper();
+
+      // First, try a buffered stream approach for a quick start
+      try {
+        final bufferedStream = helper.createBufferedStream(uncPath);
+        // Start progressive buffering with our existing mechanism
+        await _startProgressiveBufferingAndPlay(bufferedStream,
+            initialBufferBytes: 2 * 1024 * 1024);
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
+        return;
+      } catch (e) {
+        debugPrint('StreamingMediaPlayer: Buffered stream failed: $e');
+      }
+
+      // Fallback to copying to a temp file (partial) and play from there
+      try {
+        final tempPath = await helper.uncPathToTempFile(uncPath,
+            highPriority: true, maxBytes: 32 * 1024 * 1024);
+        if (tempPath != null) {
+          await _player!.open(Media(tempPath));
+          if (mounted) {
+            setState(() {
+              _isLoading = false;
+            });
+          }
+          return;
+        }
+      } catch (e) {
+        debugPrint('StreamingMediaPlayer: Temp copy failed: $e');
+      }
+
+      await _openWithHttpProxy();
+    } catch (e) {
+      debugPrint('StreamingMediaPlayer: _openWithTempFileFallback error: $e');
+      await _openWithHttpProxy();
+    }
+  }
+
+  // Format duration for display
+  String _formatDuration(Duration duration) {
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    final hours = duration.inHours;
+    final minutes = duration.inMinutes.remainder(60);
+    final seconds = duration.inSeconds.remainder(60);
+
+    if (hours > 0) {
+      return '$hours:${twoDigits(minutes)}:${twoDigits(seconds)}';
+    } else {
+      return '${twoDigits(minutes)}:${twoDigits(seconds)}';
+    }
+  }
+
+  // Build individual control button with consistent styling
+  Widget _buildControlButton({
+    required IconData icon,
+    required VoidCallback? onPressed,
+    bool enabled = true,
+    double size = 24,
+    double padding = 8,
+    String? tooltip,
+  }) {
+    final button = IconButton(
+      icon: Icon(
+        icon,
+        size: size,
+        color: enabled ? Colors.white : Colors.grey,
+      ),
+      onPressed: enabled ? onPressed : null,
+      padding: EdgeInsets.all(padding),
+      constraints: const BoxConstraints(),
+      splashRadius: size + 4,
+    );
+
+    return tooltip != null
+        ? Tooltip(
+            message: tooltip,
+            child: button,
+          )
+        : button;
+  }
+
+  // Show audio track selection dialog
+  void _showAudioTrackDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Audio Tracks'),
+        content: const Text('Audio track selection will be implemented here.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _takeScreenshot() async {
+    try {
+      // Implement actual screenshot capture logic here
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Screenshot saved')),
+      );
+    } catch (e) {
+      debugPrint('Error taking screenshot: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to save screenshot')),
+      );
+    }
+  }
+
+
+
+  // Build the complete set of custom controls
+  Widget _buildCustomControls() {
+    return Stack(
+      children: [
+        // Bottom control bar with seekbar, play/pause, next/prev, and volume
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 0,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Custom seek bar
+              _buildCustomSeekBar(),
+
+              // Main controls row with attractive UI
+              Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
+                    colors: [
+                      Colors.black.withOpacity(0.8),
+                      Colors.black.withOpacity(0.6),
+                    ],
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.3),
+                      blurRadius: 10,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                ),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                child: Row(
+                  children: [
+                    // Play/Pause button with larger size
+                    _buildControlButton(
+                      icon: _useFlutterVlc
+                          ? (_vlcPlaying ? Icons.pause : Icons.play_arrow)
+                          : (_player?.state.playing ?? false
+                              ? Icons.pause
+                              : Icons.play_arrow),
+                      onPressed: _togglePlayPause,
+                      size: 36,
+                      padding: 12,
+                      enabled: true,
+                    ),
+
+                    // Flexible spacer to push volume and fullscreen to the right
+                    const Spacer(),
+
+                    // Screenshot button
+                    _buildControlButton(
+                      icon: Icons.photo_camera,
+                      onPressed: _takeScreenshot,
+                      enabled: true,
+                      tooltip: 'Take screenshot',
+                    ),
+
+                    // Volume control
+                    _buildVolumeControl(),
+
+                    // Windows Audio Fix Button for audio troubleshooting
+                    if (Platform.isWindows && !_useFlutterVlc)
+                      WindowsAudioFixButton(
+                        onAudioConfigSelected: (audioConfig) {
+                          debugPrint('Applying new audio config: $audioConfig');
+                          // Reopen the media with the new audio configuration
+                          if (_player != null && widget.smbMrl != null) {
+                            _player!.open(
+                              Media(
+                                widget.smbMrl!,
+                                extras: audioConfig,
+                              ),
+                              play: _player!.state.playing,
+                            );
+                          }
+                        },
+                      ),
+
+                    // Audio track selection button
+                    _buildControlButton(
+                      icon: Icons.audiotrack,
+                      onPressed: _showAudioTrackDialog,
+                      enabled: true,
+                      tooltip: 'Audio tracks',
+                    ),
+
+                    // Fullscreen button
+                    _buildControlButton(
+                      icon: _isFullScreen
+                          ? Icons.fullscreen_exit
+                          : Icons.fullscreen,
+                      onPressed: _toggleFullScreen,
+                      enabled: true,
+                      tooltip: _isFullScreen ? 'Exit fullscreen' : 'Fullscreen',
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // Build custom seek bar
+  Widget _buildCustomSeekBar() {
+    if (_useFlutterVlc) {
+      final progress = _vlcDuration.inMilliseconds > 0
+          ? _vlcPosition.inMilliseconds / _vlcDuration.inMilliseconds
+          : 0.0;
+
+      return Container(
+        height: 40,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Row(
+          children: [
+            // Current time
+            Text(
+              _formatDuration(_vlcPosition),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+              ),
+            ),
+            const SizedBox(width: 8),
+            // Seek bar
+            Expanded(
+              child: SliderTheme(
+                data: SliderTheme.of(context).copyWith(
+                  trackHeight: 3,
+                  thumbShape: const RoundSliderThumbShape(
+                    enabledThumbRadius: 6,
+                  ),
+                  overlayShape: const RoundSliderOverlayShape(
+                    overlayRadius: 12,
+                  ),
+                ),
+                child: Slider(
+                  value: progress.clamp(0.0, 1.0),
+                  onChanged: (value) {
+                    final targetMs =
+                        (_vlcDuration.inMilliseconds * value).toInt();
+                    _vlcController?.seekTo(Duration(milliseconds: targetMs));
+                  },
+                  activeColor: Colors.white,
+                  inactiveColor: Colors.white.withOpacity(0.3),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            // Total time
+            Text(
+              _formatDuration(_vlcDuration),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+      );
+    } else if (_player != null) {
+      return StreamBuilder<Duration>(
+        stream: _player!.stream.position,
+        builder: (context, snapshot) {
+          final position = snapshot.data ?? Duration.zero;
+          final duration = _player!.state.duration;
+          final progress = duration.inMilliseconds > 0
+              ? position.inMilliseconds / duration.inMilliseconds
+              : 0.0;
+
+          return Container(
+            height: 40,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                // Current time
+                Text(
+                  _formatDuration(position),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                // Seek bar
+                Expanded(
+                  child: SliderTheme(
+                    data: SliderTheme.of(context).copyWith(
+                      trackHeight: 3,
+                      thumbShape: const RoundSliderThumbShape(
+                        enabledThumbRadius: 6,
+                      ),
+                      overlayShape: const RoundSliderOverlayShape(
+                        overlayRadius: 12,
+                      ),
+                    ),
+                    child: Slider(
+                      value: progress.clamp(0.0, 1.0),
+                      onChanged: (value) {
+                        final targetPosition = Duration(
+                          milliseconds:
+                              (duration.inMilliseconds * value).round(),
+                        );
+                        _player!.seek(targetPosition);
+                      },
+                      activeColor: Colors.white,
+                      inactiveColor: Colors.white.withOpacity(0.3),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                // Total time
+                Text(
+                  _formatDuration(duration),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      );
+    }
+    return const SizedBox.shrink();
+  }
+
+  // Build volume control
+  Widget _buildVolumeControl() {
+    if (_useFlutterVlc) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildControlButton(
+            icon: _vlcMuted || _vlcVolume <= 0.1
+                ? Icons.volume_off
+                : _vlcVolume < 50
+                    ? Icons.volume_down
+                    : Icons.volume_up,
+            onPressed: _vlcController != null
+                ? () async {
+                    setState(() {
+                      if (!_vlcMuted) {
+                        // Đang unmuted, sắp mute => nhớ volume hiện tại
+                        _lastVolume = _vlcVolume > 0 ? _vlcVolume : _lastVolume;
+                        _vlcMuted = true;
+                        _vlcVolume = 0.0;
+                      } else {
+                        // Đang muted, sắp unmute => khôi phục volume
+                        _vlcMuted = false;
+                        _vlcVolume = _lastVolume > 0 ? _lastVolume : 70.0;
+                      }
+                    });
+                    _vlcController?.setVolume(_vlcVolume.toInt());
+
+                    // Save preferences
+                    final userPreferences = UserPreferences.instance;
+                    await userPreferences.setVideoPlayerVolume(_vlcVolume);
+                    await userPreferences.setVideoPlayerMute(_vlcMuted);
+                    debugPrint(
+                        'Saved VLC volume preferences - volume: ${_vlcVolume.toStringAsFixed(1)}, muted: $_vlcMuted');
+                  }
+                : null,
+            enabled: _vlcController != null,
+            tooltip: _vlcMuted ? 'Unmute' : 'Mute',
+          ),
+          // Volume slider (only show on desktop or when not in fullscreen)
+          if (!_isFullScreen ||
+              (Platform.isWindows || Platform.isLinux || Platform.isMacOS))
+            SizedBox(
+              width: 80,
+              child: SliderTheme(
+                data: SliderTheme.of(context).copyWith(
+                  trackHeight: 2,
+                  thumbShape: const RoundSliderThumbShape(
+                    enabledThumbRadius: 4,
+                  ),
+                ),
+                child: Slider(
+                  value: _vlcMuted ? 0.0 : _vlcVolume.clamp(0.0, 100.0),
+                  min: 0.0,
+                  max: 100.0,
+                  onChanged: _vlcController != null
+                      ? (value) async {
+                          setState(() {
+                            _vlcVolume = value;
+                            _vlcMuted = value <= 0.1;
+                            if (!_vlcMuted) {
+                              _lastVolume = value;
+                            }
+                          });
+                          _vlcController?.setVolume(value.toInt());
+
+                          // Save preferences
+                          final userPreferences = UserPreferences.instance;
+                          await userPreferences
+                              .setVideoPlayerVolume(_vlcVolume);
+                          await userPreferences.setVideoPlayerMute(_vlcMuted);
+                          debugPrint(
+                              'Saved VLC volume preferences - volume: ${_vlcVolume.toStringAsFixed(1)}, muted: $_vlcMuted');
+                        }
+                      : null,
+                  activeColor: Colors.white,
+                  inactiveColor: Colors.white.withOpacity(0.3),
+                ),
+              ),
+            ),
+        ],
+      );
+    } else if (_player != null) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          StreamBuilder<double>(
+            stream: _player!.stream.volume,
+            builder: (context, snapshot) {
+              final volume = snapshot.data ?? _vlcVolume;
+              if (volume > 0.1 && !_isRestoringVolume) _lastVolume = volume;
+              final isMuted = _vlcMuted || volume <= 0.1;
+
+              return _buildControlButton(
+                icon: isMuted
+                    ? Icons.volume_off
+                    : volume < 50
+                        ? Icons.volume_down
+                        : Icons.volume_up,
+                onPressed: () async {
+                  final userPreferences = UserPreferences.instance;
+                  if (isMuted) {
+                    // Unmute: restore last or saved volume
+                    final savedVolume = await userPreferences.getVideoPlayerVolume();
+                    final restore = _lastVolume > 0 ? _lastVolume : (savedVolume > 0 ? savedVolume : 70.0);
+                    await _player!.setVolume(restore);
+                    await userPreferences.setVideoPlayerMute(false);
+                    debugPrint(
+                        'Unmuted media_kit player - restored volume: ${savedVolume > 0 ? savedVolume : 70.0}');
+                  } else {
+                    // Mute: nhớ volume hiện tại rồi set 0
+                    _lastVolume = volume > 0.1 ? volume : _lastVolume;
+                    await _player!.setVolume(0.0);
+                    await userPreferences.setVideoPlayerMute(true);
+                    debugPrint('Muted media_kit player');
+                  }
+                },
+                enabled: true,
+                tooltip: isMuted ? 'Unmute' : 'Mute',
+              );
+            },
+          ),
+          // Volume slider (only show on desktop or when not in fullscreen)
+          if (!_isFullScreen ||
+              (Platform.isWindows || Platform.isLinux || Platform.isMacOS))
+            SizedBox(
+              width: 80,
+              child: StreamBuilder<double>(
+                stream: _player!.stream.volume,
+                builder: (context, snapshot) {
+                  // When muted, show 0; otherwise use stream data
+                  final volume = _vlcMuted ? 0.0 : (snapshot.data ?? _vlcVolume);
+
+                  return SliderTheme(
+                    data: SliderTheme.of(context).copyWith(
+                      trackHeight: 2,
+                      thumbShape: const RoundSliderThumbShape(
+                        enabledThumbRadius: 4,
+                      ),
+                    ),
+                    child: Slider(
+                      value: volume.clamp(0.0, 100.0),
+                      min: 0.0,
+                      max: 100.0,
+                      onChanged: (value) async {
+                        setState(() {
+                          _vlcVolume = value;
+                          _vlcMuted = value <= 0.1;
+                          if (!_vlcMuted) _lastVolume = value;
+                        });
+                        
+                        await _player!.setVolume(value);
+
+                        // Save preferences
+                        final userPreferences = UserPreferences.instance;
+                        await userPreferences.setVideoPlayerVolume(value);
+                        await userPreferences.setVideoPlayerMute(value <= 0.1);
+                        debugPrint(
+                            'Saved media_kit volume preferences - volume: ${value.toStringAsFixed(1)}, muted: ${value <= 0.1}');
+                      },
+                      activeColor: Colors.white,
+                      inactiveColor: Colors.white.withOpacity(0.3),
+                    ),
+                  );
+                },
+              ),
+            ),
+        ],
+      );
+    }
+    return const SizedBox.shrink();
+  }
+
+  // Keyboard shortcuts methods
+  void _togglePlayPause() {
+    if (_useFlutterVlc && _vlcController != null) {
+      if (_vlcPlaying) {
+        _vlcController!.pause();
+      } else {
+        _vlcController!.play();
+      }
+    } else if (_player != null) {
+      _player!.playOrPause();
+    }
+  }
+
+  void _seekBackward() {
+    const seekDuration = Duration(seconds: 10);
+    if (_useFlutterVlc && _vlcController != null) {
+      final newPosition = _vlcPosition - seekDuration;
+      final targetPosition = newPosition.isNegative ? Duration.zero : newPosition;
+      _vlcController!.seekTo(targetPosition);
+    } else if (_player != null) {
+      final currentPosition = _player!.state.position;
+      final newPosition = currentPosition - seekDuration;
+      final targetPosition = newPosition.isNegative ? Duration.zero : newPosition;
+      _player!.seek(targetPosition);
+    }
+  }
+
+  void _seekForward() {
+    const seekDuration = Duration(seconds: 10);
+    if (_useFlutterVlc && _vlcController != null) {
+      final newPosition = _vlcPosition + seekDuration;
+      final maxPosition = _vlcDuration;
+      final targetPosition = newPosition > maxPosition ? maxPosition : newPosition;
+      _vlcController!.seekTo(targetPosition);
+    } else if (_player != null) {
+      final currentPosition = _player!.state.position;
+      final duration = _player!.state.duration;
+      final newPosition = currentPosition + seekDuration;
+      final targetPosition = newPosition > duration ? duration : newPosition;
+      _player!.seek(targetPosition);
+    }
+  }
+
+  void _increaseVolume() {
+    const volumeStep = 5.0;
+    if (_useFlutterVlc && _vlcController != null) {
+      final newVolume = (_vlcVolume + volumeStep).clamp(0.0, 100.0);
+      _vlcController!.setVolume(newVolume.toInt());
+      setState(() {
+        _vlcVolume = newVolume;
+        _lastVolume = newVolume;
+        _vlcMuted = false;
+      });
+      UserPreferences.instance.setVideoPlayerVolume(newVolume);
+      UserPreferences.instance.setVideoPlayerMute(false);
+    } else if (_player != null) {
+      final newVolume = (_vlcVolume + volumeStep).clamp(0.0, 100.0);
+      _player!.setVolume(newVolume);
+      setState(() {
+        _vlcVolume = newVolume;
+        _lastVolume = newVolume;
+        _vlcMuted = false;
+      });
+      UserPreferences.instance.setVideoPlayerVolume(newVolume);
+      UserPreferences.instance.setVideoPlayerMute(false);
+    }
+  }
+
+  void _decreaseVolume() {
+    const volumeStep = 5.0;
+    if (_useFlutterVlc && _vlcController != null) {
+      final newVolume = (_vlcVolume - volumeStep).clamp(0.0, 100.0);
+      _vlcController!.setVolume(newVolume.toInt());
+      setState(() {
+        _vlcVolume = newVolume;
+        if (newVolume > 0.1) _lastVolume = newVolume;
+        _vlcMuted = newVolume <= 0.1;
+      });
+      UserPreferences.instance.setVideoPlayerVolume(newVolume);
+      UserPreferences.instance.setVideoPlayerMute(newVolume <= 0.1);
+    } else if (_player != null) {
+      final newVolume = (_vlcVolume - volumeStep).clamp(0.0, 100.0);
+      _player!.setVolume(newVolume);
+      setState(() {
+        _vlcVolume = newVolume;
+        if (newVolume > 0.1) _lastVolume = newVolume;
+        _vlcMuted = newVolume <= 0.1;
+      });
+      UserPreferences.instance.setVideoPlayerVolume(newVolume);
+      UserPreferences.instance.setVideoPlayerMute(newVolume <= 0.1);
+    }
+  }
+
+  void _toggleMute() {
+    if (_useFlutterVlc && _vlcController != null) {
+      if (_vlcMuted) {
+        // Unmute: restore last volume
+        final volumeToRestore = _lastVolume > 0 ? _lastVolume : 70.0;
+        _vlcController!.setVolume(volumeToRestore.toInt());
+        setState(() {
+          _vlcVolume = volumeToRestore;
+          _vlcMuted = false;
+        });
+        UserPreferences.instance.setVideoPlayerVolume(volumeToRestore);
+        UserPreferences.instance.setVideoPlayerMute(false);
+      } else {
+        // Mute: save current volume and set to 0
+        if (_vlcVolume > 0.1) _lastVolume = _vlcVolume;
+        _vlcController!.setVolume(0);
+        setState(() {
+          _vlcVolume = 0.0;
+          _vlcMuted = true;
+        });
+        UserPreferences.instance.setVideoPlayerMute(true);
+      }
+    } else if (_player != null) {
+      if (_vlcMuted) {
+        // Unmute: restore last volume
+        final volumeToRestore = _lastVolume > 0 ? _lastVolume : 70.0;
+        _player!.setVolume(volumeToRestore);
+        setState(() {
+          _vlcVolume = volumeToRestore;
+          _vlcMuted = false;
+        });
+        UserPreferences.instance.setVideoPlayerVolume(volumeToRestore);
+        UserPreferences.instance.setVideoPlayerMute(false);
+      } else {
+        // Mute: save current volume and set to 0
+        if (_vlcVolume > 0.1) _lastVolume = _vlcVolume;
+        _player!.setVolume(0.0);
+        setState(() {
+          _vlcVolume = 0.0;
+          _vlcMuted = true;
+        });
+        UserPreferences.instance.setVideoPlayerMute(true);
       }
     }
   }
