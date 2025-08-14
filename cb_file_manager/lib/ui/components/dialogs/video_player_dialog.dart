@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:cb_file_manager/ui/components/video_player/custom_video_player.dart';
+import 'package:cb_file_manager/ui/components/video_player/video_player.dart';
 
 class VideoPlayerDialog extends StatefulWidget {
   final File videoFile;
@@ -47,7 +47,7 @@ class _VideoPlayerDialogState extends State<VideoPlayerDialog> {
             ),
           ),
           Flexible(
-            child: CustomVideoPlayer(
+            child: VideoPlayer.file(
               file: widget.videoFile,
               showControls: true,
               allowFullScreen: true,

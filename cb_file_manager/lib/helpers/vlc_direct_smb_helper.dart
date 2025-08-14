@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../helpers/file_type_helper.dart';
 import '../services/network_browsing/i_smb_service.dart';
-import '../ui/widgets/streaming/streaming_media_player.dart';
+import '../ui/components/video_player/video_player.dart';
 // Unified player is StreamingMediaPlayer; this file only builds URLs.
 
 /// Helper để mở media với Native SMB streaming
@@ -60,7 +60,7 @@ class VlcDirectSmbHelper {
       // Open with the unified StreamingMediaPlayer directly
       await Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (context) => StreamingMediaPlayer.fromSmbMrl(
+          builder: (context) => VideoPlayer.smb(
             smbMrl: smbUrl,
             fileName: fileName,
             fileType: fileType,

@@ -5,7 +5,7 @@ import 'dart:async';
 import '../services/network_browsing/network_service_base.dart';
 import '../services/network_browsing/mobile_smb_service.dart';
 import '../services/network_browsing/i_smb_service.dart';
-import '../ui/widgets/streaming/streaming_media_player.dart';
+import '../ui/components/video_player/video_player.dart';
 import '../ui/utils/file_type_utils.dart';
 import 'package:path/path.dart' as p;
 import 'file_type_helper.dart';
@@ -453,13 +453,13 @@ class StreamingHelper {
       await Navigator.of(context).push(
         MaterialPageRoute(
           builder: (context) => result.fileStream != null
-              ? StreamingMediaPlayer.fromStream(
+              ? VideoPlayer.stream(
                   fileStream: result.fileStream!,
                   fileName: fileName,
                   fileType: result.fileType!,
                 )
               : result.streamingUrl != null
-                  ? StreamingMediaPlayer.fromUrl(
+                  ? VideoPlayer.url(
                       streamingUrl: result.streamingUrl!,
                       fileName: fileName,
                       fileType: result.fileType!,

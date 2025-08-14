@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:mobile_smb_native/mobile_smb_native.dart';
 import '../helpers/file_type_helper.dart';
 import '../services/network_browsing/i_smb_service.dart';
-import '../ui/widgets/streaming/streaming_media_player.dart';
+import '../ui/components/video_player/video_player.dart';
 import 'vlc_direct_smb_helper.dart';
 
 /// Helper để mở media với Native VLC Direct SMB streaming
@@ -62,7 +62,7 @@ class NativeVlcDirectHelper {
 
       await Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (context) => StreamingMediaPlayer.fromSmbMrl(
+          builder: (context) => VideoPlayer.smb(
             smbMrl: finalSmbMrl,
             fileName: fileName,
             fileType: fileType,

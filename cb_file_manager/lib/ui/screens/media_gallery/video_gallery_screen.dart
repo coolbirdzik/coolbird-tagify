@@ -7,7 +7,7 @@ import 'package:cb_file_manager/helpers/user_preferences.dart';
 import 'package:cb_file_manager/ui/utils/base_screen.dart';
 import 'package:cb_file_manager/ui/screens/folder_list/folder_list_state.dart';
 import 'package:cb_file_manager/ui/components/shared_action_bar.dart';
-import 'package:cb_file_manager/ui/components/video_player/custom_video_player.dart';
+import 'package:cb_file_manager/ui/components/video_player/video_player.dart';
 import 'package:cb_file_manager/ui/widgets/lazy_video_thumbnail.dart';
 import 'package:cb_file_manager/helpers/video_thumbnail_helper.dart';
 import 'package:cb_file_manager/helpers/frame_timing_optimizer.dart';
@@ -1184,7 +1184,7 @@ class _VideoPlayerFullScreenState extends State<VideoPlayerFullScreen> {
       backgroundColor: Colors.black,
       body: SafeArea(
         child: Center(
-          child: CustomVideoPlayer(
+          child: VideoPlayer.file(
             file: widget.file,
             autoPlay: true,
             showControls: true,

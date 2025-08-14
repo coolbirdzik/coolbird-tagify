@@ -7,7 +7,7 @@ import 'package:cb_file_manager/ui/utils/base_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:path/path.dart' as pathlib;
-import 'package:cb_file_manager/ui/components/video_player/custom_video_player.dart';
+import 'package:cb_file_manager/ui/components/video_player/video_player.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
 import 'package:cb_file_manager/ui/widgets/tag_management_section.dart';
 import 'package:cb_file_manager/config/languages/app_localizations.dart';
@@ -406,7 +406,7 @@ class _FileDetailsScreenState extends State<FileDetailsScreen> {
           AnimatedOpacity(
             opacity: _videoPlayerReady ? 1.0 : 0.0,
             duration: const Duration(milliseconds: 300),
-            child: CustomVideoPlayer(
+            child: VideoPlayer.file(
               file: widget.file,
               showControls: true,
               allowFullScreen: true,
