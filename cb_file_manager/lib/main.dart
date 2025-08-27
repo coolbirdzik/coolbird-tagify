@@ -16,7 +16,6 @@ import 'helpers/folder_thumbnail_service.dart'; // Import thumbnail service
 import 'helpers/video_thumbnail_helper.dart'; // Import our video thumbnail helper
 import 'helpers/frame_timing_optimizer.dart'; // Import our new frame timing optimizer
 import 'helpers/batch_tag_manager.dart'; // Import batch tag manager
-import 'services/video_player_optimizer.dart'; // Import video player optimizer
 import 'models/database/database_manager.dart'; // Import database manager
 import 'models/database/network_credentials.dart'; // Import network credentials model
 import 'services/network_credentials_service.dart'; // Import network credentials service
@@ -69,10 +68,6 @@ void main() async {
 
     // Initialize Media Kit with proper audio configuration
     MediaKit.ensureInitialized();
-
-    // Initialize video player optimizer for better SMB streaming performance
-    final videoOptimizer = VideoPlayerOptimizer();
-    await videoOptimizer.initialize();
 
     // Initialize our audio helper to ensure sound works
     if (Platform.isWindows) {

@@ -621,8 +621,7 @@ class VideoThumbnailHelper {
         final request = _pendingQueue.removeAt(0);
 
         try {
-          final result = await _requestThumbnail(request.videoPath,
-              priority: request.priority,
+          final result = await _generateThumbnailInternal(request.videoPath,
               forceRegenerate: request.forceRegenerate);
 
           if (result != null) {
@@ -1145,7 +1144,7 @@ class VideoThumbnailHelper {
                 (width.isFinite && width > 0) ? (width * 2).toInt() : null,
             cacheHeight:
                 (height.isFinite && height > 0) ? (height * 2).toInt() : null,
-            filterQuality: FilterQuality.medium,
+            filterQuality: FilterQuality.high,
             frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
               if (wasSynchronouslyLoaded) return child;
               return AnimatedOpacity(

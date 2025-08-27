@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:path/path.dart' as path;
 
 import 'package:cb_file_manager/config/app_theme.dart';
 import 'package:cb_file_manager/helpers/external_app_helper.dart';
@@ -51,76 +52,102 @@ class FileGridItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Use a Stack to layer the selection indicator over the constant content
-    return Stack(
-      fit: StackFit.expand,
+    final fileName = path.basename(file.path);
+    
+    return Column(
       children: [
-        // The content that does NOT change on selection
-        ThumbnailLoader(
-          filePath: file.path,
-          isVideo: FileTypeUtils.isVideoFile(file.path),
-          isImage: FileTypeUtils.isImageFile(file.path),
-        ),
+        // Thumbnail section
+        Expanded(
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // The content that does NOT change on selection
+              ThumbnailLoader(
+                filePath: file.path,
+                isVideo: FileTypeUtils.isVideoFile(file.path),
+                isImage: FileTypeUtils.isImageFile(file.path),
+                width: double.infinity,
+                height: double.infinity,
+                fit: BoxFit.cover,
+                onThumbnailLoaded: onThumbnailGenerated,
+              ),
 
-        // The content that DOES change on selection
-        Positioned.fill(
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              borderRadius: BorderRadius.circular(8.0),
-              onTap: () {
-                final isShiftPressed =
-                    RawKeyboard.instance.keysPressed.contains(
-                          LogicalKeyboardKey.shiftLeft,
-                        ) ||
-                        RawKeyboard.instance.keysPressed.contains(
-                          LogicalKeyboardKey.shiftRight,
+              // The content that DOES change on selection
+              Positioned.fill(
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(8.0),
+                    onTap: () {
+                      final isShiftPressed =
+                          RawKeyboard.instance.keysPressed.contains(
+                                LogicalKeyboardKey.shiftLeft,
+                              ) ||
+                              RawKeyboard.instance.keysPressed.contains(
+                                LogicalKeyboardKey.shiftRight,
+                              );
+                      final isCtrlPressed = RawKeyboard.instance.keysPressed.contains(
+                            LogicalKeyboardKey.controlLeft,
+                          ) ||
+                          RawKeyboard.instance.keysPressed.contains(
+                            LogicalKeyboardKey.controlRight,
+                          );
+
+                      // If in selection mode or modifier keys pressed, handle selection
+                      if (isSelectionMode || isShiftPressed || isCtrlPressed) {
+                        toggleFileSelection(
+                          file.path,
+                          shiftSelect: isShiftPressed,
+                          ctrlSelect: isCtrlPressed,
                         );
-                final isCtrlPressed = RawKeyboard.instance.keysPressed.contains(
-                      LogicalKeyboardKey.controlLeft,
-                    ) ||
-                    RawKeyboard.instance.keysPressed.contains(
-                      LogicalKeyboardKey.controlRight,
-                    );
-
-                // If in selection mode or modifier keys pressed, handle selection
-                if (isSelectionMode || isShiftPressed || isCtrlPressed) {
-                  toggleFileSelection(
-                    file.path,
-                    shiftSelect: isShiftPressed,
-                    ctrlSelect: isCtrlPressed,
-                  );
-                } else {
-                  // Single tap opens file when not in selection mode
-                  onFileTap?.call(file as File, false);
-                }
-              },
-              onLongPress: toggleSelectionMode,
-              onDoubleTap: () => onFileTap?.call(file as File, false),
-              child: isSelected
-                  ? Container(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(8.0),
-                        border: Border.all(
-                          color: Theme.of(context).primaryColor,
-                          width: 2,
-                        ),
-                        color: Theme.of(context).primaryColor.withOpacity(0.2),
-                      ),
-                      child: Align(
-                        alignment: Alignment.topRight,
-                        child: Padding(
-                          padding: const EdgeInsets.all(4.0),
-                          child: Icon(
-                            EvaIcons.checkmarkCircle2,
-                            color: Theme.of(context).primaryColor,
-                            size: 24,
-                          ),
-                        ),
-                      ),
-                    )
-                  : const SizedBox.shrink(),
+                      } else {
+                        // Single tap opens file when not in selection mode
+                        onFileTap?.call(file as File, false);
+                      }
+                    },
+                    onLongPress: toggleSelectionMode,
+                    onDoubleTap: () => onFileTap?.call(file as File, false),
+                    child: isSelected
+                        ? Container(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(8.0),
+                              border: Border.all(
+                                color: Theme.of(context).primaryColor,
+                                width: 2,
+                              ),
+                              color: Theme.of(context).primaryColor.withOpacity(0.2),
+                            ),
+                            child: Align(
+                              alignment: Alignment.topRight,
+                              child: Padding(
+                                padding: const EdgeInsets.all(4.0),
+                                child: Icon(
+                                  EvaIcons.checkmarkCircle2,
+                                  color: Theme.of(context).primaryColor,
+                                  size: 24,
+                                ),
+                              ),
+                            ),
+                          )
+                        : const SizedBox.shrink(),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        
+        // File name section
+        Padding(
+          padding: const EdgeInsets.only(top: 4.0, left: 4.0, right: 4.0),
+          child: Text(
+            fileName,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              fontSize: 12,
             ),
+            textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
           ),
         ),
       ],

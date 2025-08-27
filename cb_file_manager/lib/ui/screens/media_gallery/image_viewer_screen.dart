@@ -626,6 +626,7 @@ class _ImageViewerScreenState extends State<ImageViewerScreen>
                                             return Image.memory(
                                               snapshot.data!,
                                               fit: BoxFit.contain,
+                                              filterQuality: FilterQuality.high,
                                               errorBuilder:
                                                   (context, error, stackTrace) {
                                                 return Column(
@@ -882,6 +883,7 @@ class _ImageViewerScreenState extends State<ImageViewerScreen>
                         return Image.memory(
                           snapshot.data!,
                           fit: BoxFit.contain,
+                          filterQuality: FilterQuality.high,
                         );
                       } else {
                         // No data

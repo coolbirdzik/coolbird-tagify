@@ -162,7 +162,7 @@ class _StreamingSpeedOverlayState extends State<StreamingSpeedOverlay>
   }
 
   Widget _buildSpeedInfoCard() {
-    final bgColor = widget.backgroundColor ?? Colors.black.withOpacity(0.8);
+    final bgColor = widget.backgroundColor ?? Colors.black.withValues(alpha: 0.8);
     final textColor = widget.textColor ?? Colors.white;
 
     return Container(
@@ -171,12 +171,12 @@ class _StreamingSpeedOverlayState extends State<StreamingSpeedOverlay>
         color: bgColor,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: Colors.white.withOpacity(0.2),
+          color: Colors.white.withValues(alpha: 0.2),
           width: 1,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.3),
+            color: Colors.black.withValues(alpha: 0.3),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -208,7 +208,7 @@ class _StreamingSpeedOverlayState extends State<StreamingSpeedOverlay>
                 onTap: widget.onToggleSpeedInfo,
                 child: Icon(
                   Icons.close,
-                  color: textColor.withOpacity(0.7),
+                  color: textColor.withValues(alpha: 0.7),
                   size: 14,
                 ),
               ),
@@ -246,7 +246,7 @@ class _StreamingSpeedOverlayState extends State<StreamingSpeedOverlay>
           child: Text(
             label,
             style: TextStyle(
-              color: textColor.withOpacity(0.8),
+              color: textColor.withValues(alpha: 0.8),
               fontSize: 10,
             ),
           ),
@@ -287,7 +287,7 @@ class StreamingSpeedToggleButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bgColor = backgroundColor ?? Colors.black.withOpacity(0.6);
+    final bgColor = backgroundColor ?? Colors.black.withValues(alpha: 0.6);
     final iconColor = this.iconColor ?? Colors.white;
 
     return GestureDetector(
@@ -299,7 +299,7 @@ class StreamingSpeedToggleButton extends StatelessWidget {
           color: bgColor,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: Colors.white.withOpacity(0.2),
+            color: Colors.white.withValues(alpha: 0.2),
             width: 1,
           ),
         ),

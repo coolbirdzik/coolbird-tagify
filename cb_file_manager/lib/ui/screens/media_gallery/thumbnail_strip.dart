@@ -133,7 +133,7 @@ class _ThumbnailStripState extends State<ThumbnailStrip> {
                         width: 54,
                         height: 54,
                         fit: BoxFit.cover,
-                        filterQuality: FilterQuality.medium,
+                        filterQuality: FilterQuality.high,
                       ),
                     ),
                   );

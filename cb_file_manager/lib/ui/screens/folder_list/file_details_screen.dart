@@ -345,6 +345,7 @@ class _FileDetailsScreenState extends State<FileDetailsScreen> {
         child: Image.file(
           widget.file,
           fit: BoxFit.contain,
+          filterQuality: FilterQuality.high,
           errorBuilder: (context, error, stackTrace) {
             return Center(
               child: Column(

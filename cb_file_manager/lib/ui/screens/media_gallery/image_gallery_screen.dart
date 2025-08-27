@@ -538,6 +538,7 @@ class ImageGalleryScreenState extends State<ImageGalleryScreen> {
                     child: Image.file(
                       file,
                       fit: BoxFit.cover,
+                      filterQuality: FilterQuality.high,
                       errorBuilder: (context, error, stackTrace) {
                         return const Center(
                           child: Icon(
@@ -685,6 +686,7 @@ class ImageGalleryScreenState extends State<ImageGalleryScreen> {
                 child: Image.file(
                   file,
                   fit: BoxFit.cover,
+                  filterQuality: FilterQuality.high,
                   errorBuilder: (context, error, stackTrace) {
                     return Container(
                       color: Colors.grey[300],

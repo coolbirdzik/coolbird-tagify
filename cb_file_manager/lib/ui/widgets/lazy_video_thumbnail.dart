@@ -410,8 +410,8 @@ class _LazyVideoThumbnailState extends State<LazyVideoThumbnail>
               'thumbnail-${widget.videoPath}-${thumbnailPath.hashCode}'),
           width: widget.width,
           height: widget.height,
-          fit: BoxFit.contain,
-          filterQuality: FilterQuality.medium,
+          fit: BoxFit.cover,
+          filterQuality: FilterQuality.high,
           errorBuilder: (context, error, stackTrace) {
             // Use the helper's throttled log method
             VideoThumbnailHelper.logWithThrottle(

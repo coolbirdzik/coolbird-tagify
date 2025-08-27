@@ -700,6 +700,55 @@ class UserPreferences {
     }
   }
 
+  // Generic methods for video player settings
+  Future<void> setVideoPlayerString(String key, String value) async {
+    if (_useObjectBox) {
+      await _databaseManager!.saveStringPreference(key, value);
+    } else {
+      await _preferences?.setString(key, value);
+    }
+  }
+
+  Future<String?> getVideoPlayerString(String key, {String? defaultValue}) async {
+    if (_useObjectBox) {
+      return await _databaseManager!.getStringPreference(key, defaultValue: defaultValue);
+    } else {
+      return _preferences?.getString(key) ?? defaultValue;
+    }
+  }
+
+  Future<void> setVideoPlayerBool(String key, bool value) async {
+    if (_useObjectBox) {
+      await _databaseManager!.saveBoolPreference(key, value);
+    } else {
+      await _preferences?.setBool(key, value);
+    }
+  }
+
+  Future<bool?> getVideoPlayerBool(String key, {bool? defaultValue}) async {
+    if (_useObjectBox) {
+      return await _databaseManager!.getBoolPreference(key, defaultValue: defaultValue);
+    } else {
+      return _preferences?.getBool(key) ?? defaultValue;
+    }
+  }
+
+  Future<void> setVideoPlayerInt(String key, int value) async {
+    if (_useObjectBox) {
+      await _databaseManager!.saveIntPreference(key, value);
+    } else {
+      await _preferences?.setInt(key, value);
+    }
+  }
+
+  Future<int?> getVideoPlayerInt(String key, {int? defaultValue}) async {
+    if (_useObjectBox) {
+      return await _databaseManager!.getIntPreference(key, defaultValue: defaultValue);
+    } else {
+      return _preferences?.getInt(key) ?? defaultValue;
+    }
+  }
+
   /// Export preferences to a JSON file with custom destination
   Future<String?> exportPreferences({String? customPath}) async {
     try {

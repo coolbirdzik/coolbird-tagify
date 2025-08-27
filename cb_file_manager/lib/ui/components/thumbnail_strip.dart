@@ -163,8 +163,8 @@ class _ThumbnailStripState extends State<ThumbnailStrip> {
             fit: BoxFit.cover,
             width: widget.thumbnailSize,
             height: widget.thumbnailSize,
-            // Đặt chất lượng thấp cho thumbnail để tăng hiệu suất
-            filterQuality: FilterQuality.low,
+            // Đặt chất lượng cao cho thumbnail để hiển thị sắc nét
+            filterQuality: FilterQuality.high,
             cacheWidth: (widget.thumbnailSize * 1.5).toInt(),
             // Xử lý lỗi khi không thể tải ảnh
             errorBuilder: (context, error, stackTrace) {

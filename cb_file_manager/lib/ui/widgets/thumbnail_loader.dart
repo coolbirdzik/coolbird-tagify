@@ -552,7 +552,7 @@ class _ThumbnailLoaderState extends State<ThumbnailLoader>
           width: widget.width,
           height: widget.height,
           fit: widget.fit,
-          filterQuality: FilterQuality.medium,
+          filterQuality: FilterQuality.high,
           cacheWidth: widget.width.isInfinite ? null : widget.width.toInt(),
           cacheHeight: widget.height.isInfinite ? null : widget.height.toInt(),
           errorBuilder: (context, error, stackTrace) {
@@ -697,7 +697,7 @@ class _ThumbnailLoaderState extends State<ThumbnailLoader>
           width: widget.width,
           height: widget.height,
           fit: widget.fit,
-          filterQuality: FilterQuality.medium, // Tăng chất lượng lên medium
+          filterQuality: FilterQuality.high, // Tăng chất lượng lên high
           cacheWidth: widget.width.isInfinite ? null : widget.width.toInt(),
           cacheHeight: widget.height.isInfinite ? null : widget.height.toInt(),
           errorBuilder: (context, error, stackTrace) {
@@ -806,7 +806,7 @@ class _ThumbnailLoaderState extends State<ThumbnailLoader>
       width: widget.width,
       height: widget.height,
       fit: widget.fit,
-      filterQuality: FilterQuality.medium, // Tăng chất lượng lên medium
+      filterQuality: FilterQuality.high, // Tăng chất lượng lên high
       cacheWidth: widget.width.isInfinite ? null : widget.width.toInt(),
       cacheHeight: widget.height.isInfinite ? null : widget.height.toInt(),
       errorBuilder: (context, error, stackTrace) {

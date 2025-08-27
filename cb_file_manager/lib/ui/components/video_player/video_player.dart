@@ -9,12 +9,48 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'package:flutter_vlc_player/flutter_vlc_player.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:path/path.dart' as pathlib;
+import 'dart:math' as math;
 
 import '../../../helpers/file_type_helper.dart';
 import '../../../helpers/user_preferences.dart';
 import '../../../helpers/win32_smb_helper.dart';
 import '../stream_speed_indicator.dart';
 import '../buffer_info_widget.dart';
+
+// Enums for new features
+enum LoopMode { none, single, all }
+
+enum VideoFilter { none, brightness, contrast, saturation }
+
+// Subtitle track model
+class SubtitleTrack {
+  final int id;
+  final String language;
+  final String? title;
+  final bool isEnabled;
+
+  const SubtitleTrack({
+    required this.id,
+    required this.language,
+    this.title,
+    this.isEnabled = false,
+  });
+}
+
+// Audio track model
+class AudioTrack {
+  final int id;
+  final String language;
+  final String? title;
+  final bool isEnabled;
+
+  const AudioTrack({
+    required this.id,
+    required this.language,
+    this.title,
+    this.isEnabled = false,
+  });
+}
 
 /// Unified video player component supporting multiple media sources
 /// Consolidates functionality from CustomVideoPlayer and StreamingMediaPlayer
@@ -282,6 +318,48 @@ class _VideoPlayerState extends State<VideoPlayer> {
   bool _showSpeedIndicator = false;
   bool _useFlutterVlc = false;
 
+  // New advanced features state
+  List<SubtitleTrack> _subtitleTracks = [];
+  List<AudioTrack> _audioTracks = [];
+  int? _selectedSubtitleTrack = -1;
+  int _selectedAudioTrack = -1;
+  bool _subtitlesEnabled = false;
+  double _playbackSpeed = 1.0;
+  LoopMode _loopMode = LoopMode.none;
+  bool _isPictureInPicture = false;
+
+  // Video filters
+  double _brightness = 0.0; // -1.0 to 1.0
+  double _contrast = 0.0; // -1.0 to 1.0
+  double _saturation = 0.0; // -1.0 to 1.0
+
+  // Sleep timer
+  Timer? _sleepTimer;
+  Duration? _sleepDuration;
+
+  // Gesture controls
+  bool _gestureControlsEnabled = true;
+  double _videoZoom = 1.0;
+  Offset _videoOffset = Offset.zero;
+
+  // Thumbnail preview
+  bool _showThumbnailPreview = false;
+  double _thumbnailPosition = 0.0;
+
+  // Video statistics
+  Map<String, dynamic> _videoStats = {};
+  Timer? _statsUpdateTimer;
+
+  // Video player settings
+  String _selectedCodec = 'auto'; // auto, h264, h265, vp9, av1
+  bool _hardwareAcceleration = true;
+  String _videoDecoder = 'auto'; // auto, software, hardware
+  String _audioDecoder = 'auto'; // auto, software, hardware
+  int _bufferSize = 10; // MB
+  int _networkTimeout = 30; // seconds
+  String _subtitleEncoding = 'utf-8';
+  String _videoOutputFormat = 'auto'; // auto, yuv420p, rgb24
+
   // Timers
   Timer? _initializationTimeout;
   Timer? _hideControlsTimer;
@@ -313,10 +391,23 @@ class _VideoPlayerState extends State<VideoPlayer> {
 
   Map<String, dynamic>? _videoMetadata;
 
+  // Playback speed options
+  static const List<double> _speedOptions = [
+    0.25,
+    0.5,
+    0.75,
+    1.0,
+    1.25,
+    1.5,
+    2.0,
+    4.0
+  ];
+
   @override
   void initState() {
     super.initState();
-    _initializePlayer();
+    // Load settings first, then initialize the player so configuration is applied
+    _loadSettings().whenComplete(_initializePlayer);
   }
 
   @override
@@ -331,8 +422,12 @@ class _VideoPlayerState extends State<VideoPlayer> {
       _initializationTimeout?.cancel();
       _noDataTimer?.cancel();
       _bufferSub?.cancel();
+      _sleepTimer?.cancel();
+      _statsUpdateTimer?.cancel();
       _tempRaf?.close();
       _tempFile?.delete();
+      // Clear video controller reference before disposing the player
+      _videoController = null;
       _player?.dispose();
       _vlcController?.dispose();
       _streamController?.close();
@@ -417,7 +512,12 @@ class _VideoPlayerState extends State<VideoPlayer> {
             bufferSize: 10 * 1024 * 1024, // 10MB buffer for better streaming
           ),
         );
-        _videoController = VideoController(_player!);
+        _videoController = VideoController(
+          _player!,
+          configuration: VideoControllerConfiguration(
+            enableHardwareAcceleration: _hardwareAcceleration,
+          ),
+        );
         _setupPlayerEventListeners(userPreferences);
       }
 
@@ -974,7 +1074,7 @@ class _VideoPlayerState extends State<VideoPlayer> {
       child: Scaffold(
         backgroundColor: Colors.black,
         appBar: AppBar(
-          backgroundColor: Colors.black.withOpacity(0.7),
+          backgroundColor: Colors.black.withValues(alpha: 0.7),
           title: Text(
             widget.fileName,
             style: const TextStyle(color: Colors.white),
@@ -1297,13 +1397,13 @@ class _VideoPlayerState extends State<VideoPlayer> {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  Colors.black.withOpacity(0.9),
-                  Colors.black.withOpacity(0.7),
+                  Colors.black.withValues(alpha: 0.9),
+                  Colors.black.withValues(alpha: 0.7),
                 ],
               ),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: Colors.orange.withOpacity(0.5),
+                color: Colors.orange.withValues(alpha: 0.5),
                 width: 1,
               ),
             ),
@@ -1587,13 +1687,13 @@ class _VideoPlayerState extends State<VideoPlayer> {
                     begin: Alignment.bottomCenter,
                     end: Alignment.topCenter,
                     colors: [
-                      Colors.black.withOpacity(0.8),
-                      Colors.black.withOpacity(0.6),
+                      Colors.black.withValues(alpha: 0.8),
+                      Colors.black.withValues(alpha: 0.6),
                     ],
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.3),
+                      color: Colors.black.withValues(alpha: 0.3),
                       blurRadius: 10,
                       spreadRadius: 2,
                     ),
@@ -1625,6 +1725,13 @@ class _VideoPlayerState extends State<VideoPlayer> {
                     ),
                     if (widget.allowMuting) _buildVolumeControl(),
                     if (Platform.isWindows) _buildAudioTrackButton(),
+                    // New advanced controls
+                    _buildSubtitleButton(),
+                    _buildPlaybackSpeedButton(),
+                    _buildPictureInPictureButton(),
+                    _buildVideoFiltersButton(),
+                    _buildSleepTimerButton(),
+                    _buildSettingsButton(),
                     if (widget.allowFullScreen)
                       _buildControlButton(
                         icon: _isFullScreen
@@ -1713,7 +1820,7 @@ class _VideoPlayerState extends State<VideoPlayer> {
                         _player!.seek(newPosition);
                       },
                       activeColor: Colors.white,
-                      inactiveColor: Colors.white.withOpacity(0.3),
+                      inactiveColor: Colors.white.withValues(alpha: 0.3),
                     ),
                   ),
                 ),
@@ -1756,7 +1863,7 @@ class _VideoPlayerState extends State<VideoPlayer> {
                       ?.seekTo(Duration(milliseconds: targetMs));
                 },
                 activeColor: Colors.redAccent,
-                inactiveColor: Colors.white.withOpacity(0.3),
+                inactiveColor: Colors.white.withValues(alpha: 0.3),
               ),
             ),
             const SizedBox(width: 8),
@@ -1871,7 +1978,7 @@ class _VideoPlayerState extends State<VideoPlayer> {
                             _player!.setVolume(value);
                           },
                           activeColor: Colors.white,
-                          inactiveColor: Colors.white.withOpacity(0.3),
+                          inactiveColor: Colors.white.withValues(alpha: 0.3),
                         ),
                       );
                     },
@@ -1884,7 +1991,7 @@ class _VideoPlayerState extends State<VideoPlayer> {
                       _vlcController!.setVolume(value.toInt());
                     },
                     activeColor: Colors.white,
-                    inactiveColor: Colors.white.withOpacity(0.3),
+                    inactiveColor: Colors.white.withValues(alpha: 0.3),
                   ),
           ),
       ],
@@ -1939,6 +2046,686 @@ class _VideoPlayerState extends State<VideoPlayer> {
       return '$hours:${twoDigits(minutes)}:${twoDigits(seconds)}';
     } else {
       return '${twoDigits(minutes)}:${twoDigits(seconds)}';
+    }
+  }
+
+  // Advanced control buttons
+  Widget _buildSubtitleButton() {
+    return _buildControlButton(
+      icon: Icons.subtitles,
+      onPressed: () => _showSubtitleDialog(),
+      enabled: _subtitleTracks.isNotEmpty,
+      tooltip: 'Subtitles',
+    );
+  }
+
+  Widget _buildPlaybackSpeedButton() {
+    return _buildControlButton(
+      icon: Icons.speed,
+      onPressed: () => _showPlaybackSpeedDialog(),
+      enabled: true,
+      tooltip: 'Playback Speed',
+    );
+  }
+
+  Widget _buildPictureInPictureButton() {
+    return _buildControlButton(
+      icon: _isPictureInPicture
+          ? Icons.picture_in_picture_alt
+          : Icons.picture_in_picture,
+      onPressed: () => _togglePictureInPicture(),
+      enabled: true,
+      tooltip: _isPictureInPicture ? 'Exit PiP' : 'Picture in Picture',
+    );
+  }
+
+  Widget _buildVideoFiltersButton() {
+    return _buildControlButton(
+      icon: Icons.tune,
+      onPressed: () => _showVideoFiltersDialog(),
+      enabled: true,
+      tooltip: 'Video Filters',
+    );
+  }
+
+  Widget _buildSleepTimerButton() {
+    return _buildControlButton(
+      icon: Icons.bedtime,
+      onPressed: () => _showSleepTimerDialog(),
+      enabled: true,
+      tooltip: 'Sleep Timer',
+    );
+  }
+
+  Widget _buildSettingsButton() {
+    return _buildControlButton(
+      icon: Icons.settings,
+      onPressed: () => _showSettingsDialog(),
+      enabled: true,
+      tooltip: 'Video Settings',
+    );
+  }
+
+  // Dialog methods
+  void _showSubtitleDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Subtitles'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              title: const Text('Off'),
+              leading: Radio<int?>(
+                value: null,
+                groupValue: _selectedSubtitleTrack,
+                onChanged: (int? value) {
+                  setState(() {
+                    _selectedSubtitleTrack = value;
+                    _subtitlesEnabled = false;
+                  });
+                  Navigator.pop(context);
+                },
+              ),
+            ),
+            ..._subtitleTracks.asMap().entries.map((entry) {
+              final index = entry.key;
+              final track = entry.value;
+              return ListTile(
+                title: Text(track.language),
+                leading: Radio<int?>(
+                  value: index,
+                  groupValue: _selectedSubtitleTrack,
+                  onChanged: (int? value) {
+                    setState(() {
+                      _selectedSubtitleTrack = value;
+                      _subtitlesEnabled = true;
+                    });
+                    Navigator.pop(context);
+                  },
+                ),
+              );
+            }).toList(),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showPlaybackSpeedDialog() {
+    final speeds = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Playback Speed'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: speeds.map((speed) {
+            return ListTile(
+              title: Text('${speed}x'),
+              leading: Radio<double>(
+                value: speed,
+                groupValue: _playbackSpeed,
+                onChanged: (value) {
+                  if (value != null) {
+                    setState(() {
+                      _playbackSpeed = value;
+                    });
+                    _setPlaybackSpeed(value);
+                    Navigator.pop(context);
+                  }
+                },
+              ),
+            );
+          }).toList(),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showVideoFiltersDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Video Filters'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Brightness: ${(_brightness * 100).round()}%'),
+              Slider(
+                value: _brightness,
+                min: 0.0,
+                max: 2.0,
+                divisions: 20,
+                onChanged: (value) {
+                  setDialogState(() {
+                    _brightness = value;
+                  });
+                  setState(() {
+                    _brightness = value;
+                  });
+                },
+              ),
+              Text('Contrast: ${(_contrast * 100).round()}%'),
+              Slider(
+                value: _contrast,
+                min: 0.0,
+                max: 2.0,
+                divisions: 20,
+                onChanged: (value) {
+                  setDialogState(() {
+                    _contrast = value;
+                  });
+                  setState(() {
+                    _contrast = value;
+                  });
+                },
+              ),
+              Text('Saturation: ${(_saturation * 100).round()}%'),
+              Slider(
+                value: _saturation,
+                min: 0.0,
+                max: 2.0,
+                divisions: 20,
+                onChanged: (value) {
+                  setDialogState(() {
+                    _saturation = value;
+                  });
+                  setState(() {
+                    _saturation = value;
+                  });
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  _brightness = 1.0;
+                  _contrast = 1.0;
+                  _saturation = 1.0;
+                });
+                setDialogState(() {
+                  _brightness = 1.0;
+                  _contrast = 1.0;
+                  _saturation = 1.0;
+                });
+              },
+              child: const Text('Reset'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showSleepTimerDialog() {
+    final durations = [
+      const Duration(minutes: 15),
+      const Duration(minutes: 30),
+      const Duration(hours: 1),
+      const Duration(hours: 2),
+    ];
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Sleep Timer'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              title: const Text('Off'),
+              leading: Radio<Duration?>(
+                value: null,
+                groupValue: _sleepDuration,
+                onChanged: (value) {
+                  _cancelSleepTimer();
+                  Navigator.pop(context);
+                },
+              ),
+            ),
+            ...durations.map((duration) {
+              String label;
+              if (duration.inHours > 0) {
+                label =
+                    '${duration.inHours} hour${duration.inHours > 1 ? 's' : ''}';
+              } else {
+                label = '${duration.inMinutes} minutes';
+              }
+
+              return ListTile(
+                title: Text(label),
+                leading: Radio<Duration?>(
+                  value: duration,
+                  groupValue: _sleepDuration,
+                  onChanged: (value) {
+                    if (value != null) {
+                      _setSleepTimer(value);
+                      Navigator.pop(context);
+                    }
+                  },
+                ),
+              );
+            }).toList(),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showSettingsDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Video Settings'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Codec Selection
+                const Text('Codec:',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+                DropdownButton<String>(
+                  value: _selectedCodec,
+                  isExpanded: true,
+                  items: const [
+                    DropdownMenuItem(value: 'auto', child: Text('Auto')),
+                    DropdownMenuItem(value: 'h264', child: Text('H.264')),
+                    DropdownMenuItem(value: 'h265', child: Text('H.265/HEVC')),
+                    DropdownMenuItem(value: 'vp9', child: Text('VP9')),
+                    DropdownMenuItem(value: 'av1', child: Text('AV1')),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) {
+                      setDialogState(() {
+                        _selectedCodec = value;
+                      });
+                      setState(() {
+                        _selectedCodec = value;
+                      });
+                      _saveSettings();
+                    }
+                  },
+                ),
+                const SizedBox(height: 16),
+
+                // Hardware Acceleration
+                SwitchListTile(
+                  title: const Text('Hardware Acceleration'),
+                  subtitle: const Text('Use GPU for video decoding'),
+                  value: _hardwareAcceleration,
+                  onChanged: (value) {
+                    setDialogState(() {
+                      _hardwareAcceleration = value;
+                      _videoDecoder = value ? 'hardware' : 'software';
+                    });
+                    setState(() {
+                      _hardwareAcceleration = value;
+                      _videoDecoder = value ? 'hardware' : 'software';
+                      if (_player != null) {
+                        // Recreate video controller so the change takes effect
+                        _videoController = VideoController(
+                          _player!,
+                          configuration: VideoControllerConfiguration(
+                            enableHardwareAcceleration: _hardwareAcceleration,
+                          ),
+                        );
+                      }
+                    });
+                    _saveSettings();
+                  },
+                ),
+
+                // Video Decoder
+                const Text('Video Decoder:',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+                DropdownButton<String>(
+                  value: _videoDecoder,
+                  isExpanded: true,
+                  items: const [
+                    DropdownMenuItem(value: 'auto', child: Text('Auto')),
+                    DropdownMenuItem(
+                        value: 'software', child: Text('Software')),
+                    DropdownMenuItem(
+                        value: 'hardware', child: Text('Hardware')),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) {
+                      setDialogState(() {
+                        _videoDecoder = value;
+                        if (value == 'software') {
+                          _hardwareAcceleration = false;
+                        } else if (value == 'hardware') {
+                          _hardwareAcceleration = true;
+                        }
+                      });
+                      setState(() {
+                        _videoDecoder = value;
+                        if (value == 'software') {
+                          _hardwareAcceleration = false;
+                        } else if (value == 'hardware') {
+                          _hardwareAcceleration = true;
+                        }
+                        if (_player != null) {
+                          _videoController = VideoController(
+                            _player!,
+                            configuration: VideoControllerConfiguration(
+                              enableHardwareAcceleration: _hardwareAcceleration,
+                            ),
+                          );
+                        }
+                      });
+                      _saveSettings();
+                    }
+                  },
+                ),
+                const SizedBox(height: 16),
+
+                // Audio Decoder
+                const Text('Audio Decoder:',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+                DropdownButton<String>(
+                  value: _audioDecoder,
+                  isExpanded: true,
+                  items: const [
+                    DropdownMenuItem(value: 'auto', child: Text('Auto')),
+                    DropdownMenuItem(
+                        value: 'software', child: Text('Software')),
+                    DropdownMenuItem(
+                        value: 'hardware', child: Text('Hardware')),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) {
+                      setDialogState(() {
+                        _audioDecoder = value;
+                      });
+                      setState(() {
+                        _audioDecoder = value;
+                      });
+                      _saveSettings();
+                    }
+                  },
+                ),
+                const SizedBox(height: 16),
+
+                // Buffer Size
+                Text('Buffer Size: ${_bufferSize}MB',
+                    style: const TextStyle(fontWeight: FontWeight.bold)),
+                Slider(
+                  value: _bufferSize.toDouble(),
+                  min: 1,
+                  max: 100,
+                  divisions: 99,
+                  label: '${_bufferSize}MB',
+                  onChanged: (value) {
+                    setDialogState(() {
+                      _bufferSize = value.round();
+                    });
+                    setState(() {
+                      _bufferSize = value.round();
+                    });
+                    _saveSettings();
+                  },
+                ),
+
+                // Network Timeout
+                Text('Network Timeout: ${_networkTimeout}s',
+                    style: const TextStyle(fontWeight: FontWeight.bold)),
+                Slider(
+                  value: _networkTimeout.toDouble(),
+                  min: 5,
+                  max: 120,
+                  divisions: 23,
+                  label: '${_networkTimeout}s',
+                  onChanged: (value) {
+                    setDialogState(() {
+                      _networkTimeout = value.round();
+                    });
+                    setState(() {
+                      _networkTimeout = value.round();
+                    });
+                    _saveSettings();
+                  },
+                ),
+
+                // Subtitle Encoding
+                const Text('Subtitle Encoding:',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+                DropdownButton<String>(
+                  value: _subtitleEncoding,
+                  isExpanded: true,
+                  items: const [
+                    DropdownMenuItem(value: 'utf-8', child: Text('UTF-8')),
+                    DropdownMenuItem(value: 'utf-16', child: Text('UTF-16')),
+                    DropdownMenuItem(
+                        value: 'iso-8859-1', child: Text('ISO-8859-1')),
+                    DropdownMenuItem(
+                        value: 'windows-1252', child: Text('Windows-1252')),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) {
+                      setDialogState(() {
+                        _subtitleEncoding = value;
+                      });
+                      setState(() {
+                        _subtitleEncoding = value;
+                      });
+                      _saveSettings();
+                    }
+                  },
+                ),
+                const SizedBox(height: 16),
+
+                // Video Output Format
+                const Text('Video Output Format:',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+                DropdownButton<String>(
+                  value: _videoOutputFormat,
+                  isExpanded: true,
+                  items: const [
+                    DropdownMenuItem(value: 'auto', child: Text('Auto')),
+                    DropdownMenuItem(value: 'yuv420p', child: Text('YUV420P')),
+                    DropdownMenuItem(value: 'rgb24', child: Text('RGB24')),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) {
+                      setDialogState(() {
+                        _videoOutputFormat = value;
+                      });
+                      setState(() {
+                        _videoOutputFormat = value;
+                      });
+                      _saveSettings();
+                    }
+                  },
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                _resetSettings();
+                setDialogState(() {});
+              },
+              child: const Text('Reset to Default'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Helper methods for advanced features
+  void _setPlaybackSpeed(double speed) {
+    if (_player != null) {
+      _player!.setRate(speed);
+    } else if (_vlcController != null) {
+      _vlcController!.setPlaybackSpeed(speed);
+    }
+  }
+
+  void _togglePictureInPicture() {
+    // Picture-in-Picture implementation would go here
+    // This is a placeholder for the actual PiP functionality
+    setState(() {
+      _isPictureInPicture = !_isPictureInPicture;
+    });
+  }
+
+  void _setSleepTimer(Duration duration) {
+    _cancelSleepTimer();
+    setState(() {
+      _sleepDuration = duration;
+    });
+
+    _sleepTimer = Timer(duration, () {
+      if (mounted) {
+        _pauseVideo();
+        setState(() {
+          _sleepDuration = null;
+        });
+      }
+    });
+  }
+
+  void _cancelSleepTimer() {
+    _sleepTimer?.cancel();
+    _sleepTimer = null;
+    setState(() {
+      _sleepDuration = null;
+    });
+  }
+
+  // Settings management methods
+  Future<void> _saveSettings() async {
+    try {
+      final userPreferences = UserPreferences.instance;
+      await userPreferences.init();
+
+      // Save video player settings using new methods
+      await userPreferences.setVideoPlayerString('video_codec', _selectedCodec);
+      await userPreferences.setVideoPlayerBool(
+          'hardware_acceleration', _hardwareAcceleration);
+      await userPreferences.setVideoPlayerString(
+          'video_decoder', _videoDecoder);
+      await userPreferences.setVideoPlayerString(
+          'audio_decoder', _audioDecoder);
+      await userPreferences.setVideoPlayerInt('buffer_size', _bufferSize);
+      await userPreferences.setVideoPlayerInt(
+          'network_timeout', _networkTimeout);
+      await userPreferences.setVideoPlayerString(
+          'subtitle_encoding', _subtitleEncoding);
+      await userPreferences.setVideoPlayerString(
+          'video_output_format', _videoOutputFormat);
+
+      debugPrint('Video player settings saved successfully');
+    } catch (e) {
+      debugPrint('Error saving video player settings: $e');
+    }
+  }
+
+  Future<void> _loadSettings() async {
+    try {
+      final userPreferences = UserPreferences.instance;
+      await userPreferences.init();
+
+      // Load video player settings with defaults using new methods
+      _selectedCodec = await userPreferences.getVideoPlayerString('video_codec',
+              defaultValue: 'auto') ??
+          'auto';
+      _hardwareAcceleration = await userPreferences.getVideoPlayerBool(
+              'hardware_acceleration',
+              defaultValue: true) ??
+          true;
+      _videoDecoder = await userPreferences
+              .getVideoPlayerString('video_decoder', defaultValue: 'auto') ??
+          'auto';
+      _audioDecoder = await userPreferences
+              .getVideoPlayerString('audio_decoder', defaultValue: 'auto') ??
+          'auto';
+      _bufferSize = await userPreferences.getVideoPlayerInt('buffer_size',
+              defaultValue: 10) ??
+          10;
+      _networkTimeout = await userPreferences
+              .getVideoPlayerInt('network_timeout', defaultValue: 30) ??
+          30;
+      _subtitleEncoding = await userPreferences.getVideoPlayerString(
+              'subtitle_encoding',
+              defaultValue: 'utf-8') ??
+          'utf-8';
+      _videoOutputFormat = await userPreferences.getVideoPlayerString(
+              'video_output_format',
+              defaultValue: 'auto') ??
+          'auto';
+
+      // Keep hardware acceleration in sync with explicit decoder choice
+      if (_videoDecoder == 'software') {
+        _hardwareAcceleration = false;
+      } else if (_videoDecoder == 'hardware') {
+        _hardwareAcceleration = true;
+      }
+
+      debugPrint('Video player settings loaded successfully');
+    } catch (e) {
+      debugPrint('Error loading video player settings: $e');
+    }
+  }
+
+  void _resetSettings() {
+    setState(() {
+      _selectedCodec = 'auto';
+      _hardwareAcceleration = true;
+      _videoDecoder = 'auto';
+      _audioDecoder = 'auto';
+      _bufferSize = 10;
+      _networkTimeout = 30;
+      _subtitleEncoding = 'utf-8';
+      _videoOutputFormat = 'auto';
+    });
+    _saveSettings();
+  }
+
+  void _pauseVideo() async {
+    if (_player != null) {
+      await _player!.pause();
+      setState(() {
+        _isPlaying = false;
+      });
+    } else if (_vlcController != null) {
+      await _vlcController!.pause();
     }
   }
 }
@@ -2118,7 +2905,7 @@ class _StreamingImageViewerState extends State<StreamingImageViewer> {
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
-        backgroundColor: Colors.black.withOpacity(0.7),
+        backgroundColor: Colors.black.withValues(alpha: 0.7),
         title: Text(
           widget.fileName,
           style: const TextStyle(color: Colors.white),
@@ -2184,6 +2971,7 @@ class _StreamingImageViewerState extends State<StreamingImageViewer> {
           child: Image.memory(
             _imageData!,
             fit: BoxFit.contain,
+            filterQuality: FilterQuality.high,
             errorBuilder: (context, error, stackTrace) {
               return const Center(
                 child: Column(
