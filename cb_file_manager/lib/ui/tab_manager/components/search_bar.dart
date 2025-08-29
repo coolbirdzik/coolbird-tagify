@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // Thêm import để xử lý sự kiện bàn phím
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
-import 'package:cb_file_manager/helpers/tag_manager.dart';
+import 'package:cb_file_manager/helpers/tags/tag_manager.dart';
 import 'package:cb_file_manager/ui/screens/folder_list/folder_list_bloc.dart';
 import 'package:cb_file_manager/ui/screens/folder_list/folder_list_event.dart';
 import 'package:cb_file_manager/ui/tab_manager/tab_manager.dart'; // Add TabManager import

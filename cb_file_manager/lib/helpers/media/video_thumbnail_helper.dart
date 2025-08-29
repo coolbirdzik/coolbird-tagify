@@ -11,8 +11,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
 import 'package:path/path.dart' as path;
 // import 'package:ffmpeg_helper/ffmpeg_helper.dart';
-import 'package:cb_file_manager/helpers/user_preferences.dart';
-import 'package:cb_file_manager/helpers/app_path_helper.dart';
+import 'package:cb_file_manager/helpers/core/user_preferences.dart';
+import 'package:cb_file_manager/helpers/core/app_path_helper.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
 
 import 'fc_native_video_thumbnail.dart';

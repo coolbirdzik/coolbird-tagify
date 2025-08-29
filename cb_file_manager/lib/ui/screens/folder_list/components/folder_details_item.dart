@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:cb_file_manager/helpers/io_extensions.dart';
+import 'package:cb_file_manager/helpers/core/io_extensions.dart';
 import 'package:cb_file_manager/ui/screens/folder_list/folder_list_state.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
 import 'package:flutter/services.dart';

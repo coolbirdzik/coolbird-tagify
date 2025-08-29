@@ -6,15 +6,15 @@ import 'dart:async'; // Thêm import cho StreamSubscription
 import 'package:cb_file_manager/ui/screens/folder_list/folder_list_state.dart';
 import 'package:cb_file_manager/ui/screens/media_gallery/video_gallery_screen.dart';
 import 'package:cb_file_manager/ui/screens/media_gallery/image_viewer_screen.dart';
-import 'package:cb_file_manager/helpers/tag_manager.dart'; // Import TagManager để lắng nghe thay đổi
+import 'package:cb_file_manager/helpers/tags/tag_manager.dart'; // Import TagManager để lắng nghe thay đổi
 import 'package:flutter/material.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:cb_file_manager/ui/screens/folder_list/folder_list_bloc.dart';
 import 'package:cb_file_manager/ui/screens/folder_list/folder_list_event.dart';
 import 'package:cb_file_manager/ui/dialogs/open_with_dialog.dart';
-import 'package:cb_file_manager/helpers/external_app_helper.dart';
-import 'package:cb_file_manager/helpers/file_icon_helper.dart';
+import 'package:cb_file_manager/helpers/files/external_app_helper.dart';
+import 'package:cb_file_manager/helpers/files/file_icon_helper.dart';
 // Import app theme
 import 'package:cb_file_manager/config/app_theme.dart';
 import 'package:cb_file_manager/ui/widgets/tag_chip.dart'; // Import the new TagChip widget
@@ -24,7 +24,7 @@ import 'package:flutter/services.dart'; // Import for keyboard key detection
 // Import for RepaintBoundary
 import 'package:cb_file_manager/ui/components/optimized_interaction_handler.dart';
 import 'package:cb_file_manager/ui/utils/file_type_utils.dart';
-import 'package:cb_file_manager/helpers/streaming_helper.dart';
+import 'package:cb_file_manager/helpers/network/streaming_helper.dart';
 import 'package:cb_file_manager/services/network_browsing/webdav_service.dart';
 import 'package:cb_file_manager/services/network_browsing/ftp_service.dart';
 

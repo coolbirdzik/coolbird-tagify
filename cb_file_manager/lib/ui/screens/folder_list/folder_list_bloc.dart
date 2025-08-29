@@ -1,13 +1,13 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:cb_file_manager/helpers/tag_manager.dart';
-import 'package:cb_file_manager/helpers/trash_manager.dart'; // Add import for TrashManager
-import 'package:cb_file_manager/helpers/filesystem_utils.dart'; // Import for FileOperations
+import 'package:cb_file_manager/helpers/tags/tag_manager.dart';
+import 'package:cb_file_manager/helpers/files/trash_manager.dart'; // Add import for TrashManager
+import 'package:cb_file_manager/helpers/core/filesystem_utils.dart'; // Import for FileOperations
 import 'package:path/path.dart' as pathlib;
-import 'package:cb_file_manager/helpers/video_thumbnail_helper.dart';
+import 'package:cb_file_manager/helpers/media/video_thumbnail_helper.dart';
 import 'dart:async'; // Thêm import cho StreamSubscription
-import 'package:cb_file_manager/helpers/folder_sort_manager.dart';
+import 'package:cb_file_manager/helpers/files/folder_sort_manager.dart';
 import 'package:cb_file_manager/models/database/database_manager.dart';
 import 'package:cb_file_manager/ui/utils/file_type_utils.dart';
 

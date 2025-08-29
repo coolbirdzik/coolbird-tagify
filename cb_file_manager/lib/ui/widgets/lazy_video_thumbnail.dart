@@ -2,8 +2,8 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
-import '../../helpers/video_thumbnail_helper.dart';
-import '../../helpers/frame_timing_optimizer.dart';
+import '../../helpers/media/video_thumbnail_helper.dart';
+import '../../helpers/ui/frame_timing_optimizer.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
 

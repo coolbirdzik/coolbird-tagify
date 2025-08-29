@@ -7,7 +7,7 @@ import 'package:cb_file_manager/ui/screens/network_browsing/network_browser_scre
 import 'package:cb_file_manager/ui/screens/network_browsing/smb_browser_screen.dart';
 import 'package:cb_file_manager/ui/screens/network_browsing/ftp_browser_screen.dart';
 import 'package:cb_file_manager/ui/screens/network_browsing/webdav_browser_screen.dart';
-import 'package:cb_file_manager/helpers/tag_manager.dart';
+import 'package:cb_file_manager/helpers/tags/tag_manager.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:cb_file_manager/ui/tab_manager/tab_manager.dart';
 import 'package:cb_file_manager/ui/screens/folder_list/folder_list_bloc.dart';

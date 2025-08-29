@@ -5,11 +5,11 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart'; // Import Eva Icons
-import 'package:cb_file_manager/helpers/frame_timing_optimizer.dart';
+import 'package:cb_file_manager/helpers/ui/frame_timing_optimizer.dart';
 import 'tab_manager.dart';
 import 'tab_data.dart';
 import '../drawer.dart';
-import 'package:cb_file_manager/helpers/user_preferences.dart';
+import 'package:cb_file_manager/helpers/core/user_preferences.dart';
 import 'tabbed_folder_list_screen.dart';
 import '../screens/settings/settings_screen.dart';
 import 'package:flutter/gestures.dart'; // Import for mouse scrolling

@@ -1,8 +1,8 @@
 import 'dart:io';
 import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:cb_file_manager/helpers/io_extensions.dart';
-import 'package:cb_file_manager/helpers/tag_manager.dart';
+import 'package:cb_file_manager/helpers/core/io_extensions.dart';
+import 'package:cb_file_manager/helpers/tags/tag_manager.dart';
 import 'package:cb_file_manager/ui/screens/folder_list/file_details_screen.dart';
 import 'package:cb_file_manager/ui/utils/file_type_utils.dart';
 

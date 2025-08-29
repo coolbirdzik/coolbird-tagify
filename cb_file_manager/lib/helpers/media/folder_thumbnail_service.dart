@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as path;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:cb_file_manager/helpers/video_thumbnail_helper.dart';
+import 'package:cb_file_manager/helpers/media/video_thumbnail_helper.dart';
 import 'package:cb_file_manager/ui/utils/file_type_utils.dart';
 
 class FolderThumbnailService {

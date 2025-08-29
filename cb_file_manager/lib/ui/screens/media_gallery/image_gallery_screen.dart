@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:cb_file_manager/helpers/filesystem_utils.dart';
-import 'package:cb_file_manager/helpers/user_preferences.dart';
+import 'package:cb_file_manager/helpers/core/filesystem_utils.dart';
+import 'package:cb_file_manager/helpers/core/user_preferences.dart';
 import 'package:cb_file_manager/ui/utils/base_screen.dart';
 import 'package:cb_file_manager/ui/screens/folder_list/folder_list_state.dart';
 import 'package:cb_file_manager/ui/components/shared_action_bar.dart';
@@ -10,9 +10,9 @@ import 'package:path/path.dart' as pathlib;
 import 'dart:math';
 import 'package:share_plus/share_plus.dart'; // Add import for Share Plus
 // Add import for XFile
-import 'package:cb_file_manager/helpers/folder_sort_manager.dart';
+import 'package:cb_file_manager/helpers/files/folder_sort_manager.dart';
 import 'package:cb_file_manager/config/languages/app_localizations.dart';
-import 'package:cb_file_manager/helpers/tag_manager.dart';
+import 'package:cb_file_manager/helpers/tags/tag_manager.dart';
 import 'package:cb_file_manager/ui/widgets/tag_chip.dart';
 import '../../utils/route.dart';
 

@@ -12,10 +12,10 @@ import 'package:path_provider/path_provider.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
 import 'package:image/image.dart' as img;
 
-import 'fc_native_video_thumbnail.dart';
-import 'video_thumbnail_helper.dart';
+import '../media/fc_native_video_thumbnail.dart';
+import '../media/video_thumbnail_helper.dart';
 import 'network_file_cache_service.dart';
-import 'app_path_helper.dart';
+import '../core/app_path_helper.dart';
 
 /// Helper class for working with SMB files via Win32 API
 /// Provides methods for creating thumbnails and streaming files

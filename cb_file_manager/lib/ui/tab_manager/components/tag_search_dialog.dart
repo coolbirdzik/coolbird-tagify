@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
-import 'package:cb_file_manager/helpers/tag_manager.dart';
+import 'package:cb_file_manager/helpers/tags/tag_manager.dart';
 import '../../utils/route.dart';
 
 /// Dialog for searching files by tag

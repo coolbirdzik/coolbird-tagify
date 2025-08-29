@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cb_file_manager/models/database/database_manager.dart';
-import 'package:cb_file_manager/helpers/user_preferences.dart';
-import 'package:cb_file_manager/helpers/tag_manager.dart';
+import 'package:cb_file_manager/helpers/core/user_preferences.dart';
+import 'package:cb_file_manager/helpers/tags/tag_manager.dart';
 import 'package:cb_file_manager/ui/utils/base_screen.dart';
 import 'package:cb_file_manager/config/translation_helper.dart';
 import 'package:file_picker/file_picker.dart';

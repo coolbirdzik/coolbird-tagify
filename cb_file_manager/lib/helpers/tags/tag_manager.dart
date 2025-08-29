@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:path/path.dart' as pathlib;
 import 'package:path_provider/path_provider.dart';
 import 'package:cb_file_manager/models/database/database_manager.dart';
-import 'package:cb_file_manager/helpers/user_preferences.dart';
+import 'package:cb_file_manager/helpers/core/user_preferences.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 

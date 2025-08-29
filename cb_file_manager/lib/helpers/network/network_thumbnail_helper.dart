@@ -13,8 +13,8 @@ import 'package:image/image.dart' as img;
 import 'win32_smb_helper.dart';
 import 'smb_native_thumbnail_helper.dart';
 import 'network_file_cache_service.dart';
-import 'path_utils.dart';
-import 'app_path_helper.dart';
+import '../core/path_utils.dart';
+import '../core/app_path_helper.dart';
 
 /// Exception thrown when thumbnail generation is skipped due to backoff
 class ThumbnailSkippedException implements Exception {

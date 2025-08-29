@@ -4,8 +4,8 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:visibility_detector/visibility_detector.dart';
-import 'package:cb_file_manager/helpers/video_thumbnail_helper.dart';
-import 'package:cb_file_manager/helpers/network_thumbnail_helper.dart';
+import 'package:cb_file_manager/helpers/media/video_thumbnail_helper.dart';
+import 'package:cb_file_manager/helpers/network/network_thumbnail_helper.dart';
 import 'package:cb_file_manager/ui/widgets/lazy_video_thumbnail.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
 

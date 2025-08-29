@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:cb_file_manager/helpers/external_app_helper.dart';
+import 'package:cb_file_manager/helpers/files/external_app_helper.dart';
 import 'package:file_picker/file_picker.dart';
 
 class OpenWithDialog extends StatefulWidget {

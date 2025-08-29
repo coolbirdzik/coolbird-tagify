@@ -5,7 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../services/network_browsing/network_service_base.dart';
 import '../../services/network_browsing/network_service_registry.dart';
-import '../../helpers/network_thumbnail_helper.dart';
+import '../../helpers/network/network_thumbnail_helper.dart';
 import '../../ui/widgets/thumbnail_loader.dart';
 import 'network_browsing_event.dart';
 import 'network_browsing_state.dart';

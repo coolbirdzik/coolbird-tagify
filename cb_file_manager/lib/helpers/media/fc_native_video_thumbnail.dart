@@ -4,7 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as path;
 import 'thumbnail_queue_manager.dart';
-import 'ui_blocking_prevention.dart';
+import '../ui/ui_blocking_prevention.dart';
 
 /// A Flutter plugin to access Windows native video thumbnail generation
 /// This uses the Windows thumbnail cache system for efficient thumbnail extraction

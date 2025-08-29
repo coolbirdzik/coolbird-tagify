@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:cb_file_manager/helpers/user_preferences.dart';
+import 'package:cb_file_manager/helpers/core/user_preferences.dart';
 import 'package:cb_file_manager/ui/utils/base_screen.dart';
 import 'package:cb_file_manager/config/language_controller.dart';
 import 'package:cb_file_manager/config/translation_helper.dart';
-import 'package:cb_file_manager/helpers/video_thumbnail_helper.dart'; // Add import for VideoThumbnailHelper
-import 'package:cb_file_manager/helpers/network_thumbnail_helper.dart'; // Add import for NetworkThumbnailHelper
-import 'package:cb_file_manager/helpers/win32_smb_helper.dart'; // Add import for Win32SmbHelper
+import 'package:cb_file_manager/helpers/media/video_thumbnail_helper.dart'; // Add import for VideoThumbnailHelper
+import 'package:cb_file_manager/helpers/network/network_thumbnail_helper.dart'; // Add import for NetworkThumbnailHelper
+import 'package:cb_file_manager/helpers/network/win32_smb_helper.dart'; // Add import for Win32SmbHelper
 import 'package:cb_file_manager/ui/screens/settings/database_settings_screen.dart'; // Import for database settings screen
 import 'package:file_picker/file_picker.dart'; // Import for FilePicker
 import 'package:intl/intl.dart'; // Import for DateFormat

@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import '../helpers/file_type_helper.dart';
-import '../services/network_browsing/i_smb_service.dart';
-import '../ui/components/video_player/video_player.dart';
+import '../files/file_type_helper.dart';
+import '../../services/network_browsing/i_smb_service.dart';
+import '../../ui/components/video_player/video_player.dart';
 // Unified player is StreamingMediaPlayer; this file only builds URLs.
-import '../ui/utils/route.dart';
+import '../../ui/utils/route.dart';
 
 /// Helper để mở media với Native SMB streaming
 /// Stream trực tiếp từ SMB sử dụng thư viện mobile_smb_native

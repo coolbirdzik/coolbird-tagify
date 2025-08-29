@@ -1,8 +1,8 @@
 import 'dart:io';
 
 // ignore: unused_import
-import 'package:cb_file_manager/helpers/tag_manager.dart';
-import 'package:cb_file_manager/helpers/tag_color_manager.dart';
+import 'package:cb_file_manager/helpers/tags/tag_manager.dart';
+import 'package:cb_file_manager/helpers/tags/tag_color_manager.dart';
 import 'package:cb_file_manager/models/database/database_manager.dart';
 import 'package:cb_file_manager/ui/screens/folder_list/file_details_screen.dart';
 import 'package:cb_file_manager/ui/utils/base_screen.dart';

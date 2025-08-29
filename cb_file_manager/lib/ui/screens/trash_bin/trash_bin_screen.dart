@@ -3,7 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
 import 'package:path/path.dart' as pathlib;
-import 'package:cb_file_manager/helpers/trash_manager.dart';
+import 'package:cb_file_manager/helpers/files/trash_manager.dart';
 import 'package:intl/intl.dart';
 import 'package:cb_file_manager/ui/utils/file_type_utils.dart';
 

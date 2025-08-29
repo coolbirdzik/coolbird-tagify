@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cb_file_manager/main.dart' show goHome, CBFileApp;
 import 'package:cb_file_manager/ui/drawer.dart';
-import 'package:cb_file_manager/helpers/user_preferences.dart'; // Add UserPreferences import
+import 'package:cb_file_manager/helpers/core/user_preferences.dart'; // Add UserPreferences import
 import 'package:cb_file_manager/config/translation_helper.dart'; // Import translation helper
 import 'package:eva_icons_flutter/eva_icons_flutter.dart'; // Import EvaIcons
 import 'package:cb_file_manager/ui/utils/route.dart'; // Import RouteUtils

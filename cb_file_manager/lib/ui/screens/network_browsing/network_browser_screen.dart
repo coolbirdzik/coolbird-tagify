@@ -2,12 +2,12 @@ import 'dart:io';
 import 'dart:async'; // Add this import for Completer
 // For math operations with drag selection and min/max functions
 
-import 'package:cb_file_manager/helpers/frame_timing_optimizer.dart';
+import 'package:cb_file_manager/helpers/ui/frame_timing_optimizer.dart';
 import 'package:cb_file_manager/ui/components/shared_action_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart'; // Import for mouse buttons
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:cb_file_manager/helpers/user_preferences.dart';
+import 'package:cb_file_manager/helpers/core/user_preferences.dart';
 import 'package:flutter/services.dart'; // Import for keyboard keys
 import 'package:cb_file_manager/ui/tab_manager/tab_manager.dart';
 import 'package:cb_file_manager/ui/utils/fluent_background.dart'; // Import the Fluent Design background
@@ -35,10 +35,10 @@ import 'package:flutter/foundation.dart';
 import 'package:cb_file_manager/config/languages/app_localizations.dart';
 
 import 'package:path/path.dart' as p;
-import 'package:cb_file_manager/helpers/network_thumbnail_helper.dart';
+import 'package:cb_file_manager/helpers/network/network_thumbnail_helper.dart';
 import 'package:cb_file_manager/ui/widgets/thumbnail_loader.dart';
 import 'package:cb_file_manager/ui/utils/file_type_utils.dart';
-import 'package:cb_file_manager/helpers/streaming_helper.dart';
+import 'package:cb_file_manager/helpers/network/streaming_helper.dart';
 import 'package:cb_file_manager/ui/utils/route.dart';
 import 'package:cb_file_manager/services/network_browsing/webdav_service.dart';
 

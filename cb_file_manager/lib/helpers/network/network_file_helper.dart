@@ -1,4 +1,4 @@
-import '../ui/utils/file_type_utils.dart';
+import '../../ui/utils/file_type_utils.dart';
 
 /// Helper class để xử lý network files
 class NetworkFileHelper {

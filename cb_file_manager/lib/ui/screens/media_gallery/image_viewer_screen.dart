@@ -4,9 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as pathlib;
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
-import 'package:cb_file_manager/helpers/frame_timing_optimizer.dart';
+import 'package:cb_file_manager/helpers/ui/frame_timing_optimizer.dart';
 import 'package:cb_file_manager/ui/components/thumbnail_strip.dart';
-import 'package:cb_file_manager/helpers/trash_manager.dart';
+import 'package:cb_file_manager/helpers/files/trash_manager.dart';
 import 'package:share_plus/share_plus.dart'; // Add import for Share Plus
 import 'package:cb_file_manager/ui/utils/file_type_utils.dart';
 // Add import for XFile

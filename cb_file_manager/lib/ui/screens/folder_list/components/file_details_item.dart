@@ -4,11 +4,11 @@ import 'package:cb_file_manager/ui/screens/folder_list/folder_list_state.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
 import 'package:flutter/services.dart';
 import 'package:cb_file_manager/ui/components/shared_file_context_menu.dart';
-import 'package:cb_file_manager/helpers/file_type_helper.dart';
+import 'package:cb_file_manager/helpers/files/file_type_helper.dart';
 import 'package:cb_file_manager/ui/utils/file_type_utils.dart';
 import 'package:path/path.dart' as path;
 import 'package:cb_file_manager/ui/components/optimized_interaction_handler.dart';
-import 'package:cb_file_manager/helpers/streaming_helper.dart';
+import 'package:cb_file_manager/helpers/network/streaming_helper.dart';
 import 'package:cb_file_manager/services/network_browsing/webdav_service.dart';
 import 'package:cb_file_manager/services/network_browsing/ftp_service.dart';
 

@@ -2,7 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:cb_file_manager/ui/screens/folder_list/folder_list_state.dart';
-import 'package:cb_file_manager/helpers/frame_timing_optimizer.dart';
+import 'package:cb_file_manager/helpers/ui/frame_timing_optimizer.dart';
 import 'package:flutter/gestures.dart'; // Import for PointerSignalEvent
 import 'package:flutter/services.dart'; // Import for RawKeyboard
 

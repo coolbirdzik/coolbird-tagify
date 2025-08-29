@@ -3,9 +3,9 @@ import 'dart:io';
 import 'package:path/path.dart' as path;
 
 import 'package:cb_file_manager/config/app_theme.dart';
-import 'package:cb_file_manager/helpers/external_app_helper.dart';
-import 'package:cb_file_manager/helpers/tag_color_manager.dart';
-import 'package:cb_file_manager/helpers/tag_manager.dart';
+import 'package:cb_file_manager/helpers/files/external_app_helper.dart';
+import 'package:cb_file_manager/helpers/tags/tag_color_manager.dart';
+import 'package:cb_file_manager/helpers/tags/tag_manager.dart';
 import 'package:cb_file_manager/ui/components/optimized_interaction_handler.dart';
 import 'package:cb_file_manager/ui/components/shared_file_context_menu.dart';
 import 'package:cb_file_manager/ui/dialogs/open_with_dialog.dart';
@@ -19,7 +19,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:cb_file_manager/ui/widgets/thumbnail_loader.dart';
-import 'package:cb_file_manager/helpers/file_type_helper.dart';
+import 'package:cb_file_manager/helpers/files/file_type_helper.dart';
 import 'package:cb_file_manager/ui/utils/file_type_utils.dart';
 
 class FileGridItem extends StatelessWidget {

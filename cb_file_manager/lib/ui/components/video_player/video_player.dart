@@ -11,9 +11,9 @@ import 'package:window_manager/window_manager.dart';
 import 'package:path/path.dart' as pathlib;
 import 'dart:math' as math;
 
-import '../../../helpers/file_type_helper.dart';
-import '../../../helpers/user_preferences.dart';
-import '../../../helpers/win32_smb_helper.dart';
+import '../../../helpers/files/file_type_helper.dart';
+import '../../../helpers/core/user_preferences.dart';
+import '../../../helpers/network/win32_smb_helper.dart';
 import '../stream_speed_indicator.dart';
 import '../buffer_info_widget.dart';
 import '../../utils/route.dart';

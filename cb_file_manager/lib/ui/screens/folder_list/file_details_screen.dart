@@ -1,7 +1,7 @@
 import 'dart:io';
 
-import 'package:cb_file_manager/helpers/io_extensions.dart';
-import 'package:cb_file_manager/helpers/thumbnail_helper.dart';
+import 'package:cb_file_manager/helpers/core/io_extensions.dart';
+import 'package:cb_file_manager/helpers/media/thumbnail_helper.dart';
 import 'package:cb_file_manager/ui/dialogs/open_with_dialog.dart';
 import 'package:cb_file_manager/ui/utils/base_screen.dart';
 import 'package:flutter/material.dart';

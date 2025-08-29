@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:io'; // Import dart:io for FileSystemEntity
 import 'package:cb_file_manager/ui/widgets/thumbnail_loader.dart';
-import 'package:cb_file_manager/helpers/file_type_helper.dart'; // Import the helper
+import 'package:cb_file_manager/helpers/files/file_type_helper.dart'; // Import the helper
 import 'package:path/path.dart' as p;
 
 /// A widget that displays the core content of a file item (thumbnail and name).

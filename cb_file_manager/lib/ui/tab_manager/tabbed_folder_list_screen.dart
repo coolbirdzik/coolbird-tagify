@@ -2,7 +2,7 @@ import 'dart:io';
 import 'dart:async'; // Add this import for Completer
 import 'dart:math'; // For math operations with drag selection and min/max functions
 
-import 'package:cb_file_manager/helpers/frame_timing_optimizer.dart';
+import 'package:cb_file_manager/helpers/ui/frame_timing_optimizer.dart';
 // Add this import
 import 'package:cb_file_manager/ui/screens/media_gallery/image_gallery_screen.dart';
 import 'package:cb_file_manager/ui/screens/media_gallery/video_gallery_screen.dart';
@@ -12,9 +12,9 @@ import 'package:flutter/material.dart';
 // Add for scheduler bindings
 import 'package:flutter/gestures.dart'; // Import for mouse buttons
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:cb_file_manager/helpers/user_preferences.dart';
+import 'package:cb_file_manager/helpers/core/user_preferences.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
-import 'package:cb_file_manager/helpers/video_thumbnail_helper.dart'; // Add import for VideoThumbnailHelper
+import 'package:cb_file_manager/helpers/media/video_thumbnail_helper.dart'; // Add import for VideoThumbnailHelper
 import 'package:cb_file_manager/ui/widgets/thumbnail_loader.dart'; // Add import for ThumbnailLoader
 import 'package:cb_file_manager/ui/utils/file_type_utils.dart';
 import 'package:flutter/services.dart'; // Import for keyboard keys
@@ -34,8 +34,8 @@ import 'package:cb_file_manager/bloc/selection/selection.dart';
 import 'components/index.dart' as tab_components;
 import 'tab_data.dart'; // Import TabData explicitly
 import 'package:cb_file_manager/ui/dialogs/open_with_dialog.dart';
-import 'package:cb_file_manager/helpers/external_app_helper.dart';
-import 'package:cb_file_manager/helpers/trash_manager.dart'; // Import for TrashManager
+import 'package:cb_file_manager/helpers/files/external_app_helper.dart';
+import 'package:cb_file_manager/helpers/files/trash_manager.dart'; // Import for TrashManager
 import 'package:cb_file_manager/ui/screens/system_screen_router.dart'; // Import SystemScreenRouter
 
 // Add imports for hardware acceleration
@@ -44,8 +44,8 @@ import 'package:flutter/rendering.dart' show RendererBinding;
 // Add import for value listenable builder
 import 'package:flutter/foundation.dart';
 import 'package:cb_file_manager/config/languages/app_localizations.dart';
-import 'package:cb_file_manager/helpers/folder_sort_manager.dart'; // Import for FolderSortManager
-import 'package:cb_file_manager/helpers/tag_manager.dart';
+import 'package:cb_file_manager/helpers/files/folder_sort_manager.dart'; // Import for FolderSortManager
+import 'package:cb_file_manager/helpers/tags/tag_manager.dart';
 import 'package:cb_file_manager/ui/components/screen_scaffold.dart';
 import '../utils/route.dart';
 

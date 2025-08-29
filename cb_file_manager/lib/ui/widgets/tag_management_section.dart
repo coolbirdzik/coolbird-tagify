@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:cb_file_manager/helpers/tag_manager.dart';
+import 'package:cb_file_manager/helpers/tags/tag_manager.dart';
 import 'package:cb_file_manager/ui/widgets/chips_input.dart';
-import 'package:cb_file_manager/helpers/tag_color_manager.dart';
+import 'package:cb_file_manager/helpers/tags/tag_color_manager.dart';
 import 'package:cb_file_manager/ui/tab_manager/components/tag_dialogs.dart';
 
 /// A reusable tag management section that can be used in different places

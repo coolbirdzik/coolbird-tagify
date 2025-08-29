@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cb_file_manager/ui/screens/folder_list/folder_list_state.dart';
-import 'package:cb_file_manager/helpers/user_preferences.dart';
+import 'package:cb_file_manager/helpers/core/user_preferences.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
 import 'package:cb_file_manager/config/app_theme.dart';
 

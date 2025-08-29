@@ -2,19 +2,19 @@ import 'package:flutter/material.dart';
 import 'dart:io';
 import 'dart:async';
 
-import '../services/network_browsing/network_service_base.dart';
-import '../services/network_browsing/mobile_smb_service.dart';
-import '../services/network_browsing/i_smb_service.dart';
-import '../ui/components/video_player/video_player.dart';
-import '../ui/utils/file_type_utils.dart';
+import '../../services/network_browsing/network_service_base.dart';
+import '../../services/network_browsing/mobile_smb_service.dart';
+import '../../services/network_browsing/i_smb_service.dart';
+import '../../ui/components/video_player/video_player.dart';
+import '../../ui/utils/file_type_utils.dart';
 import 'package:path/path.dart' as p;
-import 'file_type_helper.dart';
+import '../files/file_type_helper.dart';
 import 'network_file_cache_service.dart';
 import 'vlc_direct_smb_helper.dart';
 // import '../helpers/libsmb2_streaming_helper.dart';
 import 'native_vlc_direct_helper.dart';
-import '../ui/utils/route.dart';
-import '../services/network_browsing/webdav_service.dart';
+import '../../ui/utils/route.dart';
+import '../../services/network_browsing/webdav_service.dart';
 
 /// Class để lưu trữ kết quả mở file
 class FileOpenResult {

@@ -2,12 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:cb_file_manager/ui/screens/folder_list/folder_list_bloc.dart';
 import 'package:cb_file_manager/ui/screens/folder_list/folder_list_event.dart';
-import 'package:cb_file_manager/helpers/tag_manager.dart';
+import 'package:cb_file_manager/helpers/tags/tag_manager.dart';
 import 'package:cb_file_manager/ui/widgets/chips_input.dart';
-import 'package:cb_file_manager/helpers/batch_tag_manager.dart';
+import 'package:cb_file_manager/helpers/tags/batch_tag_manager.dart';
 import 'dart:ui' as ui; // Import for ImageFilter
 import 'package:cb_file_manager/ui/widgets/tag_management_section.dart';
-import 'package:cb_file_manager/helpers/tag_color_manager.dart';
+import 'package:cb_file_manager/helpers/tags/tag_color_manager.dart';
 import '../../utils/route.dart';
 
 /// Dialog for adding a tag to a file

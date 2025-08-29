@@ -7,15 +7,15 @@ import 'dart:io';
 
 import 'ui/tab_manager/tab_main_screen.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'helpers/tag_manager.dart';
+import 'helpers/tags/tag_manager.dart';
 import 'package:media_kit/media_kit.dart'; // Import Media Kit
 import 'package:window_manager/window_manager.dart'; // Import window_manager
-import 'helpers/media_kit_audio_helper.dart'; // Import our audio helper
-import 'helpers/user_preferences.dart'; // Import user preferences
-import 'helpers/folder_thumbnail_service.dart'; // Import thumbnail service
-import 'helpers/video_thumbnail_helper.dart'; // Import our video thumbnail helper
-import 'helpers/frame_timing_optimizer.dart'; // Import our new frame timing optimizer
-import 'helpers/batch_tag_manager.dart'; // Import batch tag manager
+import 'helpers/media/media_kit_audio_helper.dart'; // Import our audio helper
+import 'helpers/core/user_preferences.dart'; // Import user preferences
+import 'helpers/media/folder_thumbnail_service.dart'; // Import thumbnail service
+import 'helpers/media/video_thumbnail_helper.dart'; // Import our video thumbnail helper
+import 'helpers/ui/frame_timing_optimizer.dart'; // Import our new frame timing optimizer
+import 'helpers/tags/batch_tag_manager.dart'; // Import batch tag manager
 import 'models/database/database_manager.dart'; // Import database manager
 import 'models/database/network_credentials.dart'; // Import network credentials model
 import 'services/network_credentials_service.dart'; // Import network credentials service

@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
-import 'package:cb_file_manager/helpers/folder_thumbnail_service.dart';
+import 'package:cb_file_manager/helpers/media/folder_thumbnail_service.dart';
 import 'package:cb_file_manager/ui/widgets/thumbnail_loader.dart';
 
 /// Widget for displaying folder thumbnail
