@@ -9,7 +9,6 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'package:flutter_vlc_player/flutter_vlc_player.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:path/path.dart' as pathlib;
-import 'dart:math' as math;
 
 import '../../../helpers/files/file_type_helper.dart';
 import '../../../helpers/core/user_preferences.dart';
@@ -319,14 +318,14 @@ class _VideoPlayerState extends State<VideoPlayer> {
   bool _showSpeedIndicator = false;
   bool _useFlutterVlc = false;
 
+  // Seeking state to prevent loading indicator during seek
+  bool _isSeeking = false;
+  Timer? _seekingTimer;
+
   // New advanced features state
   List<SubtitleTrack> _subtitleTracks = [];
-  List<AudioTrack> _audioTracks = [];
   int? _selectedSubtitleTrack = -1;
-  int _selectedAudioTrack = -1;
-  bool _subtitlesEnabled = false;
   double _playbackSpeed = 1.0;
-  LoopMode _loopMode = LoopMode.none;
   bool _isPictureInPicture = false;
 
   // Video filters
@@ -338,17 +337,7 @@ class _VideoPlayerState extends State<VideoPlayer> {
   Timer? _sleepTimer;
   Duration? _sleepDuration;
 
-  // Gesture controls
-  bool _gestureControlsEnabled = true;
-  double _videoZoom = 1.0;
-  Offset _videoOffset = Offset.zero;
-
-  // Thumbnail preview
-  bool _showThumbnailPreview = false;
-  double _thumbnailPosition = 0.0;
-
-  // Video statistics
-  Map<String, dynamic> _videoStats = {};
+  // Video statistics - placeholder for future use
   Timer? _statsUpdateTimer;
 
   // Video player settings
@@ -392,18 +381,6 @@ class _VideoPlayerState extends State<VideoPlayer> {
 
   Map<String, dynamic>? _videoMetadata;
 
-  // Playback speed options
-  static const List<double> _speedOptions = [
-    0.25,
-    0.5,
-    0.75,
-    1.0,
-    1.25,
-    1.5,
-    2.0,
-    4.0
-  ];
-
   @override
   void initState() {
     super.initState();
@@ -425,6 +402,7 @@ class _VideoPlayerState extends State<VideoPlayer> {
       _bufferSub?.cancel();
       _sleepTimer?.cancel();
       _statsUpdateTimer?.cancel();
+      _seekingTimer?.cancel();
       _tempRaf?.close();
       _tempFile?.delete();
       // Clear video controller reference before disposing the player
@@ -549,9 +527,9 @@ class _VideoPlayerState extends State<VideoPlayer> {
   void _setupPlayerEventListeners(UserPreferences prefs) {
     if (_player == null) return;
 
-    // Track buffering state
+    // Track buffering state - but ignore buffering during seek to prevent UI flicker
     _player!.stream.buffering.listen((buffering) {
-      if (mounted) {
+      if (mounted && !_isSeeking) {
         setState(() {
           _isLoading = buffering;
         });
@@ -1199,8 +1177,8 @@ class _VideoPlayerState extends State<VideoPlayer> {
         if (!mounted) return;
         setState(() {
           _vlcPlaying = v.isPlaying;
-          _vlcPosition = v.position ?? Duration.zero;
-          _vlcDuration = v.duration ?? Duration.zero;
+          _vlcPosition = v.position;
+          _vlcDuration = v.duration;
         });
       });
     }
@@ -1598,6 +1576,8 @@ class _VideoPlayerState extends State<VideoPlayer> {
   }
 
   void _seekForward([int seconds = 10]) async {
+    _startSeeking();
+
     if (_player != null) {
       final currentPosition = _player!.state.position;
       final newPosition = currentPosition + Duration(seconds: seconds);
@@ -1616,6 +1596,8 @@ class _VideoPlayerState extends State<VideoPlayer> {
   }
 
   void _seekBackward([int seconds = 10]) async {
+    _startSeeking();
+
     if (_player != null) {
       final currentPosition = _player!.state.position;
       final newPosition = currentPosition - Duration(seconds: seconds);
@@ -1705,6 +1687,7 @@ class _VideoPlayerState extends State<VideoPlayer> {
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 child: Row(
                   children: [
+                    // Basic playback controls
                     if (widget.hasPreviousVideo)
                       _buildControlButton(
                         icon: Icons.skip_previous,
@@ -1718,22 +1701,12 @@ class _VideoPlayerState extends State<VideoPlayer> {
                         onPressed: widget.onNextVideo,
                         enabled: widget.hasNextVideo,
                       ),
+
                     const Spacer(),
-                    _buildControlButton(
-                      icon: Icons.photo_camera,
-                      onPressed: _takeScreenshot,
-                      enabled: true,
-                      tooltip: 'Take screenshot',
-                    ),
+
+                    // Essential controls
                     if (widget.allowMuting) _buildVolumeControl(),
-                    if (Platform.isWindows) _buildAudioTrackButton(),
-                    // New advanced controls
-                    _buildSubtitleButton(),
-                    _buildPlaybackSpeedButton(),
-                    _buildPictureInPictureButton(),
-                    _buildVideoFiltersButton(),
-                    _buildSleepTimerButton(),
-                    _buildSettingsButton(),
+                    _buildAdvancedControlsMenu(),
                     if (widget.allowFullScreen)
                       _buildControlButton(
                         icon: _isFullScreen
@@ -1814,12 +1787,31 @@ class _VideoPlayerState extends State<VideoPlayer> {
                     ),
                     child: Slider(
                       value: progress.clamp(0.0, 1.0),
+                      onChangeStart: (value) {
+                        // Start seeking when user begins dragging
+                        setState(() {
+                          _isSeeking = true;
+                        });
+                        _seekingTimer?.cancel();
+                      },
                       onChanged: (value) {
                         final newPosition = Duration(
                           milliseconds:
                               (value * duration.inMilliseconds).round(),
                         );
                         _player!.seek(newPosition);
+                      },
+                      onChangeEnd: (value) {
+                        // End seeking after user finishes dragging with a slight delay
+                        _seekingTimer?.cancel();
+                        _seekingTimer =
+                            Timer(const Duration(milliseconds: 300), () {
+                          if (mounted) {
+                            setState(() {
+                              _isSeeking = false;
+                            });
+                          }
+                        });
                       },
                       activeColor: Colors.white,
                       inactiveColor: Colors.white.withValues(alpha: 0.3),
@@ -1859,10 +1851,28 @@ class _VideoPlayerState extends State<VideoPlayer> {
             Expanded(
               child: Slider(
                 value: progress,
+                onChangeStart: (value) {
+                  // Start seeking when user begins dragging
+                  setState(() {
+                    _isSeeking = true;
+                  });
+                  _seekingTimer?.cancel();
+                },
                 onChanged: (v) async {
                   final targetMs = (dur.inMilliseconds * v).toInt();
                   await _vlcController
                       ?.seekTo(Duration(milliseconds: targetMs));
+                },
+                onChangeEnd: (value) {
+                  // End seeking after user finishes dragging with a slight delay
+                  _seekingTimer?.cancel();
+                  _seekingTimer = Timer(const Duration(milliseconds: 300), () {
+                    if (mounted) {
+                      setState(() {
+                        _isSeeking = false;
+                      });
+                    }
+                  });
                 },
                 activeColor: Colors.redAccent,
                 inactiveColor: Colors.white.withValues(alpha: 0.3),
@@ -2000,15 +2010,6 @@ class _VideoPlayerState extends State<VideoPlayer> {
     );
   }
 
-  Widget _buildAudioTrackButton() {
-    return _buildControlButton(
-      icon: Icons.audiotrack,
-      onPressed: _showAudioTrackDialog,
-      enabled: true,
-      tooltip: 'Audio tracks',
-    );
-  }
-
   void _showAudioTrackDialog() {
     showDialog(
       context: context,
@@ -2051,60 +2052,143 @@ class _VideoPlayerState extends State<VideoPlayer> {
     }
   }
 
-  // Advanced control buttons
-  Widget _buildSubtitleButton() {
-    return _buildControlButton(
-      icon: Icons.subtitles,
-      onPressed: () => _showSubtitleDialog(),
-      enabled: _subtitleTracks.isNotEmpty,
-      tooltip: 'Subtitles',
-    );
-  }
-
-  Widget _buildPlaybackSpeedButton() {
-    return _buildControlButton(
-      icon: Icons.speed,
-      onPressed: () => _showPlaybackSpeedDialog(),
-      enabled: true,
-      tooltip: 'Playback Speed',
-    );
-  }
-
-  Widget _buildPictureInPictureButton() {
-    return _buildControlButton(
-      icon: _isPictureInPicture
-          ? Icons.picture_in_picture_alt
-          : Icons.picture_in_picture,
-      onPressed: () => _togglePictureInPicture(),
-      enabled: true,
-      tooltip: _isPictureInPicture ? 'Exit PiP' : 'Picture in Picture',
-    );
-  }
-
-  Widget _buildVideoFiltersButton() {
-    return _buildControlButton(
-      icon: Icons.tune,
-      onPressed: () => _showVideoFiltersDialog(),
-      enabled: true,
-      tooltip: 'Video Filters',
-    );
-  }
-
-  Widget _buildSleepTimerButton() {
-    return _buildControlButton(
-      icon: Icons.bedtime,
-      onPressed: () => _showSleepTimerDialog(),
-      enabled: true,
-      tooltip: 'Sleep Timer',
-    );
-  }
-
-  Widget _buildSettingsButton() {
-    return _buildControlButton(
-      icon: Icons.settings,
-      onPressed: () => _showSettingsDialog(),
-      enabled: true,
-      tooltip: 'Video Settings',
+  /// Advanced controls menu với popup menu để giảm số nút trên thanh điều khiển
+  Widget _buildAdvancedControlsMenu() {
+    return PopupMenuButton<String>(
+      icon: Icon(
+        Icons.more_vert,
+        color: Colors.white,
+        size: 24,
+      ),
+      color: Colors.black.withValues(alpha: 0.9),
+      tooltip: 'Advanced Controls',
+      onSelected: (String value) {
+        switch (value) {
+          case 'screenshot':
+            _takeScreenshot();
+            break;
+          case 'audio_tracks':
+            if (Platform.isWindows) _showAudioTrackDialog();
+            break;
+          case 'subtitles':
+            _showSubtitleDialog();
+            break;
+          case 'speed':
+            _showPlaybackSpeedDialog();
+            break;
+          case 'pip':
+            _togglePictureInPicture();
+            break;
+          case 'filters':
+            _showVideoFiltersDialog();
+            break;
+          case 'sleep_timer':
+            _showSleepTimerDialog();
+            break;
+          case 'settings':
+            _showSettingsDialog();
+            break;
+        }
+      },
+      itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+        PopupMenuItem<String>(
+          value: 'screenshot',
+          child: ListTile(
+            leading: Icon(Icons.photo_camera, color: Colors.white, size: 20),
+            title:
+                Text('Take Screenshot', style: TextStyle(color: Colors.white)),
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+          ),
+        ),
+        if (Platform.isWindows)
+          PopupMenuItem<String>(
+            value: 'audio_tracks',
+            child: ListTile(
+              leading: Icon(Icons.audiotrack, color: Colors.white, size: 20),
+              title:
+                  Text('Audio Tracks', style: TextStyle(color: Colors.white)),
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+            ),
+          ),
+        PopupMenuItem<String>(
+          value: 'subtitles',
+          enabled: _subtitleTracks.isNotEmpty,
+          child: ListTile(
+            leading: Icon(Icons.subtitles,
+                color: _subtitleTracks.isNotEmpty ? Colors.white : Colors.grey,
+                size: 20),
+            title: Text('Subtitles',
+                style: TextStyle(
+                    color: _subtitleTracks.isNotEmpty
+                        ? Colors.white
+                        : Colors.grey)),
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+          ),
+        ),
+        PopupMenuItem<String>(
+          value: 'speed',
+          child: ListTile(
+            leading: Icon(Icons.speed, color: Colors.white, size: 20),
+            title: Text('Playback Speed (${_playbackSpeed}x)',
+                style: TextStyle(color: Colors.white)),
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+          ),
+        ),
+        PopupMenuItem<String>(
+          value: 'pip',
+          child: ListTile(
+            leading: Icon(
+                _isPictureInPicture
+                    ? Icons.picture_in_picture_alt
+                    : Icons.picture_in_picture,
+                color: Colors.white,
+                size: 20),
+            title: Text(_isPictureInPicture ? 'Exit PiP' : 'Picture in Picture',
+                style: TextStyle(color: Colors.white)),
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+          ),
+        ),
+        PopupMenuItem<String>(
+          value: 'filters',
+          child: ListTile(
+            leading: Icon(Icons.tune, color: Colors.white, size: 20),
+            title: Text('Video Filters', style: TextStyle(color: Colors.white)),
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+          ),
+        ),
+        PopupMenuItem<String>(
+          value: 'sleep_timer',
+          child: ListTile(
+            leading: Icon(Icons.bedtime,
+                color: _sleepDuration != null ? Colors.orange : Colors.white,
+                size: 20),
+            title: Text(
+                _sleepDuration != null ? 'Sleep Timer (Active)' : 'Sleep Timer',
+                style: TextStyle(
+                    color:
+                        _sleepDuration != null ? Colors.orange : Colors.white)),
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+          ),
+        ),
+        PopupMenuDivider(),
+        PopupMenuItem<String>(
+          value: 'settings',
+          child: ListTile(
+            leading: Icon(Icons.settings, color: Colors.white, size: 20),
+            title:
+                Text('Video Settings', style: TextStyle(color: Colors.white)),
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+          ),
+        ),
+      ],
     );
   }
 
@@ -2125,7 +2209,6 @@ class _VideoPlayerState extends State<VideoPlayer> {
                 onChanged: (int? value) {
                   setState(() {
                     _selectedSubtitleTrack = value;
-                    _subtitlesEnabled = false;
                   });
                   RouteUtils.safePopDialog(context);
                 },
@@ -2142,7 +2225,6 @@ class _VideoPlayerState extends State<VideoPlayer> {
                   onChanged: (int? value) {
                     setState(() {
                       _selectedSubtitleTrack = value;
-                      _subtitlesEnabled = true;
                     });
                     RouteUtils.safePopDialog(context);
                   },
@@ -2729,6 +2811,27 @@ class _VideoPlayerState extends State<VideoPlayer> {
     } else if (_vlcController != null) {
       await _vlcController!.pause();
     }
+  }
+
+  /// Starts the seeking state to prevent UI flickering during seek operations
+  void _startSeeking() {
+    if (!_isSeeking) {
+      setState(() {
+        _isSeeking = true;
+      });
+    }
+
+    // Cancel existing timer
+    _seekingTimer?.cancel();
+
+    // Set timer to end seeking state after a brief delay
+    _seekingTimer = Timer(const Duration(milliseconds: 500), () {
+      if (mounted) {
+        setState(() {
+          _isSeeking = false;
+        });
+      }
+    });
   }
 }
 
