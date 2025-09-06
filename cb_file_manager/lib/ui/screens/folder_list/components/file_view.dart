@@ -12,8 +12,6 @@ import 'folder_item.dart';
 import 'folder_grid_item.dart';
 import 'file_details_item.dart';
 import 'folder_details_item.dart';
-import 'package:cb_file_manager/ui/utils/file_type_utils.dart';
-import 'package:eva_icons_flutter/eva_icons_flutter.dart';
 
 class FileView extends StatelessWidget {
   final List<File> files;
@@ -36,6 +34,7 @@ class FileView extends StatelessWidget {
   final ColumnVisibility columnVisibility;
   final Function()?
       clearSelectionMode; // Add new callback for clearing selection mode
+  final bool showFileTags; // Add parameter to control tag display
 
   const FileView({
     Key? key,
@@ -57,6 +56,7 @@ class FileView extends StatelessWidget {
     this.lastSelectedPath,
     this.columnVisibility = const ColumnVisibility(),
     this.clearSelectionMode, // Add new parameter
+    this.showFileTags = true, // Default to showing tags
   }) : super(key: key);
 
   @override
@@ -121,6 +121,7 @@ class FileView extends StatelessWidget {
                     onFileTap: onFileTap,
                     isDesktopMode: isDesktopMode,
                     lastSelectedPath: lastSelectedPath,
+                    showFileTags: showFileTags,
                   ),
           ),
         );
@@ -323,6 +324,7 @@ class FileView extends StatelessWidget {
                             onTap: onFileTap,
                             isDesktopMode: isDesktopMode,
                             lastSelectedPath: lastSelectedPath,
+                            showFileTags: showFileTags,
                           ),
                   ),
                 ),
@@ -404,6 +406,9 @@ class FileView extends StatelessWidget {
                       isDesktopMode: isDesktopMode,
                       lastSelectedPath: lastSelectedPath,
                       onThumbnailGenerated: onThumbnailGenerated,
+                      showDeleteTagDialog: showDeleteTagDialog,
+                      showAddTagToFileDialog: showAddTagToFileDialog,
+                      showFileTags: showFileTags,
                     ),
             ),
           );
@@ -427,6 +432,7 @@ class _FileDetailsItemWrapper extends StatelessWidget {
   final Function(File, bool)? onTap;
   final bool isDesktopMode;
   final String? lastSelectedPath;
+  final bool showFileTags; // Add parameter to control tag display
 
   const _FileDetailsItemWrapper({
     Key? key,
@@ -440,6 +446,7 @@ class _FileDetailsItemWrapper extends StatelessWidget {
     this.onTap,
     this.isDesktopMode = false,
     this.lastSelectedPath,
+    this.showFileTags = true, // Default to showing tags
   }) : super(key: key);
 
   @override
@@ -457,6 +464,7 @@ class _FileDetailsItemWrapper extends StatelessWidget {
       onTap: onTap,
       isDesktopMode: isDesktopMode,
       lastSelectedPath: lastSelectedPath,
+      showFileTags: showFileTags,
     );
   }
 }

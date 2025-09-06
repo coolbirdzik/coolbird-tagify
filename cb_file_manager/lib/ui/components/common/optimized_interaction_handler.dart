@@ -6,17 +6,19 @@ import '../../widgets/lazy_video_thumbnail.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
 
 /// A reusable widget for optimized touch/mouse interactions
-/// that handles tap, double-tap and long-press events without delay
+/// that handles tap, double-tap, long-press and secondary tap events without delay
 class OptimizedInteractionLayer extends StatefulWidget {
   final VoidCallback onTap;
   final VoidCallback? onDoubleTap;
   final VoidCallback? onLongPress;
+  final VoidCallback? onSecondaryTap;
 
   const OptimizedInteractionLayer({
     Key? key,
     required this.onTap,
     this.onDoubleTap,
     this.onLongPress,
+    this.onSecondaryTap,
   }) : super(key: key);
 
   @override
@@ -70,6 +72,7 @@ class OptimizedInteractionLayerState extends State<OptimizedInteractionLayer> {
       behavior: HitTestBehavior.opaque,
       onTapDown: _handleTapDown,
       onLongPress: widget.onLongPress,
+      onSecondaryTap: widget.onSecondaryTap,
     );
   }
 }

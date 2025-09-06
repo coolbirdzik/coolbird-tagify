@@ -56,6 +56,7 @@ class UserPreferences {
       'video_thumbnail_percentage';
   static const String _useObjectBoxKey = 'use_objectbox_storage';
   static const String _columnVisibilityKey = 'column_visibility';
+  static const String _showFileTagsKey = 'show_file_tags';
 
   // Constants for grid zoom level
   static const int minGridZoomLevel = 2; // Largest thumbnails (2 per row)
@@ -195,6 +196,11 @@ class UserPreferences {
         final percentage = await getVideoThumbnailPercentage();
         await _databaseManager!
             .saveIntPreference(_videoThumbnailPercentageKey, percentage);
+
+        // Show file tags setting
+        final showFileTags = await getShowFileTags();
+        await _databaseManager!
+            .saveBoolPreference(_showFileTagsKey, showFileTags);
 
         // Mark migration as done
         await _databaseManager!.saveBoolPreference('migration_done', true);
@@ -709,9 +715,11 @@ class UserPreferences {
     }
   }
 
-  Future<String?> getVideoPlayerString(String key, {String? defaultValue}) async {
+  Future<String?> getVideoPlayerString(String key,
+      {String? defaultValue}) async {
     if (_useObjectBox) {
-      return await _databaseManager!.getStringPreference(key, defaultValue: defaultValue);
+      return await _databaseManager!
+          .getStringPreference(key, defaultValue: defaultValue);
     } else {
       return _preferences?.getString(key) ?? defaultValue;
     }
@@ -727,7 +735,8 @@ class UserPreferences {
 
   Future<bool?> getVideoPlayerBool(String key, {bool? defaultValue}) async {
     if (_useObjectBox) {
-      return await _databaseManager!.getBoolPreference(key, defaultValue: defaultValue);
+      return await _databaseManager!
+          .getBoolPreference(key, defaultValue: defaultValue);
     } else {
       return _preferences?.getBool(key) ?? defaultValue;
     }
@@ -743,7 +752,8 @@ class UserPreferences {
 
   Future<int?> getVideoPlayerInt(String key, {int? defaultValue}) async {
     if (_useObjectBox) {
-      return await _databaseManager!.getIntPreference(key, defaultValue: defaultValue);
+      return await _databaseManager!
+          .getIntPreference(key, defaultValue: defaultValue);
     } else {
       return _preferences?.getInt(key) ?? defaultValue;
     }
@@ -1048,5 +1058,30 @@ class UserPreferences {
 
     return await _preferences?.setString(_columnVisibilityKey, jsonData) ??
         false;
+  }
+
+  /// Get show file tags setting
+  Future<bool> getShowFileTags() async {
+    if (_useObjectBox) {
+      return await _databaseManager!.getBoolPreference(
+            _showFileTagsKey,
+            defaultValue: true, // Default to showing tags
+          ) ??
+          true;
+    }
+
+    return _preferences?.getBool(_showFileTagsKey) ?? true;
+  }
+
+  /// Save show file tags setting
+  Future<bool> setShowFileTags(bool showTags) async {
+    if (_useObjectBox) {
+      return await _databaseManager!.saveBoolPreference(
+        _showFileTagsKey,
+        showTags,
+      );
+    }
+
+    return await _preferences?.setBool(_showFileTagsKey, showTags) ?? false;
   }
 }

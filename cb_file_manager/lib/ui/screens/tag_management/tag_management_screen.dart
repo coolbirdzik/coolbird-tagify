@@ -112,8 +112,15 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
   // Load all tags from the database
   Future<void> _loadAllTags() async {
     try {
+      // Debug: Check database initialization status
+      debugPrint(
+          'TagManagementScreen: Database initialized: ${_database.isInitialized()}');
+
       // Get all unique tags from the database
       final Set<String> tags = await _database.getAllUniqueTags();
+      debugPrint(
+          'TagManagementScreen: Found ${tags.length} unique tags: $tags');
+
       if (mounted) {
         setState(() {
           _allTags = tags.toList();
@@ -123,8 +130,17 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
         });
       }
     } catch (e) {
-    } finally {
+      debugPrint('TagManagementScreen: Error loading tags: $e');
+      // Show error message to user
       if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lỗi khi tải thẻ: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+        // Only clear tags on error
         setState(() {
           _allTags = [];
           _filterTags();
@@ -138,6 +154,9 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
     if (!mounted) return;
 
     final String query = _searchController.text.toLowerCase().trim();
+    debugPrint('TagManagementScreen: Filtering tags with query: "$query"');
+    debugPrint('TagManagementScreen: _allTags count: ${_allTags.length}');
+
     setState(() {
       if (query.isEmpty) {
         _filteredTags = List.from(_allTags);
@@ -146,11 +165,17 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
             _allTags.where((tag) => tag.toLowerCase().contains(query)).toList();
       }
 
+      debugPrint(
+          'TagManagementScreen: _filteredTags count: ${_filteredTags.length}');
+
       // Apply sorting
       _sortTags();
 
       // Update pagination
       _updatePagination();
+
+      debugPrint(
+          'TagManagementScreen: _currentPageTags count: ${_currentPageTags.length}');
     });
   }
 
@@ -210,6 +235,9 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
     } else {
       _currentPageTags = [];
     }
+
+    debugPrint(
+        'TagManagementScreen: Pagination - _filteredTags: ${_filteredTags.length}, _tagsPerPage: $_tagsPerPage, _totalPages: $_totalPages, _currentPage: $_currentPage, _currentPageTags: ${_currentPageTags.length}');
   }
 
   // Change page
@@ -246,18 +274,6 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
       _sortTags();
       _updatePagination();
     });
-  }
-
-  // Modified selection method to support tab integration
-  Future<void> _selectTag(String tag) async {
-    // Check if we have an onTagSelected callback from the parent
-    if (widget.onTagSelected != null) {
-      // Call the callback to open in a new tab
-      widget.onTagSelected!(tag);
-    } else {
-      // Fall back to the direct search if no callback is provided
-      await _directTagSearch(tag);
-    }
   }
 
   // Phương thức tìm kiếm tag trực tiếp - đã được chứng minh hoạt động tốt
@@ -601,6 +617,120 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
     );
   }
 
+  // Force reload tags
+  Future<void> _forceReloadTags() async {
+    try {
+      debugPrint('TagManagementScreen: Force reloading tags...');
+      setState(() {
+        _isLoading = true;
+      });
+
+      await _loadAllTags();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Đã reload ${_allTags.length} thẻ'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('TagManagementScreen: Error force reloading: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lỗi khi reload: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  // Debug database and add sample tags
+  Future<void> _debugDatabase() async {
+    try {
+      // Check database status
+      final isInitialized = _database.isInitialized();
+      debugPrint('Database initialized: $isInitialized');
+
+      // Get current tags
+      final currentTags = await _database.getAllUniqueTags();
+      debugPrint('Current tags count: ${currentTags.length}');
+      debugPrint('Current tags: $currentTags');
+
+      // Add some sample tags if none exist
+      if (currentTags.isEmpty) {
+        debugPrint('No tags found, adding sample tags...');
+
+        // Create some sample files and add tags to them
+        final sampleFiles = [
+          '/tmp/sample1.txt',
+          '/tmp/sample2.txt',
+          '/tmp/sample3.txt',
+        ];
+
+        final sampleTags = [
+          'work',
+          'important',
+          'project',
+          'personal',
+          'urgent'
+        ];
+
+        for (int i = 0; i < sampleFiles.length; i++) {
+          final file = sampleFiles[i];
+          final tag = sampleTags[i % sampleTags.length];
+          await _database.addTagToFile(file, tag);
+          debugPrint('Added tag "$tag" to file "$file"');
+        }
+
+        // Reload tags
+        await _loadAllTags();
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Đã thêm ${sampleTags.length} thẻ mẫu để test'),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Database OK. Tìm thấy ${currentTags.length} thẻ'),
+              backgroundColor: Colors.blue,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('Debug error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Debug error: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+
   // Toggle search mode
   void _toggleSearch() {
     setState(() {
@@ -614,10 +744,6 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
   @override
   Widget build(BuildContext context) {
     final AppLocalizations localizations = AppLocalizations.of(context)!;
-    // Check if we're in a tab environment
-    final bool isInTabContext =
-        context.findAncestorWidgetOfExactType<BlocProvider<TabManagerBloc>>() !=
-            null;
 
     // Create appropriate title
     String title;
@@ -644,6 +770,11 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
           icon: const Icon(Icons.info_outline),
           onPressed: () => _showAboutDialog(context),
           tooltip: localizations.aboutTags,
+        ),
+        IconButton(
+          icon: const Icon(Icons.refresh),
+          onPressed: _forceReloadTags,
+          tooltip: 'Force Reload Tags',
         ),
         // Show sort menu
         PopupMenuButton<String>(
@@ -776,11 +907,6 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
   }
 
   void _showTagOptions(String tag) {
-    // Check if we're in a tab environment
-    final bool isInTabContext =
-        context.findAncestorWidgetOfExactType<BlocProvider<TabManagerBloc>>() !=
-            null;
-
     showModalBottomSheet(
       context: context,
       builder: (context) {
@@ -797,7 +923,7 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
                 },
               ),
               // Only show the "Open in New Tab" option if we're in a tab context
-              if (isInTabContext && widget.onTagSelected == null)
+              if (widget.onTagSelected == null)
                 ListTile(
                   leading: const Icon(Icons.tab),
                   title: const Text('Mở trong tab mới'),
@@ -1246,6 +1372,9 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
 
   Widget _buildTagsGrid() {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
+    debugPrint(
+        'TagManagementScreen: _buildTagsGrid - _currentPageTags.length: ${_currentPageTags.length}');
 
     return GridView.builder(
       padding: const EdgeInsets.all(12),

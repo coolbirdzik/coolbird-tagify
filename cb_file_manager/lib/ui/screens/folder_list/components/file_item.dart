@@ -80,6 +80,7 @@ class FileItem extends StatefulWidget {
   final bool isDesktopMode;
   final String?
       lastSelectedPath; // Add parameter to track last selected file for shift-selection
+  final bool showFileTags; // Add parameter to control tag display
 
   const FileItem({
     Key? key,
@@ -93,6 +94,7 @@ class FileItem extends StatefulWidget {
     this.onFileTap,
     this.isDesktopMode = false,
     this.lastSelectedPath,
+    this.showFileTags = true, // Default to showing tags
   }) : super(key: key);
 
   @override
@@ -315,80 +317,72 @@ class _FileItemState extends State<FileItem> {
                     : Colors.transparent;
 
             return RepaintBoundary(
-              child: GestureDetector(
-                onSecondaryTap: () => _showContextMenu(context),
-                onLongPress: () {
-                  if (!widget.isSelectionMode) {
-                    widget.toggleFileSelection(widget.file.path,
-                        shiftSelect: false, ctrlSelect: false);
-                  }
-                },
-                child: MouseRegion(
-                  onEnter: (_) => _isHoveringNotifier.value = true,
-                  onExit: (_) => _isHoveringNotifier.value = false,
-                  cursor: SystemMouseCursors.click,
-                  child: Container(
-                    margin: const EdgeInsets.symmetric(
-                        horizontal: 8.0, vertical: 4.0),
-                    decoration: BoxDecoration(
-                      color: backgroundColor,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Stack(
-                      children: [
-                        // File content that doesn't need to rebuild on selection changes
-                        RepaintBoundary(
-                          key: ValueKey('content_${widget.file.path}'),
-                          child: _FileItemContent(
-                            file: widget.file,
-                            fileTags: _fileTags,
-                            state: widget.state,
-                            showDeleteTagDialog: widget.showDeleteTagDialog,
-                            showAddTagToFileDialog:
-                                widget.showAddTagToFileDialog,
-                            removeTagDirectly: _removeTagDirectly,
-                          ),
+              child: MouseRegion(
+                onEnter: (_) => _isHoveringNotifier.value = true,
+                onExit: (_) => _isHoveringNotifier.value = false,
+                cursor: SystemMouseCursors.click,
+                child: Container(
+                  margin: const EdgeInsets.symmetric(
+                      horizontal: 8.0, vertical: 4.0),
+                  decoration: BoxDecoration(
+                    color: backgroundColor,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Stack(
+                    children: [
+                      // File content that doesn't need to rebuild on selection changes
+                      RepaintBoundary(
+                        key: ValueKey('content_${widget.file.path}'),
+                        child: _FileItemContent(
+                          file: widget.file,
+                          fileTags: _fileTags,
+                          state: widget.state,
+                          showDeleteTagDialog: widget.showDeleteTagDialog,
+                          showAddTagToFileDialog: widget.showAddTagToFileDialog,
+                          removeTagDirectly: _removeTagDirectly,
+                          showFileTags: widget.showFileTags,
                         ),
-                        // Interactive layer
-                        Positioned.fill(
-                          child: OptimizedInteractionLayer(
-                            onTap: () {
-                              if (widget.isSelectionMode ||
-                                  widget.isDesktopMode) {
-                                _handleSelection();
-                              } else {
-                                _openFile(isVideo, isImage);
-                              }
-                            },
-                            onDoubleTap: () {
+                      ),
+                      // Interactive layer
+                      Positioned.fill(
+                        child: OptimizedInteractionLayer(
+                          onTap: () {
+                            if (widget.isSelectionMode ||
+                                widget.isDesktopMode) {
+                              _handleSelection();
+                            } else {
                               _openFile(isVideo, isImage);
-                            },
-                            onLongPress: () {
-                              if (!widget.isSelectionMode) {
-                                widget.toggleFileSelection(widget.file.path,
-                                    shiftSelect: false, ctrlSelect: false);
-                              }
-                            },
-                          ),
+                            }
+                          },
+                          onDoubleTap: () {
+                            _openFile(isVideo, isImage);
+                          },
+                          onLongPress: () {
+                            if (!widget.isSelectionMode) {
+                              widget.toggleFileSelection(widget.file.path,
+                                  shiftSelect: false, ctrlSelect: false);
+                            }
+                          },
+                          onSecondaryTap: () => _showContextMenu(context),
                         ),
-                        // Selection indicator - only rebuilds when selection changes
-                        if (isSelected)
-                          Positioned(
-                            left: 0,
-                            top: 0,
-                            bottom: 0,
-                            width: 3,
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: Theme.of(context).colorScheme.primary,
-                                borderRadius: const BorderRadius.horizontal(
-                                  left: Radius.circular(12),
-                                ),
+                      ),
+                      // Selection indicator - only rebuilds when selection changes
+                      if (isSelected)
+                        Positioned(
+                          left: 0,
+                          top: 0,
+                          bottom: 0,
+                          width: 3,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.primary,
+                              borderRadius: const BorderRadius.horizontal(
+                                left: Radius.circular(12),
                               ),
                             ),
                           ),
-                      ],
-                    ),
+                        ),
+                    ],
                   ),
                 ),
               ),
@@ -408,6 +402,7 @@ class _FileItemContent extends StatefulWidget {
   final Function(BuildContext, String, List<String>) showDeleteTagDialog;
   final Function(BuildContext, String) showAddTagToFileDialog;
   final Function(String) removeTagDirectly;
+  final bool showFileTags;
 
   const _FileItemContent({
     required this.file,
@@ -416,6 +411,7 @@ class _FileItemContent extends StatefulWidget {
     required this.showDeleteTagDialog,
     required this.showAddTagToFileDialog,
     required this.removeTagDirectly,
+    required this.showFileTags,
   });
 
   @override
@@ -669,7 +665,7 @@ class _FileItemContentState extends State<_FileItemContent> {
             return Text('...', style: Theme.of(context).textTheme.bodySmall);
           },
         ),
-        if (widget.fileTags.isNotEmpty) ...[
+        if (widget.showFileTags && widget.fileTags.isNotEmpty) ...[
           const SizedBox(width: 16),
           const Icon(EvaIcons.bookmarkOutline,
               size: 14, color: AppTheme.primaryBlue),

@@ -118,6 +118,7 @@ class _NetworkBrowserScreenState extends State<NetworkBrowserScreen>
   int _gridZoomLevel = 3;
   ColumnVisibility _columnVisibility = const ColumnVisibility();
   bool _arePreferencesLoading = true;
+  bool _showFileTags = true;
 
   // Network browsing BLoC
   late NetworkBrowsingBloc _networkBrowsingBloc;
@@ -274,6 +275,7 @@ class _NetworkBrowserScreenState extends State<NetworkBrowserScreen>
       final sortOption = await prefs.getSortOption();
       final gridZoomLevel = await prefs.getGridZoomLevel();
       final columnVisibility = await prefs.getColumnVisibility();
+      final showFileTags = await prefs.getShowFileTags();
 
       if (mounted) {
         setState(() {
@@ -281,6 +283,7 @@ class _NetworkBrowserScreenState extends State<NetworkBrowserScreen>
           _sortOption = sortOption;
           _gridZoomLevel = gridZoomLevel;
           _columnVisibility = columnVisibility;
+          _showFileTags = showFileTags;
           _arePreferencesLoading = false;
         });
       }

@@ -1,25 +1,12 @@
-import 'dart:async';
 import 'dart:io';
 import 'package:path/path.dart' as path;
 
-import 'package:cb_file_manager/config/app_theme.dart';
-import 'package:cb_file_manager/helpers/files/external_app_helper.dart';
-import 'package:cb_file_manager/helpers/tags/tag_color_manager.dart';
-import 'package:cb_file_manager/helpers/tags/tag_manager.dart';
-import '../../../components/common/optimized_interaction_handler.dart';
 import '../../../components/common/shared_file_context_menu.dart';
-import 'package:cb_file_manager/ui/dialogs/open_with_dialog.dart';
-import 'package:cb_file_manager/ui/screens/folder_list/components/thumbnail_content.dart';
-import 'package:cb_file_manager/ui/screens/folder_list/folder_list_bloc.dart';
-import 'package:cb_file_manager/ui/screens/folder_list/folder_list_event.dart';
 import 'package:cb_file_manager/ui/screens/folder_list/folder_list_state.dart';
-import 'package:cb_file_manager/ui/widgets/tag_chip.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:cb_file_manager/ui/widgets/thumbnail_loader.dart';
-import 'package:cb_file_manager/helpers/files/file_type_helper.dart';
 import 'package:cb_file_manager/ui/utils/file_type_utils.dart';
 
 class FileGridItem extends StatelessWidget {
@@ -35,6 +22,10 @@ class FileGridItem extends StatelessWidget {
   final bool isDesktopMode;
   final String? lastSelectedPath;
   final Function()? onThumbnailGenerated;
+  // Context menu parameters
+  final Function(BuildContext, String, List<String>)? showDeleteTagDialog;
+  final Function(BuildContext, String)? showAddTagToFileDialog;
+  final bool showFileTags; // Add parameter to control tag display
 
   const FileGridItem({
     Key? key,
@@ -48,7 +39,27 @@ class FileGridItem extends StatelessWidget {
     this.isDesktopMode = false,
     this.lastSelectedPath,
     this.onThumbnailGenerated,
+    this.showDeleteTagDialog,
+    this.showAddTagToFileDialog,
+    this.showFileTags = true, // Default to showing tags
   }) : super(key: key);
+
+  void _showContextMenu(BuildContext context) {
+    final bool isVideo = FileTypeUtils.isVideoFile(file.path);
+    final bool isImage = FileTypeUtils.isImageFile(file.path);
+
+    // Get file tags from state if available
+    final List<String> fileTags = state?.getTagsForFile(file.path) ?? [];
+
+    showFileContextMenu(
+      context: context,
+      file: file as File,
+      fileTags: fileTags,
+      isVideo: isVideo,
+      isImage: isImage,
+      showAddTagToFileDialog: showAddTagToFileDialog,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -108,6 +119,7 @@ class FileGridItem extends StatelessWidget {
                     },
                     onLongPress: toggleSelectionMode,
                     onDoubleTap: () => onFileTap?.call(file as File, false),
+                    onSecondaryTap: () => _showContextMenu(context),
                     child: isSelected
                         ? Container(
                             decoration: BoxDecoration(
@@ -143,16 +155,85 @@ class FileGridItem extends StatelessWidget {
         // File name section
         Padding(
           padding: const EdgeInsets.only(top: 4.0, left: 4.0, right: 4.0),
-          child: Text(
-            fileName,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  fontSize: 12,
-                ),
-            textAlign: TextAlign.center,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
+          child: Column(
+            children: [
+              Text(
+                fileName,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      fontSize: 12,
+                    ),
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              // Show tags if enabled and available
+              if (showFileTags && state != null) ...[
+                const SizedBox(height: 2),
+                _buildTagsDisplay(context),
+              ],
+            ],
           ),
         ),
+      ],
+    );
+  }
+
+  Widget _buildTagsDisplay(BuildContext context) {
+    if (state == null) return const SizedBox.shrink();
+
+    final List<String> fileTags = state!.getTagsForFile(file.path);
+    if (fileTags.isEmpty) return const SizedBox.shrink();
+
+    // Show only first 2 tags in grid view to save space
+    final tagsToShow = fileTags.take(2).toList();
+    final hasMoreTags = fileTags.length > 2;
+
+    return Wrap(
+      alignment: WrapAlignment.center,
+      spacing: 2,
+      runSpacing: 2,
+      children: [
+        ...tagsToShow.map((tag) => Container(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+              decoration: BoxDecoration(
+                color: Theme.of(context).primaryColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: Theme.of(context).primaryColor.withOpacity(0.3),
+                  width: 0.5,
+                ),
+              ),
+              child: Text(
+                tag,
+                style: TextStyle(
+                  fontSize: 8,
+                  color: Theme.of(context).primaryColor,
+                  fontWeight: FontWeight.w500,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            )),
+        if (hasMoreTags)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+            decoration: BoxDecoration(
+              color: Theme.of(context).primaryColor.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: Theme.of(context).primaryColor.withOpacity(0.3),
+                width: 0.5,
+              ),
+            ),
+            child: Text(
+              '+${fileTags.length - 2}',
+              style: TextStyle(
+                fontSize: 8,
+                color: Theme.of(context).primaryColor,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
       ],
     );
   }

@@ -15,7 +15,6 @@ import 'package:cb_file_manager/ui/tab_manager/tab_data.dart'; // Import TabData
 // Add UserPreferences import
 import 'package:cb_file_manager/config/app_theme.dart'; // Import theme configuration
 import 'package:cb_file_manager/config/translation_helper.dart'; // Import translation helper
-import 'utils/route.dart';
 
 class CBDrawer extends StatefulWidget {
   final BuildContext parentContext;
@@ -567,7 +566,10 @@ class _CBDrawerState extends State<CBDrawer> {
             _showAdminAccessDialog(context, storage);
           } else {
             // Regular drive access
-            RouteUtils.safePopDialog(context);
+            // Only pop the Navigator when drawer is not pinned
+            if (!widget.isPinned) {
+              RouteUtils.safePopDialog(context);
+            }
             _openInCurrentTab(storage.path, displayName);
           }
         },
@@ -808,77 +810,5 @@ class _CBDrawerState extends State<CBDrawer> {
 
     // Default icon
     return EvaIcons.folderOutline;
-  }
-
-  void _showNetworkConnectionsDialog(BuildContext context) {
-    // Show a dialog with network connection options
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Network Connections'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(EvaIcons.monitor, color: Colors.blue),
-              title: const Text('SMB Network'),
-              subtitle: const Text('Browse Windows/Samba shares'),
-              onTap: () {
-                RouteUtils.safePopDialog(context); // Close dialog
-                _openNetworkTab(context, '#smb', 'SMB Network');
-              },
-            ),
-            ListTile(
-              leading: const Icon(EvaIcons.cloudUpload, color: Colors.blue),
-              title: const Text('FTP Connections'),
-              subtitle: const Text('Connect to FTP servers'),
-              onTap: () {
-                RouteUtils.safePopDialog(context); // Close dialog
-                _openNetworkTab(context, '#ftp', 'FTP Connections');
-              },
-            ),
-            ListTile(
-              leading: const Icon(EvaIcons.globe, color: Colors.blue),
-              title: const Text('All Network Connections'),
-              subtitle: const Text('View all connection types'),
-              onTap: () {
-                RouteUtils.safePopDialog(context); // Close dialog
-                _openNetworkTab(context, '#network', 'Network');
-              },
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => RouteUtils.safePopDialog(context),
-            child: const Text('CANCEL'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _openNetworkTab(BuildContext context, String path, String name) {
-    final tabBloc = BlocProvider.of<TabManagerBloc>(context);
-
-    // Check if a tab with this path already exists
-    final existingTab = tabBloc.state.tabs.firstWhere(
-      (tab) => tab.path == path,
-      orElse: () => TabData(id: '', name: '', path: ''),
-    );
-
-    if (existingTab.id.isNotEmpty) {
-      // If tab exists, switch to it
-      tabBloc.add(SwitchToTab(existingTab.id));
-    } else {
-      // Otherwise, create a new tab
-      tabBloc.add(
-        AddTab(
-          path: path,
-          name: name,
-          switchToTab: true,
-        ),
-      );
-    }
   }
 }

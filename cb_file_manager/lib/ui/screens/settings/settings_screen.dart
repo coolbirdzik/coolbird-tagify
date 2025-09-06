@@ -29,6 +29,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // Video thumbnail percentage value (new setting)
   late int _videoThumbnailPercentage;
 
+  // Show file tags setting
+  late bool _showFileTags;
+
   // Cache clearing states
   bool _isClearingVideoCache = false;
   bool _isClearingNetworkCache = false;
@@ -55,6 +58,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       await _preferences.init();
       final theme = await _preferences.getThemePreference();
       final percentage = await _preferences.getVideoThumbnailPercentage();
+      final showFileTags = await _preferences.getShowFileTags();
       _preferences.isUsingObjectBox();
 
       if (mounted) {
@@ -62,6 +66,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _themePreference = theme;
           _currentLanguageCode = _languageController.currentLocale.languageCode;
           _videoThumbnailPercentage = percentage;
+          _showFileTags = showFileTags;
           _isLoading = false;
         });
       }
@@ -134,6 +139,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
         duration: const Duration(seconds: 1),
         behavior: SnackBarBehavior.floating,
         width: 320,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
+  }
+
+  Future<void> _updateShowFileTags(bool showTags) async {
+    await _preferences.setShowFileTags(showTags);
+    setState(() {
+      _showFileTags = showTags;
+    });
+
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(showTags
+            ? 'Đã bật hiển thị tag của file'
+            : 'Đã tắt hiển thị tag của file'),
+        duration: const Duration(seconds: 1),
+        behavior: SnackBarBehavior.floating,
+        width: 200,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
     );
@@ -237,6 +262,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 _buildThemeSection(context),
                 const Divider(),
                 _buildVideoThumbnailSection(context),
+                const Divider(),
+                _buildFileTagsSection(context),
                 const Divider(),
                 _buildCacheManagementSection(
                     context), // Add cache management section
@@ -530,6 +557,56 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFileTagsSection(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            child: Row(
+              children: [
+                const Icon(Icons.label_outline, size: 24),
+                const SizedBox(width: 16),
+                Text(
+                  'Hiển thị tag của file',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+            child: Text(
+              'Hiển thị các tag của file bên ngoài danh sách file trong tất cả các chế độ xem',
+              style: const TextStyle(
+                fontSize: 14,
+                color: Colors.grey,
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          SwitchListTile(
+            title: const Text('Hiển thị tag của file'),
+            subtitle:
+                const Text('Bật/tắt hiển thị tag bên ngoài danh sách file'),
+            value: _showFileTags,
+            onChanged: (value) {
+              _updateShowFileTags(value);
+            },
+            secondary: const Icon(Icons.label),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+          ),
+          const SizedBox(height: 8),
         ],
       ),
     );

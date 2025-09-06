@@ -24,6 +24,7 @@ class FileDetailsItem extends StatefulWidget {
   final Function(BuildContext, String) showAddTagToFileDialog;
   final bool isDesktopMode;
   final String? lastSelectedPath;
+  final bool showFileTags; // Add parameter to control tag display
 
   const FileDetailsItem({
     Key? key,
@@ -37,6 +38,7 @@ class FileDetailsItem extends StatefulWidget {
     required this.showAddTagToFileDialog,
     this.isDesktopMode = false,
     this.lastSelectedPath,
+    this.showFileTags = true, // Default to showing tags
   }) : super(key: key);
 
   @override
@@ -205,10 +207,11 @@ class _FileDetailsItemState extends State<FileDetailsItem> {
                             ),
                           ),
 
-                          // Show file tags if available
-                          if (widget.state.fileTags[widget.file.path]
-                                  ?.isNotEmpty ??
-                              false)
+                          // Show file tags if available and enabled
+                          if (widget.showFileTags &&
+                              (widget.state.fileTags[widget.file.path]
+                                      ?.isNotEmpty ??
+                                  false))
                             Padding(
                               padding: const EdgeInsets.only(left: 4.0),
                               child: Icon(

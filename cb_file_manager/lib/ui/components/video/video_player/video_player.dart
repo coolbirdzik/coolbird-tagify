@@ -367,6 +367,8 @@ class _VideoPlayerState extends State<VideoPlayer> {
   int _networkTimeout = 30; // seconds
   String _subtitleEncoding = 'utf-8';
   String _videoOutputFormat = 'auto'; // auto, yuv420p, rgb24
+  String _videoScaleMode =
+      'contain'; // cover, contain, fill, fitWidth, fitHeight, none, scaleDown
 
   // Timers
   Timer? _initializationTimeout;
@@ -409,6 +411,28 @@ class _VideoPlayerState extends State<VideoPlayer> {
       true; // With local HTTP proxy, prefer Exo for all sources in PiP
 
   Map<String, dynamic>? _videoMetadata;
+
+  // Helper method to convert string to BoxFit
+  BoxFit _getBoxFitFromString(String scaleMode) {
+    switch (scaleMode) {
+      case 'cover':
+        return BoxFit.cover;
+      case 'contain':
+        return BoxFit.contain;
+      case 'fill':
+        return BoxFit.fill;
+      case 'fitWidth':
+        return BoxFit.fitWidth;
+      case 'fitHeight':
+        return BoxFit.fitHeight;
+      case 'none':
+        return BoxFit.none;
+      case 'scaleDown':
+        return BoxFit.scaleDown;
+      default:
+        return BoxFit.cover;
+    }
+  }
 
   @override
   void initState() {
@@ -1424,11 +1448,8 @@ class _VideoPlayerState extends State<VideoPlayer> {
 
     return Stack(
       children: [
-        Center(
-          child: AspectRatio(
-            aspectRatio: 16 / 9,
-            child: _buildVideoWidget(),
-          ),
+        Positioned.fill(
+          child: _buildVideoWidget(),
         ),
         if (!_isFullScreen || _showControls) _buildCustomControls(),
         if (_showSpeedIndicator && _currentStream != null)
@@ -1440,6 +1461,7 @@ class _VideoPlayerState extends State<VideoPlayer> {
   Widget _buildVideoWidget() {
     final isDesktop =
         Platform.isWindows || Platform.isLinux || Platform.isMacOS;
+    final boxFit = _getBoxFitFromString(_videoScaleMode);
 
     if (isDesktop && _videoController != null) {
       return RepaintBoundary(
@@ -1447,14 +1469,19 @@ class _VideoPlayerState extends State<VideoPlayer> {
           controller: _videoController!,
           controls: NoVideoControls,
           fill: Colors.black,
+          fit: boxFit,
         ),
       );
     } else if (_vlcController != null) {
       return RepaintBoundary(
-        child: VlcPlayer(
-          controller: _vlcController!,
-          aspectRatio: 16 / 9,
-          placeholder: const Center(child: CircularProgressIndicator()),
+        child: FittedBox(
+          fit: boxFit,
+          child: VlcPlayer(
+            controller: _vlcController!,
+            aspectRatio:
+                16 / 9, // Default aspect ratio, will be overridden by FittedBox
+            placeholder: const Center(child: CircularProgressIndicator()),
+          ),
         ),
       );
     } else {
@@ -1587,12 +1614,13 @@ class _VideoPlayerState extends State<VideoPlayer> {
             if (_isFullScreen) _showControlsWithTimer();
           },
           onDoubleTap: _toggleFullScreen,
-          child: Center(
-            child: AspectRatio(
-              aspectRatio: 16 / 9,
+          child: Positioned.fill(
+            child: FittedBox(
+              fit: _getBoxFitFromString(_videoScaleMode),
               child: VlcPlayer(
                 controller: _vlcController!,
-                aspectRatio: 16 / 9,
+                aspectRatio: 16 /
+                    9, // Default aspect ratio, will be overridden by FittedBox
                 placeholder: const Center(child: CircularProgressIndicator()),
               ),
             ),
@@ -3030,6 +3058,42 @@ class _VideoPlayerState extends State<VideoPlayer> {
                 ),
                 const SizedBox(height: 16),
 
+                // Video Scale Mode
+                const Text('Video Scale Mode:',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+                DropdownButton<String>(
+                  value: _videoScaleMode,
+                  isExpanded: true,
+                  items: const [
+                    DropdownMenuItem(
+                        value: 'cover', child: Text('Cover (Fill & Crop)')),
+                    DropdownMenuItem(
+                        value: 'contain', child: Text('Contain (Fit All)')),
+                    DropdownMenuItem(
+                        value: 'fill', child: Text('Fill (Stretch)')),
+                    DropdownMenuItem(
+                        value: 'fitWidth', child: Text('Fit Width')),
+                    DropdownMenuItem(
+                        value: 'fitHeight', child: Text('Fit Height')),
+                    DropdownMenuItem(
+                        value: 'none', child: Text('None (Original Size)')),
+                    DropdownMenuItem(
+                        value: 'scaleDown', child: Text('Scale Down')),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) {
+                      setDialogState(() {
+                        _videoScaleMode = value;
+                      });
+                      setState(() {
+                        _videoScaleMode = value;
+                      });
+                      _saveSettings();
+                    }
+                  },
+                ),
+                const SizedBox(height: 16),
+
                 // Hardware Acceleration
                 SwitchListTile(
                   title: const Text('Hardware Acceleration'),
@@ -3624,6 +3688,8 @@ class _VideoPlayerState extends State<VideoPlayer> {
           'subtitle_encoding', _subtitleEncoding);
       await userPreferences.setVideoPlayerString(
           'video_output_format', _videoOutputFormat);
+      await userPreferences.setVideoPlayerString(
+          'video_scale_mode', _videoScaleMode);
 
       debugPrint('Video player settings saved successfully');
     } catch (e) {
@@ -3664,6 +3730,10 @@ class _VideoPlayerState extends State<VideoPlayer> {
               'video_output_format',
               defaultValue: 'auto') ??
           'auto';
+      _videoScaleMode = await userPreferences.getVideoPlayerString(
+              'video_scale_mode',
+              defaultValue: 'contain') ??
+          'contain';
 
       // Keep hardware acceleration in sync with explicit decoder choice
       if (_videoDecoder == 'software') {
@@ -3688,6 +3758,7 @@ class _VideoPlayerState extends State<VideoPlayer> {
       _networkTimeout = 30;
       _subtitleEncoding = 'utf-8';
       _videoOutputFormat = 'auto';
+      _videoScaleMode = 'contain';
     });
     _saveSettings();
   }

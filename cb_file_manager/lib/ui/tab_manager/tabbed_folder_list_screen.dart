@@ -163,6 +163,7 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
   late ViewMode _viewMode;
   late int _gridZoomLevel;
   late ColumnVisibility _columnVisibility;
+  late bool _showFileTags;
 
   // Create the bloc instance at the class level
   late FolderListBloc _folderListBloc;
@@ -188,8 +189,7 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
 
   // Add a method to check if there are any video/image files in the current state
   bool _hasVideoOrImageFiles(FolderListState state) {
-    final files = state.files ?? [];
-    return files.any((file) => FileTypeUtils.isMediaFile(file.path));
+    return state.files.any((file) => FileTypeUtils.isMediaFile(file.path));
   }
 
   @override
@@ -368,12 +368,14 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
       final sortOption = await prefs.getSortOption();
       final gridZoomLevel = await prefs.getGridZoomLevel();
       final columnVisibility = await prefs.getColumnVisibility();
+      final showFileTags = await prefs.getShowFileTags();
 
       if (mounted) {
         setState(() {
           _viewMode = viewMode;
           _gridZoomLevel = gridZoomLevel;
           _columnVisibility = columnVisibility;
+          _showFileTags = showFileTags;
         });
 
         _folderListBloc.add(SetViewMode(viewMode));
@@ -1247,6 +1249,7 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
         toggleSelectionMode: _toggleSelectionMode,
         showDeleteTagDialog: _showDeleteTagDialog,
         showAddTagToFileDialog: _showAddTagToFileDialog,
+        showFileTags: _showFileTags,
       );
     }
 
@@ -1512,6 +1515,7 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
                                     isDesktopMode: isDesktopPlatform,
                                     lastSelectedPath:
                                         selectionState.lastSelectedPath,
+                                    showFileTags: _showFileTags,
                                   ),
                                 ),
                               ),
@@ -1583,6 +1587,7 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
                     isDesktopMode: isDesktopPlatform,
                     lastSelectedPath: selectionState.lastSelectedPath,
                     columnVisibility: _columnVisibility,
+                    showFileTags: _showFileTags,
                   ),
                 ),
               );
