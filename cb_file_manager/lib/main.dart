@@ -10,6 +10,11 @@ import 'ui/tab_manager/tab_main_screen.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'helpers/tags/tag_manager.dart';
 import 'package:media_kit/media_kit.dart'; // Import Media Kit
+// Ensure Windows video native libraries (mpv) are bundled.
+// This import is a no-op at runtime but required at build time.
+// Note: If media_kit_libs_windows_video is available in your environment,
+// you can import it here to bundle mpv DLLs. We avoid importing it directly
+// to prevent build failures when the package isn't present locally.
 import 'package:window_manager/window_manager.dart'; // Import window_manager
 import 'ui/components/pip_window/desktop_pip_window.dart';
 import 'helpers/media/media_kit_audio_helper.dart'; // Import our audio helper
@@ -37,11 +42,19 @@ void main() async {
     // Ensure Flutter is initialized before using platform plugins
     WidgetsFlutterBinding.ensureInitialized();
 
+    // Native event loop init removed to avoid build issues when package
+    // artifacts are not present locally.
+
+    // Note: If you use media_kit_native_event_loop, initialize it here.
+    // We avoid importing it directly to prevent build failures when
+    // the package isn't available in the environment.
+
     // If launched in PiP window mode (desktop), boot a minimal PiP app.
     try {
       final env = Platform.environment;
       final isPip = env['CB_PIP_MODE'] == '1';
-      if (isPip && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+      if (isPip &&
+          (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
         await windowManager.ensureInitialized();
         MediaKit.ensureInitialized();
       }
@@ -182,9 +195,10 @@ void main() async {
 
     // Streaming functionality is now handled directly by StreamingHelper with network services
 
-    // If PiP env flag is set, run lightweight PiP window instead of full app
+    // If PiP env flag is set, run ultra‑lightweight PiP window instead of full app
     final env = Platform.environment;
-    if (env['CB_PIP_MODE'] == '1' && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+    if (env['CB_PIP_MODE'] == '1' &&
+        (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
       Map<String, dynamic> args = {};
       final raw = env['CB_PIP_ARGS'];
       if (raw != null && raw.isNotEmpty) {
@@ -193,7 +207,12 @@ void main() async {
           if (decoded is Map<String, dynamic>) args = decoded;
         } catch (_) {}
       }
-      runApp(DesktopPipWindow(args: args));
+      // Lightweight shell for PiP window: MaterialApp with dark theme
+      runApp(MaterialApp(
+        theme: ThemeData.dark().copyWith(scaffoldBackgroundColor: Colors.black),
+        debugShowCheckedModeBanner: false,
+        home: DesktopPipWindow(args: args),
+      ));
       return;
     }
 

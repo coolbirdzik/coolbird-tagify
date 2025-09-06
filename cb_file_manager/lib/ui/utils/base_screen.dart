@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:cb_file_manager/main.dart' show goHome, CBFileApp;
 import 'package:cb_file_manager/ui/drawer.dart';
 import 'package:cb_file_manager/helpers/core/user_preferences.dart'; // Add UserPreferences import
@@ -18,6 +19,7 @@ class BaseScreen extends StatefulWidget {
   final bool automaticallyImplyLeading;
   final Color? backgroundColor;
   final bool resizeToAvoidBottomInset;
+  final bool showAppBar;
 
   /// Static key for accessing drawer from anywhere - for backward compatibility only
   /// THIS SHOULD NOT BE USED IN NEW CODE - it's only here for legacy support
@@ -50,6 +52,7 @@ class BaseScreen extends StatefulWidget {
     this.automaticallyImplyLeading = true,
     this.backgroundColor,
     this.resizeToAvoidBottomInset = true,
+    this.showAppBar = true,
   }) : super(key: key);
 
   @override
@@ -63,6 +66,7 @@ class _BaseScreenState extends State<BaseScreen> {
 
   // Drawer state variables
   bool _isDrawerPinned = false;
+  bool _inAndroidPip = false;
 
   @override
   void initState() {
@@ -71,6 +75,24 @@ class _BaseScreenState extends State<BaseScreen> {
     BaseScreen._mostRecentState = this;
     // Load drawer preferences
     _loadDrawerPreferences();
+    _attachPipListener();
+  }
+
+  void _attachPipListener() {
+    // Listen for Android PiP changes to auto-hide AppBar globally
+    const channel = MethodChannel('cb_file_manager/pip');
+    channel.setMethodCallHandler((call) async {
+      if (call.method == 'onPipChanged') {
+        final args = call.arguments;
+        bool inPip = false;
+        if (args is Map) {
+          inPip = args['inPip'] == true;
+        }
+        if (mounted) {
+          setState(() => _inAndroidPip = inPip);
+        }
+      }
+    });
   }
 
   // Load drawer preferences from storage
@@ -142,7 +164,8 @@ class _BaseScreenState extends State<BaseScreen> {
       },
       child: Scaffold(
         key: _scaffoldKey, // Use instance-specific key
-        appBar: AppBar(
+        appBar: (widget.showAppBar && !_inAndroidPip)
+            ? AppBar(
           title: Text(widget.title),
           leading: widget.automaticallyImplyLeading
               ? _buildLeadingIcon(context)
@@ -164,7 +187,8 @@ class _BaseScreenState extends State<BaseScreen> {
             // Add any additional actions
             if (widget.actions != null) ...widget.actions!,
           ],
-        ),
+        )
+            : null,
         drawer: CBDrawer(
           context,
           isPinned: _isDrawerPinned,

@@ -11,8 +11,11 @@ import 'package:video_player/video_player.dart' as exo;
 import 'package:flutter_vlc_player/flutter_vlc_player.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:path/path.dart' as pathlib;
+// Windows PiP uses a separate OS window (external process).
 
 import '../../../services/pip_window_service.dart';
+import '../../components/pip_window/windows_pip_overlay.dart';
+import '../../../services/streaming/smb_http_proxy_server.dart';
 
 import '../../../helpers/files/file_type_helper.dart';
 import '../../../helpers/core/user_preferences.dart';
@@ -309,7 +312,8 @@ class _VideoPlayerState extends State<VideoPlayer> {
 
   // VLC for mobile/Android
   VlcPlayerController? _vlcController;
-  exo.VideoPlayerController? _exoController; // ExoPlayer for Android PiP fallback
+  exo.VideoPlayerController?
+      _exoController; // ExoPlayer for Android PiP fallback
   bool _usingExoInPip = false;
 
   // State variables
@@ -392,6 +396,17 @@ class _VideoPlayerState extends State<VideoPlayer> {
   double _lastVolume = 70.0;
   bool _vlcMuted = false;
   bool _isRestoringVolume = false;
+  bool _vlcWasActiveBeforePip = false;
+  Map<String, dynamic>?
+      _vlcPendingRestore; // {pos: Duration, vol: double0..1or0..100, playing: bool}
+  bool _vlcPendingRestoreApplied = false;
+
+  // Exo PiP init guard to prevent concurrent initializations
+  bool _exoInitInProgress = false;
+  bool get _isSmbSource =>
+      widget.smbMrl != null && (widget.smbMrl?.isNotEmpty ?? false);
+  bool _shouldUseExoForPip() =>
+      true; // With local HTTP proxy, prefer Exo for all sources in PiP
 
   Map<String, dynamic>? _videoMetadata;
 
@@ -401,6 +416,64 @@ class _VideoPlayerState extends State<VideoPlayer> {
     // Load settings first, then initialize the player so configuration is applied
     _loadSettings().whenComplete(_initializePlayer);
     _setupAndroidPipChannelListener();
+  }
+
+  void _showWindowsOverlayPip(
+    BuildContext context, {
+    required String sourceType,
+    required String source,
+    required String fileName,
+    required int positionMs,
+    required double volume,
+    required bool playing,
+  }) async {
+    // Pause current playback to avoid double audio while overlay plays
+    try {
+      if (_player != null && _player!.state.playing) {
+        await _player!.pause();
+      } else if (_vlcController != null && _vlcController!.value.isPlaying) {
+        await _vlcController!.pause();
+      }
+    } catch (_) {}
+
+    WindowsPipOverlay.show(
+      context,
+      args: {
+        'sourceType': sourceType,
+        'source': source,
+        'fileName': fileName,
+        'positionMs': positionMs,
+        'volume': volume,
+        'playing': playing,
+      },
+      onClose: ({required int positionMs, required double volume, required bool playing}) async {
+        try {
+          if (_player != null) {
+            await _player!.seek(Duration(milliseconds: positionMs));
+            await _player!.setVolume(volume.clamp(0.0, 100.0));
+            if (playing) {
+              await _player!.play();
+            }
+          } else if (_vlcController != null) {
+            await _vlcController!.seekTo(Duration(milliseconds: positionMs));
+            await _vlcController!.setVolume(volume.toInt());
+            if (playing) {
+              await _vlcController!.play();
+            }
+          }
+        } catch (_) {}
+        if (mounted) {
+          setState(() => _isPictureInPicture = false);
+        }
+      },
+    );
+
+    if (mounted) {
+      setState(() => _isPictureInPicture = true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Đã bật PiP overlay trong ứng dụng')),
+      );
+    }
   }
 
   @override
@@ -437,34 +510,50 @@ class _VideoPlayerState extends State<VideoPlayer> {
   }
 
   Future<void> _initExoForPip() async {
-    if (_usingExoInPip || !Platform.isAndroid) return;
-    // Don't attempt Exo for SMB MRLs
-    if (widget.smbMrl != null) return;
+    if (_usingExoInPip || _exoInitInProgress || !Platform.isAndroid) return;
+    _exoInitInProgress = true;
+    // For SMB MRLs, we will feed Exo via a local HTTP proxy.
+
     try {
       exo.VideoPlayerController controller;
       if (widget.file != null) {
         controller = exo.VideoPlayerController.file(widget.file!);
       } else if (widget.streamingUrl != null) {
-        controller = exo.VideoPlayerController.networkUrl(Uri.parse(widget.streamingUrl!));
+        controller = exo.VideoPlayerController.networkUrl(
+            Uri.parse(widget.streamingUrl!));
+      } else if (widget.smbMrl != null) {
+        final uri = await SmbHttpProxyServer.instance.urlFor(widget.smbMrl!);
+        controller = exo.VideoPlayerController.networkUrl(uri);
       } else {
+        _exoInitInProgress = false;
         return;
       }
       await controller.initialize();
 
-      // Sync position & volume from VLC/media_kit if available
-      final pos = _vlcPosition;
-      if (pos > Duration.zero) {
-        await controller.seekTo(pos);
+      // Sync position & volume from current player if available
+      if (_player != null) {
+        final pos = _player!.state.position;
+        if (pos > Duration.zero) {
+          await controller.seekTo(pos);
+        }
+        final vol = _player!.state.volume / 100.0;
+        try {
+          await controller.setVolume(vol);
+        } catch (_) {}
+      } else if (_vlcController != null) {
+        try {
+          final pos = _vlcController!.value.position;
+          if (pos > Duration.zero) {
+            await controller.seekTo(pos);
+          }
+        } catch (_) {}
+        try {
+          await controller.setVolume((_vlcVolume / 100.0).clamp(0.0, 1.0));
+        } catch (_) {}
       }
-      final vol = _vlcMuted ? 0.0 : (_vlcVolume.clamp(0.0, 100.0) / 100.0);
-      try { await controller.setVolume(vol); } catch (_) {}
 
-      if (_vlcPlaying) {
-        await controller.play();
-      }
-
-      // Pause VLC to release surfaces
-      try { await _vlcController?.pause(); } catch (_) {}
+      // Always play in PiP for visible frames
+      await controller.play();
 
       if (mounted) {
         setState(() {
@@ -475,23 +564,75 @@ class _VideoPlayerState extends State<VideoPlayer> {
     } catch (e) {
       debugPrint('Exo init error: $e');
     }
+    _exoInitInProgress = false;
+  }
+
+  Future<void> _waitForExoInitialized(
+      {Duration timeout = const Duration(seconds: 1)}) async {
+    final sw = Stopwatch()..start();
+    while (sw.elapsed < timeout) {
+      if (_exoController != null && _exoController!.value.isInitialized) {
+        break;
+      }
+      await Future.delayed(const Duration(milliseconds: 50));
+    }
   }
 
   Future<void> _teardownExoAfterPip() async {
     if (!Platform.isAndroid) return;
     final controller = _exoController;
     if (controller == null) return;
+
     try {
       final pos = await controller.position ?? Duration.zero;
       final playing = controller.value.isPlaying;
       final vol = controller.value.volume; // 0..1
-      // Sync back to VLC if present
-      try { await _vlcController?.seekTo(pos); } catch (_) {}
-      try { await _vlcController?.setVolume((vol * 100).toInt()); } catch (_) {}
-      if (playing) { try { await _vlcController?.play(); } catch (_) {} }
+
+      // Sync back to the appropriate player
+      if (_vlcController != null) {
+        try {
+          await _vlcController!.seekTo(pos);
+        } catch (_) {}
+        try {
+          await _vlcController!.setVolume((vol * 100).toInt());
+        } catch (_) {}
+        if (playing) {
+          try {
+            await _vlcController!.play();
+          } catch (_) {}
+        }
+      } else if (_player != null) {
+        try {
+          await _player!.seek(pos);
+        } catch (_) {}
+        try {
+          await _player!.setVolume((vol * 100).clamp(0.0, 100.0));
+        } catch (_) {}
+        if (playing) {
+          try {
+            await _player!.play();
+          } catch (_) {}
+        }
+      } else if (_vlcWasActiveBeforePip) {
+        // VLC was active but disposed for PiP. Defer restore until controller re-creates.
+        _vlcPendingRestore = {
+          'pos': pos,
+          'vol': vol, // 0..1
+          'playing': playing,
+        };
+        _vlcPendingRestoreApplied = false;
+      }
+    } catch (e) {
+      debugPrint('Error syncing state after PiP: $e');
+    }
+
+    try {
+      await controller.pause();
     } catch (_) {}
-    try { await controller.pause(); } catch (_) {}
-    try { await controller.dispose(); } catch (_) {}
+    try {
+      await controller.dispose();
+    } catch (_) {}
+
     if (mounted) {
       setState(() {
         _exoController = null;
@@ -502,25 +643,63 @@ class _VideoPlayerState extends State<VideoPlayer> {
 
   void _setupAndroidPipChannelListener() {
     if (!kIsWeb && Platform.isAndroid) {
-      const channel = MethodChannel('cb_file_manager/pip');
+      final channel = MethodChannel('cb_file_manager/pip');
       channel.setMethodCallHandler((call) async {
+        debugPrint('PiP channel method call: ${call.method}');
+
         if (call.method == 'onPipChanged') {
           final args = call.arguments;
           bool inPip = false;
           if (args is Map) {
             inPip = args['inPip'] == true;
           }
+
+          debugPrint('PiP state changed: $inPip');
+
           if (mounted) {
             setState(() {
               _isAndroidPip = inPip;
             });
           }
+
           if (inPip) {
-            // Switch to Exo for PiP to avoid ImageReader buffer issues
-            await _initExoForPip();
+            debugPrint('Entering Android PiP mode');
           } else {
-            // Restore VLC when exiting PiP
-            await _teardownExoAfterPip();
+            debugPrint('Exiting Android PiP mode');
+            // Try to restore state from native PiP payload if provided
+            try {
+              int posMs = 0;
+              bool playing = false;
+              double? volume;
+              if (args is Map) {
+                posMs = (args['positionMs'] as num?)?.toInt() ?? 0;
+                playing = args['playing'] == true;
+                volume = (args['volume'] as num?)?.toDouble();
+              }
+              if (_vlcController != null) {
+                if (posMs > 0) {
+                  await _vlcController!.seekTo(Duration(milliseconds: posMs));
+                }
+                if (volume != null) {
+                  await _vlcController!.setVolume((volume * 100).toInt());
+                }
+                if (playing) {
+                  await _vlcController!.play();
+                }
+              } else if (_player != null) {
+                if (posMs > 0) {
+                  await _player!.seek(Duration(milliseconds: posMs));
+                }
+                if (volume != null) {
+                  await _player!.setVolume((volume * 100).clamp(0.0, 100.0));
+                }
+                if (playing) {
+                  await _player!.play();
+                }
+              }
+            } catch (e) {
+              debugPrint('Restore after PiP error: $e');
+            }
           }
         }
       });
@@ -601,7 +780,8 @@ class _VideoPlayerState extends State<VideoPlayer> {
       if (_player == null) {
         _player = Player(
           configuration: PlayerConfiguration(
-            bufferSize: 10 * 1024 * 1024, // 10MB buffer for better streaming
+            // Use configured buffer size (MB) loaded from preferences
+            bufferSize: (_bufferSize > 0 ? _bufferSize : 10) * 1024 * 1024,
           ),
         );
         _videoController = VideoController(
@@ -642,7 +822,9 @@ class _VideoPlayerState extends State<VideoPlayer> {
 
     // Track buffering state - but ignore buffering during seek to prevent UI flicker
     _player!.stream.buffering.listen((buffering) {
-      if (mounted && !_isSeeking) {
+      // Only rebuild if value actually changes & not during seek
+      if (!mounted || _isSeeking) return;
+      if (_isLoading != buffering) {
         setState(() {
           _isLoading = buffering;
         });
@@ -713,6 +895,9 @@ class _VideoPlayerState extends State<VideoPlayer> {
     } else if (widget.streamingUrl != null) {
       // Streaming URL playback
       await _player!.open(Media(widget.streamingUrl!));
+      if (widget.autoPlay) {
+        await _player!.play();
+      }
     } else if (widget.smbMrl != null) {
       // SMB MRL playback
       await _openSmbMrl();
@@ -769,6 +954,9 @@ class _VideoPlayerState extends State<VideoPlayer> {
         await _player!
             .open(Media(fileUri))
             .timeout(const Duration(seconds: 12));
+        if (widget.autoPlay) {
+          await _player!.play();
+        }
         debugPrint('VideoPlayer: file URI opened successfully');
       } on TimeoutException catch (_) {
         debugPrint('VideoPlayer: Open timed out, trying temp file fallback...');
@@ -796,6 +984,9 @@ class _VideoPlayerState extends State<VideoPlayer> {
 
       try {
         await _player!.open(media).timeout(const Duration(seconds: 10));
+        if (widget.autoPlay) {
+          await _player!.play();
+        }
         debugPrint('VideoPlayer: SMB MRL opened successfully');
       } on TimeoutException catch (_) {
         debugPrint('VideoPlayer: Direct SMB timed out');
@@ -812,7 +1003,12 @@ class _VideoPlayerState extends State<VideoPlayer> {
     _streamController = StreamController<List<int>>.broadcast();
     _currentStream = _streamController!.stream;
     debugPrint('VideoPlayer: Starting progressive buffering...');
-    await _startProgressiveBufferingAndPlay(widget.fileStream!);
+    // Respect configured initial buffer size (MB)
+    final initialBytes = (_bufferSize > 0 ? _bufferSize : 10) * 1024 * 1024;
+    await _startProgressiveBufferingAndPlay(
+      widget.fileStream!,
+      initialBufferBytes: initialBytes,
+    );
   }
 
   void _extractVideoMetadata() {
@@ -939,8 +1135,12 @@ class _VideoPlayerState extends State<VideoPlayer> {
       // Try buffered stream approach first
       try {
         final bufferedStream = helper.createBufferedStream(uncPath);
-        await _startProgressiveBufferingAndPlay(bufferedStream,
-            initialBufferBytes: 2 * 1024 * 1024);
+        // Start playback only after sufficient initial buffer based on settings
+        final initialBytes = (_bufferSize > 0 ? _bufferSize : 10) * 1024 * 1024;
+        await _startProgressiveBufferingAndPlay(
+          bufferedStream,
+          initialBufferBytes: initialBytes,
+        );
         if (mounted) {
           setState(() {
             _isLoading = false;
@@ -957,6 +1157,9 @@ class _VideoPlayerState extends State<VideoPlayer> {
             highPriority: true, maxBytes: 32 * 1024 * 1024);
         if (tempPath != null) {
           await _player!.open(Media(tempPath));
+          if (widget.autoPlay) {
+            await _player!.play();
+          }
           if (mounted) {
             setState(() {
               _isLoading = false;
@@ -1048,6 +1251,9 @@ class _VideoPlayerState extends State<VideoPlayer> {
               'VideoPlayer: Opening from temp with ${_formatBytes(_bytesWritten)} buffered');
           try {
             await _player!.open(Media(_tempFile!.path));
+            if (widget.autoPlay) {
+              await _player!.play();
+            }
           } catch (e) {
             debugPrint('VideoPlayer: Open error: $e');
             if (mounted) {
@@ -1089,6 +1295,9 @@ class _VideoPlayerState extends State<VideoPlayer> {
       if (!_playerOpenedFromTemp && _tempFile != null) {
         try {
           await _player!.open(Media(_tempFile!.path));
+          if (widget.autoPlay) {
+            await _player!.play();
+          }
         } catch (e) {
           debugPrint('VideoPlayer: Open on done error: $e');
         }
@@ -1119,26 +1328,8 @@ class _VideoPlayerState extends State<VideoPlayer> {
 
   Widget _buildLocalFilePlayer() {
     if (_useFlutterVlc) {
-      // On Android, render the VLC-based player for local files
-      return Scaffold(
-        backgroundColor: Colors.black,
-        appBar: _isAndroidPip ? null : AppBar(
-          backgroundColor: Colors.black.withValues(alpha: 0.7),
-          title: Text(
-            widget.fileName,
-            style: const TextStyle(color: Colors.white),
-          ),
-          iconTheme: const IconThemeData(color: Colors.white),
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.close),
-              onPressed:
-                  widget.onClose ?? () => RouteUtils.safePopDialog(context),
-            ),
-          ],
-        ),
-        body: _buildVlcPlayer(),
-      );
+      // On Android, render the VLC-based player directly (no internal Scaffold/AppBar)
+      return _buildVlcPlayer();
     }
 
     return _isLoading
@@ -1165,14 +1356,10 @@ class _VideoPlayerState extends State<VideoPlayer> {
                         GestureDetector(
                           onDoubleTap:
                               widget.allowFullScreen ? _toggleFullScreen : null,
-                          child: ClipRRect(
-                            borderRadius: _isFullScreen
-                                ? BorderRadius.zero
-                                : BorderRadius.circular(8.0),
-                            child: _buildVideoWidget(),
-                          ),
+                          child: _buildPrimaryVideoSurface(),
                         ),
-                        if (!_isAndroidPip && widget.showControls &&
+                        if (!_isAndroidPip &&
+                            widget.showControls &&
                             (!_isFullScreen || _showControls))
                           _buildCustomControls(),
                       ],
@@ -1182,42 +1369,27 @@ class _VideoPlayerState extends State<VideoPlayer> {
               );
   }
 
+  // Tránh clip tròn trên desktop để giảm jank; cô lập bề mặt video bằng RepaintBoundary
+  Widget _buildPrimaryVideoSurface() {
+    final isDesktop =
+        Platform.isWindows || Platform.isLinux || Platform.isMacOS;
+    final surface = _buildVideoWidget();
+    if (isDesktop) {
+      // No rounded corners on desktop to prevent expensive saveLayer while playing
+      return RepaintBoundary(child: surface);
+    }
+    return ClipRRect(
+      borderRadius:
+          _isFullScreen ? BorderRadius.zero : BorderRadius.circular(8.0),
+      child: RepaintBoundary(child: surface),
+    );
+  }
+
   Widget _buildStreamingPlayer() {
     return Focus(
       autofocus: true,
       onKeyEvent: (node, event) => _handleKeyEvent(event),
-      child: Scaffold(
-        backgroundColor: Colors.black,
-        appBar: _isAndroidPip ? null : AppBar(
-          backgroundColor: Colors.black.withValues(alpha: 0.7),
-          title: Text(
-            widget.fileName,
-            style: const TextStyle(color: Colors.white),
-          ),
-          iconTheme: const IconThemeData(color: Colors.white),
-          actions: [
-            if (widget.fileStream != null)
-              IconButton(
-                icon: Icon(
-                  _showSpeedIndicator ? Icons.speed : Icons.speed_outlined,
-                  color: Colors.white,
-                ),
-                onPressed: () {
-                  setState(() {
-                    _showSpeedIndicator = !_showSpeedIndicator;
-                  });
-                },
-                tooltip: 'Toggle Speed Indicator',
-              ),
-            IconButton(
-              icon: const Icon(Icons.close),
-              onPressed:
-                  widget.onClose ?? () => RouteUtils.safePopDialog(context),
-            ),
-          ],
-        ),
-        body: _buildPlayerBody(),
-      ),
+      child: _buildPlayerBody(),
     );
   }
 
@@ -1267,16 +1439,20 @@ class _VideoPlayerState extends State<VideoPlayer> {
         Platform.isWindows || Platform.isLinux || Platform.isMacOS;
 
     if (isDesktop && _videoController != null) {
-      return Video(
-        controller: _videoController!,
-        controls: NoVideoControls,
-        fill: Colors.black,
+      return RepaintBoundary(
+        child: Video(
+          controller: _videoController!,
+          controls: NoVideoControls,
+          fill: Colors.black,
+        ),
       );
     } else if (_vlcController != null) {
-      return VlcPlayer(
-        controller: _vlcController!,
-        aspectRatio: 16 / 9,
-        placeholder: const Center(child: CircularProgressIndicator()),
+      return RepaintBoundary(
+        child: VlcPlayer(
+          controller: _vlcController!,
+          aspectRatio: 16 / 9,
+          placeholder: const Center(child: CircularProgressIndicator()),
+        ),
       );
     } else {
       return const Center(child: CircularProgressIndicator());
@@ -1290,8 +1466,9 @@ class _VideoPlayerState extends State<VideoPlayer> {
         // SMB MRL with credentials support
         final original = widget.smbMrl!;
         final uri = Uri.parse(original);
-        final creds =
-            uri.userInfo.isNotEmpty ? uri.userInfo.split(':') : const <String>[];
+        final creds = uri.userInfo.isNotEmpty
+            ? uri.userInfo.split(':')
+            : const <String>[];
         final user = creds.isNotEmpty ? Uri.decodeComponent(creds[0]) : null;
         final pwd = creds.length > 1 ? Uri.decodeComponent(creds[1]) : null;
         final cleanUrl = uri.replace(userInfo: '').toString();
@@ -1345,43 +1522,59 @@ class _VideoPlayerState extends State<VideoPlayer> {
 
     if (!_vlcListenerAttached) {
       _vlcListenerAttached = true;
+      // Keep listener minimal to avoid frequent full widget rebuilds.
       _vlcController!.addListener(() {
-        final v = _vlcController!.value;
-        if (!mounted) return;
-        setState(() {
-          _vlcPlaying = v.isPlaying;
-          _vlcPosition = v.position;
-          _vlcDuration = v.duration;
-        });
+        // Apply pending restore once after controller is producing values.
+        if (_vlcPendingRestore != null && !_vlcPendingRestoreApplied) {
+          final restore = _vlcPendingRestore!;
+          final pos = (restore['pos'] as Duration?) ?? Duration.zero;
+          final vol = (restore['vol'] as num?)?.toDouble(); // 0..1
+          final playing = restore['playing'] == true;
+          Future.microtask(() async {
+            try {
+              if (pos > Duration.zero) await _vlcController!.seekTo(pos);
+            } catch (_) {}
+            try {
+              if (vol != null)
+                await _vlcController!.setVolume((vol * 100).toInt());
+            } catch (_) {}
+            try {
+              if (playing) {
+                await _vlcController!.play();
+              } else {
+                await _vlcController!.pause();
+              }
+            } catch (_) {}
+            _vlcPendingRestoreApplied = true;
+            _vlcPendingRestore = null;
+            if (mounted) {
+              // Mark once for controls state that depends on restore flags.
+              setState(() {});
+            }
+          });
+        }
       });
     }
 
-    // In Android PiP, prefer ExoPlayer rendering if available
-    if (_isAndroidPip && _exoController != null && _exoController!.value.isInitialized) {
-      return LayoutBuilder(
-        builder: (context, constraints) {
-          final ar = _exoController!.value.aspectRatio > 0
-              ? _exoController!.value.aspectRatio
-              : (16 / 9);
-          final h = constraints.maxHeight <= 0 ? 1.0 : constraints.maxHeight;
-          final w = h * ar;
-          return Stack(
-            children: [
-              Positioned.fill(child: Container(color: Colors.black)),
-              Center(
-                child: FittedBox(
-                  fit: BoxFit.cover,
-                  child: SizedBox(
-                    width: w,
-                    height: h,
-                    child: exo.VideoPlayer(_exoController!),
-                  ),
-                ),
+    // In Android PiP: prefer Exo if initialized; otherwise keep VLC as fallback
+    if (_isAndroidPip) {
+      if (_exoController != null && _exoController!.value.isInitialized) {
+        final ar = _exoController!.value.aspectRatio > 0
+            ? _exoController!.value.aspectRatio
+            : (16 / 9);
+        return Stack(
+          children: [
+            Positioned.fill(child: Container(color: Colors.black)),
+            Center(
+              child: AspectRatio(
+                aspectRatio: ar,
+                child: exo.VideoPlayer(_exoController!),
               ),
-            ],
-          );
-        },
-      );
+            ),
+          ],
+        );
+      }
+      return const ColoredBox(color: Colors.black);
     }
 
     return Stack(
@@ -1402,7 +1595,8 @@ class _VideoPlayerState extends State<VideoPlayer> {
             ),
           ),
         ),
-        if (!_isAndroidPip && (!_isFullScreen || _showControls)) _buildCustomControls(),
+        if (!_isAndroidPip && (!_isFullScreen || _showControls))
+          _buildCustomControls(),
       ],
     );
   }
@@ -1768,7 +1962,8 @@ class _VideoPlayerState extends State<VideoPlayer> {
         setState(() {});
       }
     } else if (_vlcController != null) {
-      if (_vlcPlaying) {
+      final playing = _vlcController!.value.isPlaying;
+      if (playing) {
         await _vlcController!.pause();
       } else {
         await _vlcController!.play();
@@ -1787,7 +1982,8 @@ class _VideoPlayerState extends State<VideoPlayer> {
           : newPosition;
       await _player!.seek(seekPosition);
     } else if (_vlcController != null) {
-      final targetMs = (_vlcPosition.inMilliseconds + (seconds * 1000));
+      final pos = _vlcController!.value.position;
+      final targetMs = (pos.inMilliseconds + (seconds * 1000));
       await _vlcController!.seekTo(Duration(milliseconds: targetMs));
     }
 
@@ -1806,9 +2002,10 @@ class _VideoPlayerState extends State<VideoPlayer> {
           newPosition < Duration.zero ? Duration.zero : newPosition;
       await _player!.seek(seekPosition);
     } else if (_vlcController != null) {
-      final targetMs = (_vlcPosition.inMilliseconds - (seconds * 1000));
-      await _vlcController!.seekTo(Duration(
-          milliseconds: targetMs.clamp(0, _vlcDuration.inMilliseconds)));
+      final v = _vlcController!.value;
+      final targetMs = (v.position.inMilliseconds - (seconds * 1000));
+      await _vlcController!.seekTo(
+          Duration(milliseconds: targetMs.clamp(0, v.duration.inMilliseconds)));
     }
 
     if (_isFullScreen) {
@@ -1856,7 +2053,8 @@ class _VideoPlayerState extends State<VideoPlayer> {
 
   // Custom Controls
   Widget _buildCustomControls() {
-    final isDesktop = Platform.isWindows || Platform.isLinux || Platform.isMacOS;
+    final isDesktop =
+        Platform.isWindows || Platform.isLinux || Platform.isMacOS;
     if (isDesktop) {
       return _buildPipStyleControls();
     }
@@ -1949,14 +2147,21 @@ class _VideoPlayerState extends State<VideoPlayer> {
                       final p = snapshot.data ?? Duration.zero;
                       return Text(
                         _formatDuration(p),
-                        style: const TextStyle(color: Colors.white70, fontSize: 12),
+                        style: const TextStyle(
+                            color: Colors.white70, fontSize: 12),
                       );
                     },
                   )
                 else
-                  Text(
-                    _formatDuration(_vlcPosition),
-                    style: const TextStyle(color: Colors.white70, fontSize: 12),
+                  ValueListenableBuilder<VlcPlayerValue>(
+                    valueListenable: _vlcController!,
+                    builder: (context, v, _) {
+                      return Text(
+                        _formatDuration(v.position),
+                        style: const TextStyle(
+                            color: Colors.white70, fontSize: 12),
+                      );
+                    },
                   ),
 
                 const SizedBox(width: 8),
@@ -1989,13 +2194,14 @@ class _VideoPlayerState extends State<VideoPlayer> {
                                 inactiveColor: Colors.white24,
                                 onChangeStart: (_) => _isSeeking = true,
                                 onChanged: (v) async {
-                                  final target = Duration(milliseconds: v.toInt());
+                                  final target =
+                                      Duration(milliseconds: v.toInt());
                                   await _player!.seek(target);
                                 },
                                 onChangeEnd: (_) {
                                   _seekingTimer?.cancel();
-                                  _seekingTimer =
-                                      Timer(const Duration(milliseconds: 200), () {
+                                  _seekingTimer = Timer(
+                                      const Duration(milliseconds: 200), () {
                                     if (mounted) _isSeeking = false;
                                   });
                                 },
@@ -2003,30 +2209,34 @@ class _VideoPlayerState extends State<VideoPlayer> {
                             );
                           },
                         )
-                      : Slider(
-                          value: _vlcDuration.inMilliseconds == 0
-                              ? 0
-                              : _vlcPosition.inMilliseconds
-                                  .clamp(0, _vlcDuration.inMilliseconds)
-                                  .toDouble(),
-                          min: 0,
-                          max: (_vlcDuration.inMilliseconds == 0
-                                  ? 1
-                                  : _vlcDuration.inMilliseconds)
-                              .toDouble(),
-                          activeColor: Colors.white,
-                          inactiveColor: Colors.white24,
-                          onChangeStart: (_) => _isSeeking = true,
-                          onChanged: (v) async {
-                            await _vlcController?.seekTo(
-                                Duration(milliseconds: v.toInt()));
-                          },
-                          onChangeEnd: (_) {
-                            _seekingTimer?.cancel();
-                            _seekingTimer =
-                                Timer(const Duration(milliseconds: 200), () {
-                              if (mounted) _isSeeking = false;
-                            });
+                      : ValueListenableBuilder<VlcPlayerValue>(
+                          valueListenable: _vlcController!,
+                          builder: (context, v, _) {
+                            final maxMs = v.duration.inMilliseconds == 0
+                                ? 1
+                                : v.duration.inMilliseconds;
+                            final value = v.position.inMilliseconds
+                                .clamp(0, maxMs)
+                                .toDouble();
+                            return Slider(
+                              value: value,
+                              min: 0,
+                              max: maxMs.toDouble(),
+                              activeColor: Colors.white,
+                              inactiveColor: Colors.white24,
+                              onChangeStart: (_) => _isSeeking = true,
+                              onChanged: (vv) async {
+                                await _vlcController?.seekTo(
+                                    Duration(milliseconds: vv.toInt()));
+                              },
+                              onChangeEnd: (_) {
+                                _seekingTimer?.cancel();
+                                _seekingTimer = Timer(
+                                    const Duration(milliseconds: 200), () {
+                                  if (mounted) _isSeeking = false;
+                                });
+                              },
+                            );
                           },
                         ),
                 ),
@@ -2034,11 +2244,22 @@ class _VideoPlayerState extends State<VideoPlayer> {
                 const SizedBox(width: 8),
 
                 // Duration
-                Text(
-                  _formatDuration(
-                      _player != null ? _player!.state.duration : _vlcDuration),
-                  style: const TextStyle(color: Colors.white70, fontSize: 12),
-                ),
+                _player != null
+                    ? Text(
+                        _formatDuration(_player!.state.duration),
+                        style: const TextStyle(
+                            color: Colors.white70, fontSize: 12),
+                      )
+                    : ValueListenableBuilder<VlcPlayerValue>(
+                        valueListenable: _vlcController!,
+                        builder: (context, v, _) {
+                          return Text(
+                            _formatDuration(v.duration),
+                            style: const TextStyle(
+                                color: Colors.white70, fontSize: 12),
+                          );
+                        },
+                      ),
 
                 const SizedBox(width: 8),
                 if (widget.allowMuting) _buildVolumeControl(),
@@ -2046,8 +2267,9 @@ class _VideoPlayerState extends State<VideoPlayer> {
                 _buildAdvancedControlsMenu(),
                 if (widget.allowFullScreen)
                   _buildControlButton(
-                    icon:
-                        _isFullScreen ? Icons.fullscreen_exit : Icons.fullscreen,
+                    icon: _isFullScreen
+                        ? Icons.fullscreen_exit
+                        : Icons.fullscreen,
                     onPressed: _toggleFullScreen,
                     enabled: true,
                     tooltip:
@@ -2078,12 +2300,17 @@ class _VideoPlayerState extends State<VideoPlayer> {
         },
       );
     } else {
-      return _buildControlButton(
-        icon: _vlcPlaying ? Icons.pause : Icons.play_arrow,
-        onPressed: _togglePlayPause,
-        size: 36,
-        padding: 12,
-        enabled: true,
+      return ValueListenableBuilder<VlcPlayerValue>(
+        valueListenable: _vlcController!,
+        builder: (context, v, _) {
+          return _buildControlButton(
+            icon: v.isPlaying ? Icons.pause : Icons.play_arrow,
+            onPressed: _togglePlayPause,
+            size: 36,
+            padding: 12,
+            enabled: true,
+          );
+        },
       );
     }
   }
@@ -2162,62 +2389,68 @@ class _VideoPlayerState extends State<VideoPlayer> {
         },
       );
     } else {
-      // VLC seek bar
-      final pos = _vlcPosition;
-      final dur = _vlcDuration.inMilliseconds > 0
-          ? _vlcDuration
-          : const Duration(seconds: 1);
-      final progress = dur.inMilliseconds > 0
-          ? (pos.inMilliseconds / dur.inMilliseconds).clamp(0.0, 1.0)
-          : 0.0;
+      // VLC seek bar (avoid full rebuilds by listening directly to controller value)
+      return ValueListenableBuilder<VlcPlayerValue>(
+        valueListenable: _vlcController!,
+        builder: (context, v, _) {
+          final pos = v.position;
+          final dur = v.duration.inMilliseconds > 0
+              ? v.duration
+              : const Duration(seconds: 1);
+          final progress = dur.inMilliseconds > 0
+              ? (pos.inMilliseconds / dur.inMilliseconds).clamp(0.0, 1.0)
+              : 0.0;
 
-      return Container(
-        height: 40,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Row(
-          children: [
-            Text(
-              _formatDuration(pos),
-              style: const TextStyle(color: Colors.white, fontSize: 12),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Slider(
-                value: progress,
-                onChangeStart: (value) {
-                  // Start seeking when user begins dragging
-                  setState(() {
-                    _isSeeking = true;
-                  });
-                  _seekingTimer?.cancel();
-                },
-                onChanged: (v) async {
-                  final targetMs = (dur.inMilliseconds * v).toInt();
-                  await _vlcController
-                      ?.seekTo(Duration(milliseconds: targetMs));
-                },
-                onChangeEnd: (value) {
-                  // End seeking after user finishes dragging with a slight delay
-                  _seekingTimer?.cancel();
-                  _seekingTimer = Timer(const Duration(milliseconds: 300), () {
-                    if (mounted) {
+          return Container(
+            height: 40,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                Text(
+                  _formatDuration(pos),
+                  style: const TextStyle(color: Colors.white, fontSize: 12),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Slider(
+                    value: progress,
+                    onChangeStart: (value) {
+                      // Start seeking when user begins dragging
                       setState(() {
-                        _isSeeking = false;
+                        _isSeeking = true;
                       });
-                    }
-                  });
-                },
-                activeColor: Colors.redAccent,
-                inactiveColor: Colors.white.withValues(alpha: 0.3),
-              ),
+                      _seekingTimer?.cancel();
+                    },
+                    onChanged: (vv) async {
+                      final targetMs = (dur.inMilliseconds * vv).toInt();
+                      await _vlcController
+                          ?.seekTo(Duration(milliseconds: targetMs));
+                    },
+                    onChangeEnd: (value) {
+                      // End seeking after user finishes dragging with a slight delay
+                      _seekingTimer?.cancel();
+                      _seekingTimer =
+                          Timer(const Duration(milliseconds: 300), () {
+                        if (mounted) {
+                          setState(() {
+                            _isSeeking = false;
+                          });
+                        }
+                      });
+                    },
+                    activeColor: Colors.redAccent,
+                    inactiveColor: Colors.white.withValues(alpha: 0.3),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  _formatDuration(dur),
+                  style: const TextStyle(color: Colors.white, fontSize: 12),
+                ),
+              ],
             ),
-            const SizedBox(width: 8),
-            Text(
-              _formatDuration(_vlcDuration),
-              style: const TextStyle(color: Colors.white, fontSize: 12),
-            ),
-          ],
-        ),
+          );
+        },
       );
     }
   }
@@ -3014,57 +3247,146 @@ class _VideoPlayerState extends State<VideoPlayer> {
     }
   }
 
-  void _togglePictureInPicture() {
+  Future<void> _togglePictureInPicture() async {
     // Android: enter native Picture-in-Picture
     if (Platform.isAndroid) {
       try {
-        const channel = MethodChannel('cb_file_manager/pip');
+        final channel = MethodChannel('cb_file_manager/pip');
+
         // Determine aspect ratio from current video if possible
         int w = 16;
         int h = 9;
         try {
-          final pw = _player?.state.width ?? 0;
-          final ph = _player?.state.height ?? 0;
-          if (pw > 0 && ph > 0) {
-            w = pw;
-            h = ph;
+          if (_player != null) {
+            final pw = _player!.state.width;
+            final ph = _player!.state.height;
+            if (pw != null && ph != null && pw > 0 && ph > 0) {
+              w = pw;
+              h = ph;
+            }
+          } else if (_vlcController != null) {
+            // For VLC, use default 16:9 ratio as fallback
+            // VLC doesn't expose video dimensions easily
+            w = 16;
+            h = 9;
+          }
+        } catch (_) {
+          // Fallback to 16:9 if we can't get dimensions
+          w = 16;
+          h = 9;
+        }
+
+        // Pause Flutter-side playback to avoid double audio; native player will take over in PiP.
+        try {
+          if (_vlcController != null && _vlcController!.value.isPlaying) {
+            await _vlcController!.pause();
+          } else if (_player != null && _player!.state.playing) {
+            await _player!.pause();
           }
         } catch (_) {}
+        // Set Android PiP state before entering PiP mode so UI hides overlays
         setState(() => _isAndroidPip = true);
-        channel.invokeMethod('enterPip', {
-          'width': w,
-          'height': h,
-        });
+
+        // Build source info for native PiP player
+        String sourceTypeForPip = 'url';
+        String sourceForPip = '';
+        if (widget.file != null) {
+          sourceTypeForPip = 'file';
+          sourceForPip = widget.file!.path;
+        } else if (widget.streamingUrl != null) {
+          sourceTypeForPip = 'url';
+          sourceForPip = widget.streamingUrl!;
+        } else if (widget.smbMrl != null) {
+          try {
+            final uri =
+                await SmbHttpProxyServer.instance.urlFor(widget.smbMrl!);
+            sourceTypeForPip = 'url';
+            sourceForPip = uri.toString();
+          } catch (_) {}
+        }
+
+        try {
+          final result = await channel.invokeMethod('enterPip', {
+            'width': w,
+            'height': h,
+            // Provide native with source so it can render independently of Flutter
+            'sourceType': sourceTypeForPip,
+            'source': sourceForPip,
+            'positionMs': _player != null
+                ? _player!.state.position.inMilliseconds
+                : _vlcController!.value.position.inMilliseconds,
+            'playing': true,
+            'volume': _player != null
+                ? (_player!.state.volume.clamp(0.0, 100.0) / 100.0)
+                : (_vlcVolume.clamp(0.0, 100.0) / 100.0),
+          });
+
+          if (result == true) {
+            debugPrint('PiP entered successfully');
+          } else {
+            debugPrint('PiP entry failed');
+            if (mounted) {
+              setState(() => _isAndroidPip = false);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Không thể bật PiP trên Android')),
+              );
+            }
+          }
+        } catch (e) {
+          debugPrint('PiP method call error: $e');
+          if (mounted) {
+            setState(() => _isAndroidPip = false);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Lỗi PiP: $e')),
+            );
+          }
+        }
       } catch (e) {
         debugPrint('PIP error: $e');
+        setState(() => _isAndroidPip = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Không thể bật PiP trên Android')),
+          SnackBar(content: Text('Lỗi PiP: $e')),
         );
       }
       return;
     }
 
-    // Desktop (Windows): open a separate PiP window process
+    // Desktop (Windows): prefer external window; fallback to overlay if needed
     if (Platform.isWindows) {
+      // Read user preference: default to external PiP window
+      bool preferExternal = true;
+      try {
+        final up = UserPreferences.instance;
+        await up.init();
+        preferExternal = await up.getVideoPlayerBool('windows_pip_external', defaultValue: true) ?? true;
+      } catch (_) {}
       final positionMs = _player != null
           ? _player!.state.position.inMilliseconds
-          : _vlcPosition.inMilliseconds;
+          : _vlcController!.value.position.inMilliseconds;
       final volume = _player != null
           ? (_player!.state.volume).clamp(0.0, 100.0)
           : _vlcVolume.clamp(0.0, 100.0);
-      final playing = _player != null ? _player!.state.playing : _vlcPlaying;
+      final playing = _player != null
+          ? _player!.state.playing
+          : _vlcController!.value.isPlaying;
 
       String? sourceType;
       String? source;
-      if (widget.file != null) {
-        sourceType = 'file';
-        source = widget.file!.path;
-      } else if (widget.streamingUrl != null) {
+      if (widget.streamingUrl != null && widget.streamingUrl!.isNotEmpty) {
         sourceType = 'url';
         source = widget.streamingUrl!;
+      } else if (widget.file != null) {
+        sourceType = 'file';
+        source = widget.file!.path;
       } else if (widget.smbMrl != null) {
-        sourceType = 'smb';
-        source = widget.smbMrl!;
+        try {
+          final uri = await SmbHttpProxyServer.instance.urlFor(widget.smbMrl!);
+          sourceType = 'url';
+          source = uri.toString();
+        } catch (_) {
+          sourceType = 'smb';
+          source = widget.smbMrl!;
+        }
       }
 
       if (sourceType == null || source == null || source.isEmpty) {
@@ -3074,53 +3396,68 @@ class _VideoPlayerState extends State<VideoPlayer> {
         return;
       }
 
-      // Start IPC server for PiP -> main sync
-      _startPipIpcServer().then((ipc) {
-        final args = <String, dynamic>{
-          'sourceType': sourceType,
-          'source': source,
-          'fileName': widget.fileName,
-          'positionMs': positionMs,
-          'volume': volume,
-          'playing': playing,
-        };
-        if (ipc != null) {
-          args['ipcPort'] = ipc['port'];
-          args['ipcToken'] = ipc['token'];
-        }
-
-        final ok = PipWindowService.openDesktopPipWindow(args);
-
-        ok.then((started) async {
-          if (started) {
-            // Pause current playback to avoid double audio
-            try {
-              if (_player != null && _player!.state.playing) {
-                await _player!.pause();
-              } else if (_vlcController != null && _vlcPlaying) {
-                await _vlcController!.pause();
-              }
-            } catch (_) {}
-            if (mounted) {
-              setState(() {
-                _isPictureInPicture = true;
-              });
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Đã mở PiP ở cửa sổ riêng')),
-              );
-            }
-          } else {
-            // If failed, tear down server
-            _closePipIpc();
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Không thể mở cửa sổ PiP')),
-              );
-            }
+      if (preferExternal) {
+        // Attempt external PiP window process first
+        // Start IPC server for PiP -> main sync
+        _startPipIpcServer().then((ipc) {
+          final args = <String, dynamic>{
+            'sourceType': sourceType,
+            'source': source,
+            'fileName': widget.fileName,
+            'positionMs': positionMs,
+            'volume': volume,
+            'playing': playing,
+          };
+          if (ipc != null) {
+            args['ipcPort'] = ipc['port'];
+            args['ipcToken'] = ipc['token'];
           }
-        });
-      });
 
+          final ok = PipWindowService.openDesktopPipWindow(args);
+          ok.then((started) async {
+            if (started) {
+              // Pause current playback to avoid double audio
+              try {
+                if (_player != null && _player!.state.playing) {
+                  await _player!.pause();
+                } else if (_vlcController != null && _vlcController!.value.isPlaying) {
+                  await _vlcController!.pause();
+                }
+              } catch (_) {}
+              if (mounted) {
+                setState(() => _isPictureInPicture = true);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Đã mở PiP ở cửa sổ riêng')),
+                );
+              }
+            } else {
+              // External failed: close IPC and fallback to overlay
+              _closePipIpc();
+              _showWindowsOverlayPip(
+                context,
+                sourceType: sourceType!,
+                source: source!,
+                fileName: widget.fileName,
+                positionMs: positionMs,
+                volume: volume,
+                playing: playing,
+              );
+            }
+          });
+        });
+        return;
+      }
+
+      // Prefer overlay per user setting
+      _showWindowsOverlayPip(
+        context,
+        sourceType: sourceType!,
+        source: source!,
+        fileName: widget.fileName,
+        positionMs: positionMs,
+        volume: volume,
+        playing: playing,
+      );
       return;
     }
 

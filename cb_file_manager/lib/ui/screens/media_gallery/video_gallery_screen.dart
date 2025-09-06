@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:cb_file_manager/helpers/core/filesystem_utils.dart';
 import 'package:path/path.dart' as pathlib;
 import 'package:cb_file_manager/helpers/media/thumbnail_helper.dart';
@@ -8,6 +9,7 @@ import 'package:cb_file_manager/ui/utils/base_screen.dart';
 import 'package:cb_file_manager/ui/screens/folder_list/folder_list_state.dart';
 import 'package:cb_file_manager/ui/components/shared_action_bar.dart';
 import 'package:cb_file_manager/ui/components/video_player/video_player.dart';
+import 'package:cb_file_manager/ui/components/video_player/video_player_app_bar.dart';
 import 'package:cb_file_manager/ui/widgets/lazy_video_thumbnail.dart';
 import 'package:cb_file_manager/helpers/media/video_thumbnail_helper.dart';
 import 'package:cb_file_manager/helpers/ui/frame_timing_optimizer.dart';
@@ -1165,22 +1167,48 @@ class _VideoPlayerFullScreenState extends State<VideoPlayerFullScreen> {
   Map<String, dynamic>? _videoMetadata;
   bool _isFullScreen = false;
   bool _showAppBar = true; // Control app bar visibility
+  bool _inAndroidPip = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Hide app bar while in Android PiP so PiP captures only the video
+    final channel = MethodChannel('cb_file_manager/pip');
+    channel.setMethodCallHandler((call) async {
+      if (call.method == 'onPipChanged') {
+        final args = call.arguments;
+        bool inPip = false;
+        if (args is Map) {
+          inPip = args['inPip'] == true;
+        }
+        if (mounted) {
+          setState(() => _inAndroidPip = inPip);
+        }
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       // Use Scaffold instead of BaseScreen to have more control over app bar visibility
-      appBar: _isFullScreen && !_showAppBar
+      appBar: (_isFullScreen && !_showAppBar) || _inAndroidPip
           ? null // Hide app bar completely when in fullscreen and _showAppBar is false
-          : AppBar(
-              title: Text(pathlib.basename(widget.file.path)),
-              backgroundColor: Colors.black,
+          : VideoPlayerAppBar(
+              title: pathlib.basename(widget.file.path),
               actions: [
                 IconButton(
-                  icon: const Icon(Icons.info_outline),
+                  icon: const Icon(Icons.info_outline, color: Colors.white70),
                   onPressed: () => _showVideoInfo(context),
                 ),
               ],
+              onClose: () {
+                // Close the app completely when close button is pressed
+                exit(0);
+              },
+              showWindowControls: true,
+              blurAmount: 12.0,
+              opacity: 0.6,
             ),
       backgroundColor: Colors.black,
       body: SafeArea(

@@ -20,22 +20,52 @@ class PipWindowService {
       env[_envFlag] = '1';
       env[_envArgs] = jsonEncode(args);
 
-      // In debug, Platform.resolvedExecutable points to the engine.
-      // We forward the same executable & args to spawn a sibling process.
+      // Resolve current runner executable and use its directory as CWD.
+      // Forward only safe args (filter out debug service flags that can collide).
       final executable = Platform.resolvedExecutable;
-      final execArgs = List<String>.from(Platform.executableArguments);
+      final workingDir = File(executable).parent.path;
+      final filteredArgs = Platform.executableArguments.where((a) {
+        final al = a.toLowerCase();
+        return !(al.startsWith('--vm-service') ||
+            al.startsWith('--observatory-port') ||
+            al.startsWith('--dds-port') ||
+            al.startsWith('--devtools-server-address'));
+      }).toList(growable: false);
 
-      // Detach so the child keeps running if the parent closes.
       await Process.start(
         executable,
-        execArgs,
+        filteredArgs,
         environment: env,
+        workingDirectory: workingDir,
         mode: ProcessStartMode.detached,
       );
       return true;
     } catch (_) {
-      return false;
+      // As a fallback, try again with current executable arguments but
+      // filter out common debug flags that can cause port collisions.
+      try {
+        final executable = Platform.resolvedExecutable;
+        final workingDir = File(executable).parent.path;
+        final filteredArgs = Platform.executableArguments.where((a) {
+          final al = a.toLowerCase();
+          return !(al.startsWith('--vm-service') ||
+              al.startsWith('--observatory-port') ||
+              al.startsWith('--dds-port') ||
+              al.startsWith('--devtools-server-address'));
+        }).toList(growable: false);
+        await Process.start(
+          executable,
+          filteredArgs,
+          environment: Map<String, String>.from(Platform.environment)
+            ..[_envFlag] = '1'
+            ..[_envArgs] = jsonEncode(args),
+          workingDirectory: workingDir,
+          mode: ProcessStartMode.detached,
+        );
+        return true;
+      } catch (_) {
+        return false;
+      }
     }
   }
 }
-

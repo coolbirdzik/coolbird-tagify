@@ -7,6 +7,7 @@ import 'package:cb_file_manager/ui/utils/base_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:path/path.dart' as pathlib;
+import 'package:flutter/services.dart';
 import 'package:cb_file_manager/ui/components/video_player/video_player.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
 import 'package:cb_file_manager/ui/widgets/tag_management_section.dart';
@@ -32,11 +33,26 @@ class FileDetailsScreen extends StatefulWidget {
 class _FileDetailsScreenState extends State<FileDetailsScreen> {
   late Future<FileStat> _fileStatFuture;
   bool _videoPlayerReady = false;
+  bool _inAndroidPip = false;
 
   @override
   void initState() {
     super.initState();
     _fileStatFuture = widget.file.stat();
+    // Listen PiP changes to hide BaseScreen AppBar when in PiP
+    final channel = MethodChannel('cb_file_manager/pip');
+    channel.setMethodCallHandler((call) async {
+      if (call.method == 'onPipChanged') {
+        final args = call.arguments;
+        bool inPip = false;
+        if (args is Map) {
+          inPip = args['inPip'] == true;
+        }
+        if (mounted) {
+          setState(() => _inAndroidPip = inPip);
+        }
+      }
+    });
 
     // Set initial tab if specified
     if (widget.initialTab > 0) {
@@ -74,16 +90,19 @@ class _FileDetailsScreenState extends State<FileDetailsScreen> {
         isDarkMode ? Colors.grey[400]! : Colors.grey[700]!;
 
     return BaseScreen(
-      title: localizations.properties,
+      title: _inAndroidPip ? '' : localizations.properties,
+      showAppBar: !_inAndroidPip,
       actions: [
-        IconButton(
+        if (!_inAndroidPip)
+          IconButton(
           icon: const Icon(EvaIcons.externalLinkOutline),
           tooltip: localizations.openWith,
           onPressed: () {
             _showOpenWithDialog();
           },
         ),
-        IconButton(
+        if (!_inAndroidPip)
+          IconButton(
           icon: const Icon(EvaIcons.shareOutline),
           onPressed: () {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -94,6 +113,7 @@ class _FileDetailsScreenState extends State<FileDetailsScreen> {
           },
         ),
       ],
+      // When in PiP, avoid extra paddings/margins that could be captured.
       body: Container(
         color: bgColor,
         child: SingleChildScrollView(

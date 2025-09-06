@@ -21,52 +21,31 @@ class _VideoPlayerDialogState extends State<VideoPlayerDialog> {
   Widget build(BuildContext context) {
     return Dialog(
       backgroundColor: Colors.black,
-      insetPadding: _isFullScreen
-          ? EdgeInsets.zero
-          : const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Text(
-                    widget.videoFile.path.split('/').last,
-                    style: const TextStyle(color: Colors.white),
-                    overflow: TextOverflow.ellipsis,
-                  ),
+      insetPadding: EdgeInsets.zero,
+      child: ClipRRect(
+        borderRadius: BorderRadius.zero,
+        child: SizedBox(
+          width: MediaQuery.of(context).size.width,
+          height: MediaQuery.of(context).size.height,
+          child: VideoPlayer.file(
+            file: widget.videoFile,
+            showControls: true,
+            allowFullScreen: true,
+            allowMuting: true,
+            onFullScreenChanged: () {
+              setState(() {
+                _isFullScreen = !_isFullScreen;
+              });
+            },
+            onError: (errorMessage) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Error playing video: $errorMessage'),
                 ),
-                IconButton(
-                  icon: const Icon(Icons.close, color: Colors.white),
-                  onPressed: () => Navigator.of(context).pop(),
-                ),
-              ],
-            ),
+              );
+            },
           ),
-          Flexible(
-            child: VideoPlayer.file(
-              file: widget.videoFile,
-              showControls: true,
-              allowFullScreen: true,
-              allowMuting: true,
-              onFullScreenChanged: () {
-                setState(() {
-                  _isFullScreen = !_isFullScreen;
-                });
-              },
-              onError: (errorMessage) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Error playing video: $errorMessage'),
-                  ),
-                );
-              },
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }

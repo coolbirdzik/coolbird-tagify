@@ -265,6 +265,17 @@ Win32Window::MessageHandler(HWND hwnd,
 {
   switch (message)
   {
+  case WM_ERASEBKGND:
+  {
+    // Paint background black to avoid white flash before Flutter draws.
+    HDC hdc = reinterpret_cast<HDC>(wparam);
+    RECT rc;
+    GetClientRect(hwnd, &rc);
+    HBRUSH brush = reinterpret_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
+    FillRect(hdc, &rc, brush);
+    return 1; // Non-zero to indicate background erased.
+  }
+
   case WM_DESTROY:
     window_handle_ = nullptr;
     Destroy();

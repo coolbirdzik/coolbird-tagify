@@ -5,6 +5,7 @@ import 'package:eva_icons_flutter/eva_icons_flutter.dart';
 import 'package:cb_file_manager/config/app_theme.dart'; // Import app theme
 import 'package:window_manager/window_manager.dart'; // Import window_manager
 import 'dart:io'; // Import dart:io for Platform check
+import 'package:cb_file_manager/ui/components/window_caption_buttons.dart';
 
 /// A custom TabBar wrapper that translates vertical mouse wheel scrolling
 /// to horizontal scrolling of the tab bar, with modern styling.
@@ -71,43 +72,8 @@ class _ScrollableTabBarState extends State<ScrollableTabBar> {
         ? theme.colorScheme.surface.withAlpha((0.8 * 255).round())
         : theme.colorScheme.surface.withAlpha((0.8 * 255).round());
 
-    Widget windowCaptionButtons = Platform.isWindows
-        ? Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Add a small spacer to avoid buttons being too close to the tabs or window edge
-              const SizedBox(width: 8),
-              _WindowCaptionButton(
-                icon: EvaIcons.minus,
-                onPressed: () async => await windowManager.minimize(),
-                tooltip: 'Minimize',
-                theme: theme,
-              ),
-              _WindowCaptionButton(
-                // Icon and tooltip will be updated by its state
-                icon: EvaIcons.squareOutline,
-                onPressed: () async {
-                  bool isMaximized = await windowManager.isMaximized();
-                  if (isMaximized) {
-                    await windowManager.unmaximize();
-                  } else {
-                    await windowManager.maximize();
-                  }
-                },
-                tooltip: 'Maximize',
-                theme: theme,
-              ),
-              _WindowCaptionButton(
-                icon: EvaIcons.close,
-                onPressed: () async => await windowManager.close(),
-                tooltip: 'Close',
-                isCloseButton: true,
-                theme: theme,
-              ),
-              const SizedBox(width: 6), // Consistent with previous spacing
-            ],
-          )
-        : const SizedBox.shrink(); // Use SizedBox.shrink for non-Windows
+    Widget windowCaptionButtons =
+        Platform.isWindows ? WindowCaptionButtons(theme: theme) : const SizedBox.shrink();
 
     // Main container for the entire bar
     return Container(
@@ -655,134 +621,3 @@ class _OptimizedButtonInteractionState
 }
 
 // New widget for window caption buttons
-class _WindowCaptionButton extends StatefulWidget {
-  final IconData icon;
-  final VoidCallback onPressed;
-  final String tooltip;
-  final bool isCloseButton;
-  final ThemeData theme;
-
-  const _WindowCaptionButton({
-    Key? key,
-    required this.icon,
-    required this.onPressed,
-    required this.tooltip,
-    this.isCloseButton = false,
-    required this.theme,
-  }) : super(key: key);
-
-  @override
-  State<_WindowCaptionButton> createState() => _WindowCaptionButtonState();
-}
-
-class _WindowCaptionButtonState extends State<_WindowCaptionButton> {
-  bool _isHovered = false;
-  IconData? _currentMaximizeIcon;
-  String? _currentMaximizeTooltip;
-  _MyWindowListener? _windowListener;
-
-  @override
-  void initState() {
-    super.initState();
-    // Listen to window state changes only for the maximize/restore button
-    if (widget.tooltip == 'Maximize' || widget.tooltip == 'Restore') {
-      _windowListener =
-          _MyWindowListener(onWindowStateChange: _updateMaximizeButtonVisuals);
-      windowManager.addListener(_windowListener!);
-      _updateMaximizeButtonVisuals(); // Initial check
-    }
-  }
-
-  @override
-  void dispose() {
-    if (_windowListener != null) {
-      windowManager.removeListener(_windowListener!);
-    }
-    super.dispose();
-  }
-
-  Future<void> _updateMaximizeButtonVisuals() async {
-    if (!mounted) return;
-    bool isMaximized = await windowManager.isMaximized();
-    setState(() {
-      _currentMaximizeIcon =
-          isMaximized ? EvaIcons.collapseOutline : EvaIcons.expandOutline;
-      _currentMaximizeTooltip = isMaximized ? 'Restore' : 'Maximize';
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isDarkMode = widget.theme.brightness == Brightness.dark;
-    final iconColor = isDarkMode ? Colors.white70 : Colors.black54;
-    final hoverBackgroundColor = widget.isCloseButton
-        ? Colors.red.withAlpha((0.9 * 255).round())
-        : (isDarkMode
-            ? Colors.white.withAlpha((0.1 * 255).round())
-            : Colors.black.withAlpha((0.08 * 255).round()));
-    final hoverIconColor = widget.isCloseButton
-        ? Colors.white
-        : (isDarkMode ? Colors.white : Colors.black);
-
-    return Tooltip(
-      message: _currentMaximizeTooltip ?? widget.tooltip,
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        onEnter: (_) => setState(() => _isHovered = true),
-        onExit: (_) => setState(() => _isHovered = false),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: () {
-              HapticFeedback.lightImpact();
-              widget.onPressed();
-            },
-            // Optimize for immediate response
-            splashColor: Colors.transparent,
-            highlightColor: Colors.transparent,
-            hoverColor: Colors.transparent,
-            enableFeedback: false,
-            borderRadius: BorderRadius.circular(4),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-              decoration: BoxDecoration(
-                color: _isHovered ? hoverBackgroundColor : Colors.transparent,
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Icon(
-                _currentMaximizeIcon ?? widget.icon,
-                size: 18,
-                color: _isHovered ? hoverIconColor : iconColor,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// Define a class that extends WindowListener
-class _MyWindowListener extends WindowListener {
-  final VoidCallback onWindowStateChange;
-
-  _MyWindowListener({required this.onWindowStateChange});
-
-  @override
-  void onWindowMaximize() {
-    onWindowStateChange();
-  }
-
-  @override
-  void onWindowUnmaximize() {
-    onWindowStateChange();
-  }
-
-  @override
-  void onWindowRestore() {
-    onWindowStateChange();
-  }
-  // You can override other methods if needed:
-  // onWindowFocus, onWindowBlur, onWindowMove, onWindowResize,
-  // onWindowMinimize, onWindowEnterFullScreen, onWindowLeaveFullScreen, onWindowClose
-}

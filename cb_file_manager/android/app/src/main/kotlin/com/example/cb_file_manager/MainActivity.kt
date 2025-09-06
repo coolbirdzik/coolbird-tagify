@@ -3,6 +3,7 @@ package com.example.cb_file_manager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.drawable.BitmapDrawable
@@ -19,10 +20,24 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import com.coolbird.cb_file_manager.MemoryManagementPlugin
 
+// Media3 / ExoPlayer for native PiP playback
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
+import android.view.View
+import android.view.ViewGroup
+import android.widget.FrameLayout
+
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "cb_file_manager/external_apps"
     private val PIP_CHANNEL = "cb_file_manager/pip"
     private lateinit var pipChannel: MethodChannel
+
+    // Native PiP player (Media3 ExoPlayer)
+    private var pipPlayer: ExoPlayer? = null
+    private var pipPlayerView: PlayerView? = null
+    private var pipPrepared: Boolean = false
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -60,6 +75,21 @@ class MainActivity : FlutterActivity() {
                     try {
                         val width = (call.argument<Int>("width") ?: 16).coerceAtLeast(1)
                         val height = (call.argument<Int>("height") ?: 9).coerceAtLeast(1)
+
+                        // Optional: source info to prepare native player
+                        val sourceType = call.argument<String>("sourceType")
+                        val source = call.argument<String>("source")
+                        val positionMs = call.argument<Int>("positionMs")
+                        val playing = call.argument<Boolean>("playing") ?: true
+                        val volume = call.argument<Double>("volume")?.toFloat()
+
+                        if (source != null && source.isNotEmpty()) {
+                            try {
+                                prepareNativePip(sourceType ?: "file", source, positionMs, playing, volume)
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
+                        }
                         enterPipModeSafe(width, height)
                         result.success(true)
                     } catch (e: Exception) {
@@ -74,11 +104,40 @@ class MainActivity : FlutterActivity() {
 
     override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode)
-        // Notify Flutter to toggle compact UI in PiP
+        // Toggle native overlay visibility and notify Flutter
+        showNativePipView(isInPictureInPictureMode)
         try {
             if (this::pipChannel.isInitialized) {
                 val payload: MutableMap<String, Any> = HashMap()
                 payload["inPip"] = isInPictureInPictureMode
+                pipPlayer?.let { p ->
+                    try {
+                        payload["positionMs"] = p.currentPosition.toInt()
+                        payload["playing"] = p.isPlaying
+                        payload["volume"] = p.volume.toDouble()
+                    } catch (_: Throwable) {}
+                }
+                pipChannel.invokeMethod("onPipChanged", payload)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        showNativePipView(isInPictureInPictureMode)
+        try {
+            if (this::pipChannel.isInitialized) {
+                val payload: MutableMap<String, Any> = HashMap()
+                payload["inPip"] = isInPictureInPictureMode
+                pipPlayer?.let { p ->
+                    try {
+                        payload["positionMs"] = p.currentPosition.toInt()
+                        payload["playing"] = p.isPlaying
+                        payload["volume"] = p.volume.toDouble()
+                    } catch (_: Throwable) {}
+                }
                 pipChannel.invokeMethod("onPipChanged", payload)
             }
         } catch (e: Exception) {
@@ -88,22 +147,91 @@ class MainActivity : FlutterActivity() {
 
     private fun enterPipModeSafe(width: Int, height: Int) {
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                val ratio = Rational(width, height)
-                val builder = PictureInPictureParams.Builder()
-                    .setAspectRatio(ratio)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    try { builder.setSeamlessResizeEnabled(true) } catch (_: Throwable) {}
-                }
-                val params = builder.build()
-                enterPictureInPictureMode(params)
-            } else {
-                @Suppress("DEPRECATION")
-                enterPictureInPictureMode()
+            // Check if PiP is supported
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+                throw Exception("PiP requires Android 8.0 (API 26) or higher")
             }
+
+            // Check if PiP is enabled in system settings
+            if (!packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_PICTURE_IN_PICTURE)) {
+                throw Exception("PiP is not supported on this device")
+            }
+
+            // Validate dimensions
+            val validWidth = width.coerceAtLeast(1).coerceAtMost(10000)
+            val validHeight = height.coerceAtLeast(1).coerceAtMost(10000)
+            
+            val ratio = Rational(validWidth, validHeight)
+            val builder = PictureInPictureParams.Builder()
+                .setAspectRatio(ratio)
+            
+            // Enable seamless resize on Android 12+ (API 31+)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                try { 
+                    builder.setSeamlessResizeEnabled(true) 
+                } catch (_: Throwable) {
+                    // Ignore if not supported
+                }
+            }
+            
+            val params = builder.build()
+
+            // Show native player view above Flutter content while in PiP
+            showNativePipView(true)
+            enterPictureInPictureMode(params)
+            
         } catch (e: Exception) {
             e.printStackTrace()
+            // Log the error for debugging
+            android.util.Log.e("MainActivity", "PiP error: ${e.message}", e)
+            throw e
         }
+    }
+
+    private fun ensureNativePipComponents() {
+        if (pipPlayer == null) {
+            pipPlayer = ExoPlayer.Builder(this).build()
+        }
+        if (pipPlayerView == null) {
+            pipPlayerView = PlayerView(this).apply {
+                useController = false
+                player = pipPlayer
+                layoutParams = FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+                visibility = View.GONE
+            }
+            addContentView(pipPlayerView, pipPlayerView!!.layoutParams)
+        }
+    }
+
+    private fun showNativePipView(visible: Boolean) {
+        ensureNativePipComponents()
+        pipPlayerView?.visibility = if (visible) View.VISIBLE else View.GONE
+        if (!visible) {
+            // Pause when leaving PiP
+            try { pipPlayer?.playWhenReady = false } catch (_: Throwable) {}
+        }
+    }
+
+    private fun prepareNativePip(type: String, source: String, positionMs: Int?, play: Boolean, volume: Float?) {
+        ensureNativePipComponents()
+        val uri: Uri = if (type == "file") {
+            val f = File(source)
+            Uri.fromFile(f)
+        } else {
+            Uri.parse(source)
+        }
+        pipPlayer?.setMediaItem(MediaItem.fromUri(uri))
+        pipPlayer?.prepare()
+        if (positionMs != null && positionMs > 0) {
+            try { pipPlayer?.seekTo(positionMs.toLong()) } catch (_: Throwable) {}
+        }
+        if (volume != null) {
+            try { pipPlayer?.volume = volume.coerceIn(0f, 1f) } catch (_: Throwable) {}
+        }
+        pipPlayer?.playWhenReady = play
     }
 
     private fun getInstalledAppsForFile(filePath: String, extension: String): List<Map<String, Any>> {

@@ -48,12 +48,13 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   project.set_dart_entrypoint_arguments(std::move(command_line_arguments));
 
   FlutterWindow window(project);
-  
+
   // Detect PiP mode via environment variable set by Dart side
   bool pip_mode = false;
   wchar_t pipBuf[8];
   DWORD pipLen = GetEnvironmentVariableW(L"CB_PIP_MODE", pipBuf, 8);
-  if (pipLen > 0 && pipBuf[0] == L'1') {
+  if (pipLen > 0 && pipBuf[0] == L'1')
+  {
     pip_mode = true;
   }
 
@@ -61,10 +62,13 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   Win32Window::Point origin(0, 0);
   Win32Window::Size size(0, 0);
 
-  if (pip_mode) {
+  if (pip_mode)
+  {
     // Small initial window for PiP; will be adjusted by window_manager later
     size = Win32Window::Size(384, 216);
-  } else {
+  }
+  else
+  {
     // Get work area dimensions (respects taskbar and title bar)
     int screenWidth = 0;
     int screenHeight = 0;
@@ -72,15 +76,20 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
     size = Win32Window::Size(screenWidth, screenHeight);
   }
 
-  if (!window.Create(L"CoolBird Tagify - File Manager", origin, size)) {
+  if (!window.Create(L"CoolBird Tagify - File Manager", origin, size))
+  {
     return EXIT_FAILURE;
   }
   window.SetQuitOnClose(true);
 
-  if (pip_mode) {
-    // Show as a normal window; the Dart side will set always-on-top & focus
+  if (pip_mode)
+  {
+    // Show the window immediately in PiP mode (non-maximized).
+    // Background is forced black in Win32 to avoid white flash.
     window.Show();
-  } else {
+  }
+  else
+  {
     // Use ShowMaximized to properly maximize the window for the main app
     window.ShowMaximized();
   }

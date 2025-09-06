@@ -6,6 +6,8 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../../helpers/core/user_preferences.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 class DesktopPipWindow extends StatefulWidget {
   final Map<String, dynamic> args;
@@ -26,6 +28,18 @@ class _DesktopPipWindowState extends State<DesktopPipWindow>
   int? _videoW;
   int? _videoH;
   bool _initialAspectApplied = false;
+  // Throttle aspect ratio updates to avoid jank when stream starts
+  Timer? _aspectDebounce;
+  double? _lastAspect;
+  bool _firstFrameReady = false;
+  bool _readyToShow = false;
+  bool _windowShown = false;
+  Timer? _firstFrameGuard;
+  Timer? _fallbackDecodeGuard;
+
+  // Playback performance settings (loaded from UserPreferences)
+  bool _hardwareAcceleration = true;
+  int _bufferSizeMB = 10;
 
   // Overlay controls
   bool _showOverlay = true;
@@ -42,6 +56,7 @@ class _DesktopPipWindowState extends State<DesktopPipWindow>
   Socket? _ipc;
   String? _ipcToken;
   int? _ipcPort;
+  String? _openError;
 
   @override
   void initState() {
@@ -62,8 +77,10 @@ class _DesktopPipWindowState extends State<DesktopPipWindow>
 
     const Size defaultSize = Size(384, 216); // 16:9, reasonably sized
     const Size minSize = Size(240, 135); // 16:9, small but usable
-    final Size initialSize = (savedW != null && savedH != null &&
-            savedW >= minSize.width && savedH >= minSize.height)
+    final Size initialSize = (savedW != null &&
+            savedH != null &&
+            savedW >= minSize.width &&
+            savedH >= minSize.height)
         ? Size(savedW, savedH)
         : defaultSize;
 
@@ -71,8 +88,9 @@ class _DesktopPipWindowState extends State<DesktopPipWindow>
       size: initialSize,
       minimumSize: minSize,
       center: true,
-      backgroundColor: Colors.transparent,
+      backgroundColor: Colors.black,
       skipTaskbar: false,
+      // Hide native title bar & frame for a clean PiP look.
       titleBarStyle: TitleBarStyle.hidden,
     );
     await windowManager.waitUntilReadyToShow(options);
@@ -84,18 +102,56 @@ class _DesktopPipWindowState extends State<DesktopPipWindow>
       // If not supported on a platform/version, just continue without it.
     }
     await windowManager.setAlwaysOnTop(true);
-    await windowManager.show();
-    await windowManager.focus();
+    // Show the window early so video backends can create rendering surfaces
+    // reliably on Windows before the first frame.
+    _readyToShow = true;
+    try {
+      await windowManager.show();
+    } catch (_) {}
 
     final title = (widget.args['fileName'] as String?) ?? 'PiP';
     // setTitle is safe even with hidden title bar
     await windowManager.setTitle('PiP - $title');
+
+    // Safety fallback: if first frame detection doesn't trigger (e.g., paused
+    // at start or backend delays), make sure the window still becomes visible.
+    // We'll still fade in from black, so UX remains acceptable.
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (mounted && !_windowShown) {
+        _showWindowIfReady(force: true);
+      }
+    });
   }
 
   Future<void> _initPlayer() async {
     MediaKit.ensureInitialized();
-    _player = Player();
-    _controller = VideoController(_player!);
+    // Load video performance settings from UserPreferences if available
+    try {
+      final prefs = UserPreferences.instance;
+      await prefs.init();
+      _hardwareAcceleration = await prefs.getVideoPlayerBool(
+              'hardware_acceleration',
+              defaultValue: !Platform.isWindows) ??
+          !Platform.isWindows;
+      _bufferSizeMB =
+          await prefs.getVideoPlayerInt('buffer_size', defaultValue: 10) ?? 10;
+    } catch (_) {
+      // Fallback to defaults if preferences are unavailable in PiP process
+      _hardwareAcceleration = !Platform.isWindows;
+      _bufferSizeMB = 10;
+    }
+
+    _player = Player(
+      configuration: PlayerConfiguration(
+        bufferSize: (_bufferSizeMB > 0 ? _bufferSizeMB : 10) * 1024 * 1024,
+      ),
+    );
+    _controller = VideoController(
+      _player!,
+      configuration: VideoControllerConfiguration(
+        enableHardwareAcceleration: _hardwareAcceleration,
+      ),
+    );
 
     final type = (widget.args['sourceType'] as String?) ?? 'url';
     final src = (widget.args['source'] as String?) ?? '';
@@ -106,25 +162,34 @@ class _DesktopPipWindowState extends State<DesktopPipWindow>
         : (widget.args['playing'] == true);
 
     String openSrc = src;
-    if (type == 'smb' && Platform.isWindows) {
-      openSrc = _normalizeToFileUri(_smbToUnc(src));
+    if (Platform.isWindows) {
+      if (type == 'smb') {
+        openSrc = _normalizeToFileUri(_smbToUnc(src));
+      } else if (type == 'file') {
+        // Use explicit file:// URI to avoid edge-cases with backslashes.
+        openSrc = _normalizeToFileUri(src);
+      }
     }
 
-    await _player!.open(Media(openSrc));
-    // Ensure stable state before applying initial seek & volume
     try {
-      await _player!.pause();
-    } catch (_) {}
-    // Wait briefly until player reports a valid duration (if available)
-    await _waitForReady();
+      debugPrint('[PiP] Opening source type=$type src=$openSrc');
+      await _player!.open(Media(openSrc));
+    } catch (e) {
+      debugPrint('[PiP] Failed to open media: $e');
+      if (mounted) setState(() => _openError = '$e');
+    }
     // Listen for video dimension updates to keep window aspect ratio in sync.
     _videoWSub = _player!.stream.width.listen((w) {
       _videoW = w;
+      // debugPrint('[PiP] video width: $w');
       _maybeApplyVideoAspectRatio();
+      _checkFirstFrameReady();
     });
     _videoHSub = _player!.stream.height.listen((h) {
       _videoH = h;
+      // debugPrint('[PiP] video height: $h');
       _maybeApplyVideoAspectRatio();
+      _checkFirstFrameReady();
     });
     // Listen for playback position & duration for seekbar updates.
     _posSub = _player!.stream.position.listen((p) {
@@ -137,15 +202,18 @@ class _DesktopPipWindowState extends State<DesktopPipWindow>
       _tryApplyInitialSeek();
     });
     _pendingInitialSeekMs = positionMs > 0 ? positionMs : null;
-    await _tryApplyInitialSeek(forceAwait: true);
+    // Apply seek asynchronously to avoid delaying first frame
+    unawaited(_tryApplyInitialSeek());
     if (initialVolume != null) {
       try {
         await _player!.setVolume(initialVolume.clamp(0.0, 100.0));
       } catch (_) {}
     }
+    // Start playback immediately if requested to get first frame sooner
     try {
       if (shouldPlay) {
         await _player!.play();
+        _armFirstFrameGuard();
       } else {
         await _player!.pause();
       }
@@ -155,6 +223,31 @@ class _DesktopPipWindowState extends State<DesktopPipWindow>
         _isPlaying = shouldPlay;
       });
     }
+    // In case we already have a frame ready by now, ensure window shows.
+    _showWindowIfReady();
+
+    // If the first frame still doesn't arrive after a short delay, retry with
+    // software decoding (disable hardware acceleration) which can help on some
+    // Windows GPU/driver setups.
+    _fallbackDecodeGuard?.cancel();
+    _fallbackDecodeGuard = Timer(const Duration(seconds: 2), () async {
+      if (!mounted || _firstFrameReady || !_hardwareAcceleration) return;
+      try {
+        // Recreate controller with hardware acceleration disabled
+        _controller = VideoController(
+          _player!,
+          configuration: const VideoControllerConfiguration(
+            enableHardwareAcceleration: false,
+          ),
+        );
+        setState(() {});
+        // Give it another short window to produce a frame
+        _armFirstFrameGuard();
+        Future.delayed(const Duration(seconds: 1), () {
+          _showWindowIfReady(force: true);
+        });
+      } catch (_) {}
+    });
   }
 
   Future<void> _tryApplyInitialSeek({bool forceAwait = false}) async {
@@ -172,6 +265,7 @@ class _DesktopPipWindowState extends State<DesktopPipWindow>
         _initialSyncApplied = true;
       } catch (_) {}
     }
+
     if (forceAwait) {
       await doSeek();
     } else {
@@ -179,7 +273,8 @@ class _DesktopPipWindowState extends State<DesktopPipWindow>
     }
   }
 
-  Future<void> _waitForReady({Duration timeout = const Duration(seconds: 2)}) async {
+  Future<void> _waitForReady(
+      {Duration timeout = const Duration(seconds: 2)}) async {
     try {
       // If already has duration, return quickly
       if (_player?.state.duration.inMilliseconds != 0) return;
@@ -198,6 +293,7 @@ class _DesktopPipWindowState extends State<DesktopPipWindow>
   void dispose() {
     windowManager.removeListener(this);
     _saveDebounce?.cancel();
+    _firstFrameGuard?.cancel();
     _videoWSub?.cancel();
     _videoHSub?.cancel();
     _posSub?.cancel();
@@ -205,6 +301,7 @@ class _DesktopPipWindowState extends State<DesktopPipWindow>
     _overlayHideTimer?.cancel();
     _controller = null;
     _player?.dispose();
+    _fallbackDecodeGuard?.cancel();
     // Best-effort send final state
     _sendState(closing: true);
     try {
@@ -215,89 +312,242 @@ class _DesktopPipWindowState extends State<DesktopPipWindow>
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      home: Scaffold(
-        backgroundColor: Colors.black,
-        body: Listener(
-          onPointerHover: (_) => _bumpOverlay(),
-          onPointerMove: (_) => _bumpOverlay(),
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: _toggleOverlay,
-            onPanStart: (_) async {
-              // Click-hold and move to drag the window (outside overlay interactions)
-              try {
-                await windowManager.startDragging();
-              } catch (_) {}
-            },
-            child: Stack(
-              children: [
-                if (_controller != null)
-                  Positioned.fill(
+    final content = Listener(
+      onPointerHover: (_) => _bumpOverlay(),
+      onPointerMove: (_) => _bumpOverlay(),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: _toggleOverlay,
+        onPanStart: (details) async {
+          // Always allow window dragging, but check if we're over interactive elements
+          // when overlay is visible
+          if (_showOverlay) {
+            // Check if the tap is over interactive elements (top bar or bottom controls)
+            final RenderBox? renderBox =
+                context.findRenderObject() as RenderBox?;
+            if (renderBox != null) {
+              final localPosition =
+                  renderBox.globalToLocal(details.globalPosition);
+              final size = renderBox.size;
+
+              // Top bar area (first 36 pixels)
+              final topBarRect = Rect.fromLTWH(0, 0, size.width, 36);
+              // Bottom controls area (last 60 pixels)
+              final bottomControlsRect =
+                  Rect.fromLTWH(0, size.height - 60, size.width, 60);
+
+              // If tap is in interactive areas, don't start dragging
+              if (topBarRect.contains(localPosition) ||
+                  bottomControlsRect.contains(localPosition)) {
+                return;
+              }
+            }
+          }
+
+          // Start window dragging
+          try {
+            await windowManager.startDragging();
+          } catch (_) {}
+        },
+        child: Directionality(
+          textDirection: TextDirection.ltr,
+          child: Stack(
+            children: [
+              // Solid black background
+              const Positioned.fill(child: ColoredBox(color: Colors.black)),
+
+              // Render the video as soon as the controller exists.
+              // Keep a loading indicator over it until first frame is detected.
+              if (_controller != null)
+                Positioned.fill(
+                  child: RepaintBoundary(
                     child: Video(
                       controller: _controller!,
                       controls: NoVideoControls,
                       fill: Colors.black,
                     ),
-                  )
-                else
-                  const Center(child: CircularProgressIndicator()),
-
-                // Top-right quick buttons
-                Positioned(
-                  right: 8,
-                  top: 8,
-                  child: AnimatedOpacity(
-                    opacity: _showOverlay ? 1 : 0,
-                    duration: const Duration(milliseconds: 150),
-                    child: Row(
-                      children: [
-                _circleButton(
-                  icon: _isPlaying ? Icons.pause : Icons.play_arrow,
-                  onTap: () async {
-                    if (_player == null) return;
-                          if (_player!.state.playing) {
-                            await _player!.pause();
-                            setState(() => _isPlaying = false);
-                          } else {
-                            await _player!.play();
-                            setState(() => _isPlaying = true);
-                          }
-                  },
+                  ),
                 ),
-                        const SizedBox(width: 8),
-                        _circleButton(
-                          icon: Icons.close,
-                          onTap: () async {
-                            try {
-                              await windowManager.close();
-                            } catch (_) {
-                              if (context.mounted) {
-                                Navigator.of(context).maybePop();
-                              }
-                            }
-                          },
-                        ),
-                      ],
+
+              // Minimal loader until first frame
+              if (!_firstFrameReady)
+                const Center(
+                  child: SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.white60),
+                  ),
+                ),
+
+              // If there is an opening error, show it as a small banner.
+              if (_openError != null)
+                Positioned(
+                  left: 8,
+                  right: 8,
+                  bottom: _showOverlay ? 48 : 8,
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withOpacity(0.85),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      'Lỗi mở video: ${_openError}',
+                      style: const TextStyle(color: Colors.white, fontSize: 12),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 3,
                     ),
                   ),
                 ),
 
-                // Bottom overlay controls: seek & volume
+              // Overlay controls: build only when needed to minimize init cost
+              if (_showOverlay)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  top: 0,
+                  child: Material(
+                    type: MaterialType.transparency,
+                    child: _buildTopBar(context),
+                  ),
+                ),
+              if (_showOverlay)
                 Positioned(
                   left: 0,
                   right: 0,
                   bottom: 0,
-                  child: AnimatedOpacity(
-                    opacity: _showOverlay ? 1 : 0,
-                    duration: const Duration(milliseconds: 150),
+                  child: Material(
+                    type: MaterialType.transparency,
                     child: _buildBottomControls(context),
                   ),
                 ),
-              ],
-            ),
+
+              // Bottom-right resize handle for frameless window.
+              if (_showOverlay)
+                Positioned(
+                  right: 4,
+                  bottom: 4,
+                  child: MouseRegion(
+                    cursor: SystemMouseCursors.resizeUpLeftDownRight,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onPanStart: (_) async {
+                        try {
+                          await windowManager
+                              .startResizing(ResizeEdge.bottomRight);
+                        } catch (_) {}
+                      },
+                      child: Container(
+                        width: 16,
+                        height: 16,
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.35),
+                          borderRadius: BorderRadius.circular(3),
+                          border: Border.all(color: Colors.white24, width: 1),
+                        ),
+                        child: const Icon(
+                          Icons.open_in_full,
+                          size: 12,
+                          color: Colors.white70,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
           ),
+        ),
+      ),
+    );
+
+    final mq = MediaQuery.maybeOf(context) ??
+        MediaQueryData.fromView(
+            WidgetsBinding.instance.platformDispatcher.views.first);
+    final locale = WidgetsBinding.instance.platformDispatcher.locale;
+    return MediaQuery(
+      data: mq,
+      child: Localizations(
+        locale: locale,
+        delegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        child: Theme(
+          data:
+              ThemeData.dark().copyWith(scaffoldBackgroundColor: Colors.black),
+          child: Material(color: Colors.black, child: content),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTopBar(BuildContext context) {
+    final title = (widget.args['fileName'] as String?) ?? 'PiP';
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onPanStart: (_) async {
+        try {
+          await windowManager.startDragging();
+        } catch (_) {}
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        height: 36,
+        decoration: BoxDecoration(color: Colors.black.withOpacity(0.66)),
+        child: Row(
+          children: [
+            const SizedBox(width: 4),
+            const Icon(Icons.picture_in_picture_alt,
+                color: Colors.white70, size: 16),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600),
+              ),
+            ),
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+              icon: Icon(_isPlaying ? Icons.pause : Icons.play_arrow,
+                  color: Colors.white, size: 18),
+              onPressed: () async {
+                if (_player == null) return;
+                if (_player!.state.playing) {
+                  await _player!.pause();
+                  setState(() => _isPlaying = false);
+                } else {
+                  await _player!.play();
+                  setState(() => _isPlaying = true);
+                }
+              },
+            ),
+            const SizedBox(width: 4),
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+              icon: const Icon(Icons.close, color: Colors.white, size: 18),
+              onPressed: () async {
+                try {
+                  await windowManager.close();
+                } catch (_) {
+                  if (context.mounted) {
+                    Navigator.of(context).maybePop();
+                  }
+                }
+              },
+            ),
+          ],
         ),
       ),
     );
@@ -338,40 +588,61 @@ class _DesktopPipWindowState extends State<DesktopPipWindow>
     final w = _videoW;
     final h = _videoH;
     if (w != null && h != null && w > 0 && h > 0) {
-      try {
-        final ratio = w / h;
-        await windowManager.setAspectRatio(ratio);
-
-        // Adjust window size once to match video aspect ratio for first display.
-        if (!_initialAspectApplied) {
+      // Apply aspect ratio once, then avoid updating repeatedly to reduce jank
+      final ratio = w / h;
+      if (_initialAspectApplied) return;
+      if (_lastAspect != null && (ratio - _lastAspect!).abs() < 0.005) return;
+      _lastAspect = ratio;
+      _aspectDebounce?.cancel();
+      _aspectDebounce = Timer(const Duration(milliseconds: 120), () async {
+        try {
+          await windowManager.setAspectRatio(ratio);
           _initialAspectApplied = true;
           final current = await windowManager.getSize();
           final min = const Size(240, 135);
-          final optionAWidth = current.height * ratio;
-          final optionAHeight = current.height;
-          final optionBHeight = current.width / ratio;
-          final optionBWidth = current.width;
-          final deltaA = (optionAWidth - current.width).abs();
-          final deltaB = (optionBHeight - current.height).abs();
-          double newW, newH;
-          if (deltaA <= deltaB) {
-            newW = optionAWidth;
-            newH = optionAHeight;
-          } else {
-            newW = optionBWidth;
-            newH = optionBHeight;
-          }
-          if (newW < min.width) {
-            newW = min.width;
-            newH = newW / ratio;
-          }
+          double newW = current.width;
+          double newH = newW / ratio;
           if (newH < min.height) {
             newH = min.height;
             newW = newH * ratio;
           }
           await windowManager.setSize(Size(newW, newH));
-        }
-      } catch (_) {}
+        } catch (_) {}
+      });
+    }
+  }
+
+  void _checkFirstFrameReady() {
+    if (_firstFrameReady) return;
+    final w = _videoW ?? 0;
+    final h = _videoH ?? 0;
+    if (w > 0 && h > 0) {
+      setState(() => _firstFrameReady = true);
+      _showWindowIfReady();
+      _firstFrameGuard?.cancel();
+    }
+  }
+
+  // Safety: if backend doesn't report width/height quickly, still show after a short delay
+  void _armFirstFrameGuard() {
+    _firstFrameGuard?.cancel();
+    _firstFrameGuard = Timer(const Duration(milliseconds: 300), () {
+      if (mounted && !_firstFrameReady) {
+        setState(() => _firstFrameReady = true);
+        _showWindowIfReady();
+      }
+    });
+  }
+
+  void _showWindowIfReady({bool force = false}) async {
+    if (!_readyToShow || _windowShown) return;
+    if (!force && !_firstFrameReady) return;
+    try {
+      await windowManager.show();
+      await windowManager.focus();
+      _windowShown = true;
+    } catch (_) {
+      // ignore
     }
   }
 
@@ -397,13 +668,7 @@ class _DesktopPipWindowState extends State<DesktopPipWindow>
     if (posMs > totalMs) posMs = totalMs;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Color(0x00000000), Color(0xB3000000)],
-        ),
-      ),
+      decoration: BoxDecoration(color: Colors.black.withOpacity(0.7)),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -414,7 +679,9 @@ class _DesktopPipWindowState extends State<DesktopPipWindow>
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(),
                 icon: Icon(
-                  _isPlaying ? Icons.pause_circle_filled : Icons.play_circle_fill,
+                  _isPlaying
+                      ? Icons.pause_circle_filled
+                      : Icons.play_circle_fill,
                   color: Colors.white,
                   size: 28,
                 ),
@@ -430,13 +697,15 @@ class _DesktopPipWindowState extends State<DesktopPipWindow>
                 },
               ),
               const SizedBox(width: 8),
-              Text(_formatTime(_position), style: const TextStyle(color: Colors.white70, fontSize: 12)),
+              Text(_formatTime(_position),
+                  style: const TextStyle(color: Colors.white70, fontSize: 12)),
               const SizedBox(width: 8),
               Expanded(
                 child: SliderTheme(
                   data: SliderTheme.of(context).copyWith(
                     trackHeight: 2.5,
-                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+                    thumbShape:
+                        const RoundSliderThumbShape(enabledThumbRadius: 7),
                   ),
                   child: Slider(
                     value: totalMs == 0 ? 0 : posMs.toDouble(),
@@ -446,7 +715,8 @@ class _DesktopPipWindowState extends State<DesktopPipWindow>
                     inactiveColor: Colors.white24,
                     onChangeStart: (_) => _seeking = true,
                     onChanged: (v) {
-                      setState(() => _position = Duration(milliseconds: v.toInt()));
+                      setState(
+                          () => _position = Duration(milliseconds: v.toInt()));
                     },
                     onChangeEnd: (v) async {
                       _seeking = false;
@@ -458,14 +728,16 @@ class _DesktopPipWindowState extends State<DesktopPipWindow>
                 ),
               ),
               const SizedBox(width: 8),
-              Text(_formatTime(_duration), style: const TextStyle(color: Colors.white70, fontSize: 12)),
+              Text(_formatTime(_duration),
+                  style: const TextStyle(color: Colors.white70, fontSize: 12)),
               const SizedBox(width: 8),
               const Icon(Icons.volume_up, color: Colors.white, size: 18),
               const SizedBox(width: 4),
               SizedBox(
                 width: 90,
                 child: Slider(
-                  value: ((_player?.state.volume ?? 100).clamp(0, 100)).toDouble(),
+                  value:
+                      ((_player?.state.volume ?? 100).clamp(0, 100)).toDouble(),
                   min: 0,
                   max: 100,
                   activeColor: Colors.white,
@@ -522,17 +794,16 @@ class _DesktopPipWindowState extends State<DesktopPipWindow>
   }
 
   String _normalizeToFileUri(String path) {
-    if (Platform.isWindows) {
-      if (path.startsWith('\\\\')) {
-        final cleaned = path.replaceAll('\\', '/');
-        final withoutLeading =
-            cleaned.startsWith('//') ? cleaned.substring(2) : cleaned;
-        return 'file://$withoutLeading';
+    try {
+      if (Platform.isWindows) {
+        // Use Uri.file to handle both local and UNC paths correctly.
+        final uri = Uri.file(path, windows: true);
+        return uri.toString();
       }
-      final cleaned = path.replaceAll('\\', '/');
-      return 'file:///$cleaned';
+      return path;
+    } catch (_) {
+      return path;
     }
-    return path;
   }
 }
 
