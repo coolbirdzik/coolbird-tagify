@@ -38,6 +38,7 @@ import 'package:path/path.dart' as p;
 import 'package:cb_file_manager/helpers/network/network_thumbnail_helper.dart';
 import 'package:cb_file_manager/ui/widgets/thumbnail_loader.dart';
 import 'package:cb_file_manager/ui/utils/file_type_utils.dart';
+import 'package:cb_file_manager/ui/widgets/loading_skeleton.dart';
 import 'package:cb_file_manager/helpers/network/streaming_helper.dart';
 import 'package:cb_file_manager/ui/utils/route.dart';
 import 'package:cb_file_manager/services/network_browsing/webdav_service.dart';
@@ -131,6 +132,7 @@ class _NetworkBrowserScreenState extends State<NetworkBrowserScreen>
 
   // Flag to track if there are background thumbnail tasks
   bool _hasPendingThumbnails = false;
+  bool _hasAnyContentLoaded = false;
 
   // Subscription for thumbnail loading events
   StreamSubscription? _thumbnailLoadingSubscription;
@@ -157,7 +159,7 @@ class _NetworkBrowserScreenState extends State<NetworkBrowserScreen>
 
     // Enable hardware acceleration for smoother animations
     WidgetsBinding.instance.renderView.automaticSystemUiAdjustment = false;
-    RendererBinding.instance.ensureSemantics();
+    // Avoid forcing semantics to prevent potential render/semantics assertions
 
     // Initialize the blocs
     _networkBrowsingBloc = context.read<NetworkBrowsingBloc>();
@@ -434,8 +436,8 @@ class _NetworkBrowserScreenState extends State<NetworkBrowserScreen>
       }
     });
 
+    // Update the tab path (this will automatically handle navigation history)
     context.read<TabManagerBloc>().add(UpdateTabPath(widget.tabId, path));
-    context.read<TabManagerBloc>().add(AddToTabHistory(widget.tabId, path));
 
     _loadNetworkDirectory();
 
@@ -709,8 +711,19 @@ class _NetworkBrowserScreenState extends State<NetworkBrowserScreen>
       debugPrint("NetworkBrowserScreen: Error - ${state.errorMessage}");
     }
 
-    if (state.isLoading && state.directories == null) {
-      return const Center(child: CircularProgressIndicator());
+    final bool shouldShowSkeleton = state.isLoading ||
+        (!_hasAnyContentLoaded && !state.hasError && !state.hasContent);
+    if (shouldShowSkeleton) {
+      // Show skeleton placeholders while loading to avoid empty-state flicker
+      // Reuse the same grid/list logic as the main file view where possible
+      // For network browser, default to grid-like skeletons based on current grid zoom level if available
+      final int crossAxis = _viewMode == ViewMode.grid ? _gridZoomLevel : 2;
+      return FluentBackground.container(
+        context: context,
+        child: _viewMode == ViewMode.grid
+            ? LoadingSkeleton.grid(crossAxisCount: crossAxis, itemCount: 12)
+            : LoadingSkeleton.list(itemCount: 12),
+      );
     }
 
     if (state.hasError) {
@@ -760,6 +773,9 @@ class _NetworkBrowserScreenState extends State<NetworkBrowserScreen>
       );
     }
 
+    // Mark that we have content at least once to prevent flicker
+    _hasAnyContentLoaded = true;
+
     // Determine view mode based on user preference
     return Stack(
       clipBehavior: Clip.none,
@@ -777,15 +793,22 @@ class _NetworkBrowserScreenState extends State<NetworkBrowserScreen>
             onSecondaryTapUp: (details) {
               _showContextMenu(context, details.globalPosition, null);
             },
-            onPanStart: (details) {
-              _startDragSelection(details.localPosition);
-            },
-            onPanUpdate: (details) {
-              _updateDragSelection(details.localPosition);
-            },
-            onPanEnd: (details) {
-              _endDragSelection();
-            },
+            // Drag selection only on desktop
+            onPanStart: isDesktopPlatform
+                ? (details) {
+                    _startDragSelection(details.localPosition);
+                  }
+                : null,
+            onPanUpdate: isDesktopPlatform
+                ? (details) {
+                    _updateDragSelection(details.localPosition);
+                  }
+                : null,
+            onPanEnd: isDesktopPlatform
+                ? (details) {
+                    _endDragSelection();
+                  }
+                : null,
             behavior: HitTestBehavior.translucent,
             child: _viewMode == ViewMode.grid
                 ? _buildGridView(folders, files, selectionState)
@@ -807,10 +830,8 @@ class _NetworkBrowserScreenState extends State<NetworkBrowserScreen>
       List<FileSystemEntity> files, SelectionState selectionState) {
     return GridView.builder(
       padding: const EdgeInsets.all(8.0),
-      physics: const BouncingScrollPhysics(
-        parent: AlwaysScrollableScrollPhysics(),
-      ),
-      cacheExtent: 1000,
+      physics: const ClampingScrollPhysics(),
+      cacheExtent: 1500,
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: _gridZoomLevel,
         crossAxisSpacing: 8,
@@ -830,14 +851,21 @@ class _NetworkBrowserScreenState extends State<NetworkBrowserScreen>
           final GlobalKey itemKey = GlobalKey();
 
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            final RenderObject? renderObject =
-                itemKey.currentContext?.findRenderObject();
-            if (renderObject is RenderBox && renderObject.hasSize) {
-              final position = renderObject.localToGlobal(Offset.zero);
-              _registerItemPosition(
-                  itemPath,
-                  Rect.fromLTWH(position.dx, position.dy,
-                      renderObject.size.width, renderObject.size.height));
+            try {
+              final RenderObject? renderObject =
+                  itemKey.currentContext?.findRenderObject();
+              if (renderObject is RenderBox &&
+                  renderObject.hasSize &&
+                  renderObject.attached) {
+                final position = renderObject.localToGlobal(Offset.zero);
+                _registerItemPosition(
+                    itemPath,
+                    Rect.fromLTWH(position.dx, position.dy,
+                        renderObject.size.width, renderObject.size.height));
+              }
+            } catch (e) {
+              // Silently ignore layout errors to prevent crashes
+              debugPrint('Layout error in network browser grid view: $e');
             }
           });
 
@@ -1063,10 +1091,8 @@ class _NetworkBrowserScreenState extends State<NetworkBrowserScreen>
     return ListView.builder(
       controller: _scrollController,
       padding: const EdgeInsets.all(8.0),
-      physics: const BouncingScrollPhysics(
-        parent: AlwaysScrollableScrollPhysics(),
-      ),
-      cacheExtent: 1000,
+      physics: const ClampingScrollPhysics(),
+      cacheExtent: 800,
       itemCount: folders.length + files.length,
       itemBuilder: (context, index) {
         final String itemPath = index < folders.length
@@ -1170,10 +1196,8 @@ class _NetworkBrowserScreenState extends State<NetworkBrowserScreen>
     return ListView.builder(
       controller: _scrollController,
       padding: const EdgeInsets.all(8.0),
-      physics: const BouncingScrollPhysics(
-        parent: AlwaysScrollableScrollPhysics(),
-      ),
-      cacheExtent: 1000,
+      physics: const ClampingScrollPhysics(),
+      cacheExtent: 1200,
       itemCount: folders.length + files.length,
       itemBuilder: (context, index) {
         final String itemPath = index < folders.length

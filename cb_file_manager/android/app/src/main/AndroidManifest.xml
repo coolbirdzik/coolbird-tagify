@@ -51,6 +51,8 @@
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
+    <!-- Android 13+ notifications runtime permission -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- PiP and Foreground Service permissions -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -59,12 +61,20 @@
 
     <!-- Android 13+ granular media permissions -->
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
 
     <!-- Add storage permissions -->
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
         android:minSdkVersion="30" />
+
+    <!-- Additional permissions for better file access -->
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_MEDIA_LOCATION" />
 
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

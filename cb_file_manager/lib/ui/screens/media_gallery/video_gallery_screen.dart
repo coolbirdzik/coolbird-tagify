@@ -1190,11 +1190,14 @@ class _VideoPlayerFullScreenState extends State<VideoPlayerFullScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final bool isMobile = Platform.isAndroid || Platform.isIOS;
     return Scaffold(
-      // Use Scaffold instead of BaseScreen to have more control over app bar visibility
-      appBar: (_isFullScreen && !_showAppBar) || _inAndroidPip
-          ? null // Hide app bar completely when in fullscreen and _showAppBar is false
-          : VideoPlayerAppBar(
+      // On mobile, avoid extra app bar since parent already has one
+      appBar: isMobile
+          ? null
+          : ((_isFullScreen && !_showAppBar) || _inAndroidPip
+              ? null // Hide app bar completely when in fullscreen and _showAppBar is false
+              : VideoPlayerAppBar(
               title: pathlib.basename(widget.file.path),
               actions: [
                 IconButton(
@@ -1209,7 +1212,7 @@ class _VideoPlayerFullScreenState extends State<VideoPlayerFullScreen> {
               showWindowControls: true,
               blurAmount: 12.0,
               opacity: 0.6,
-            ),
+            )),
       backgroundColor: Colors.black,
       body: SafeArea(
         child: Center(

@@ -236,7 +236,8 @@ class _CBDrawerState extends State<CBDrawer> {
                           if (!widget.isPinned) {
                             RouteUtils.safePopDialog(context);
                           }
-                          _showSettingsDialog(context);
+                          // Use parent context to avoid using a disposed context after closing the drawer
+                          _showSettingsDialog(widget.parentContext);
                         },
                       ),
 
@@ -249,7 +250,8 @@ class _CBDrawerState extends State<CBDrawer> {
                           if (!widget.isPinned) {
                             RouteUtils.safePopDialog(context);
                           }
-                          _showAboutDialog(context);
+                          // Use parent context to avoid using a disposed context after closing the drawer
+                          _showAboutDialog(widget.parentContext);
                         },
                       ),
                     ],
@@ -591,10 +593,7 @@ class _CBDrawerState extends State<CBDrawer> {
       // Lấy tab hiện tại và cập nhật đường dẫn
       final activeTab = tabBloc.state.activeTab;
       if (activeTab != null) {
-        // Add path to navigation history first
-        tabBloc.add(AddToTabHistory(activeTab.id, path));
-
-        // Update the tab path
+        // Update the tab path (this will automatically handle navigation history)
         tabBloc.add(UpdateTabPath(activeTab.id, path));
 
         // Cập nhật tên tab để phản ánh thư mục mới
@@ -707,6 +706,10 @@ class _CBDrawerState extends State<CBDrawer> {
   // Helper method to get a display name for a storage location
   String _getStorageDisplayName(Directory storage) {
     String path = storage.path;
+    // Normalize trailing slash to avoid showing '0' for '/storage/emulated/0/'
+    if (path.length > 1 && path.endsWith(Platform.pathSeparator)) {
+      path = path.substring(0, path.length - 1);
+    }
 
     // For Windows drives
     if (Platform.isWindows && path.contains(':')) {
@@ -732,6 +735,9 @@ class _CBDrawerState extends State<CBDrawer> {
     if (path.startsWith('/storage/') && path != '/storage') {
       // For paths like /storage/XXXX-XXXX that are actually external SD cards
       String sdName = path.substring('/storage/'.length);
+      if (sdName.endsWith('/')) {
+        sdName = sdName.substring(0, sdName.length - 1);
+      }
       if (sdName != 'emulated' && !sdName.startsWith('emulated/')) {
         return 'SD Card ($sdName)';
       }

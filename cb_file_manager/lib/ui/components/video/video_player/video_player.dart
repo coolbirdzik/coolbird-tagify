@@ -16,6 +16,7 @@ import 'package:path/path.dart' as pathlib;
 import '../../../../services/pip_window_service.dart';
 import '../pip_window/windows_pip_overlay.dart';
 import '../../../../services/streaming/smb_http_proxy_server.dart';
+import 'package:cb_file_manager/ui/state/video_ui_state.dart';
 
 import '../../../../helpers/files/file_type_helper.dart';
 import '../../../../helpers/core/user_preferences.dart';
@@ -315,6 +316,8 @@ class _VideoPlayerState extends State<VideoPlayer> {
   exo.VideoPlayerController?
       _exoController; // ExoPlayer for Android PiP fallback
   bool _usingExoInPip = false;
+  // Fallback timer if VLC fails to start on Android
+  Timer? _vlcStartupFallback;
 
   // State variables
   bool _isLoading = true;
@@ -512,6 +515,7 @@ class _VideoPlayerState extends State<VideoPlayer> {
   void _disposeResources() {
     try {
       _hideControlsTimer?.cancel();
+      _vlcStartupFallback?.cancel();
       _initializationTimeout?.cancel();
       _noDataTimer?.cancel();
       _bufferSub?.cancel();
@@ -534,6 +538,12 @@ class _VideoPlayerState extends State<VideoPlayer> {
     } catch (e) {
       debugPrint('Error disposing resources: $e');
     }
+    // Reset global fullscreen flag if needed
+    try {
+      if (VideoUiState.isFullscreen.value == true) {
+        VideoUiState.isFullscreen.value = false;
+      }
+    } catch (_) {}
   }
 
   Future<void> _initExoForPip() async {
@@ -1446,15 +1456,23 @@ class _VideoPlayerState extends State<VideoPlayer> {
       return _buildVlcPlayer();
     }
 
-    return Stack(
-      children: [
-        Positioned.fill(
-          child: _buildVideoWidget(),
-        ),
-        if (!_isFullScreen || _showControls) _buildCustomControls(),
-        if (_showSpeedIndicator && _currentStream != null)
-          _buildSpeedIndicatorOverlay(),
-      ],
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        if (_isFullScreen) _showControlsWithTimer();
+      },
+      onDoubleTap: _toggleFullScreen,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: _buildVideoWidget(),
+          ),
+          if (widget.showControls && (!_isFullScreen || _showControls))
+            _buildCustomControls(),
+          if (_showSpeedIndicator && _currentStream != null)
+            _buildSpeedIndicatorOverlay(),
+        ],
+      ),
     );
   }
 
@@ -1548,6 +1566,23 @@ class _VideoPlayerState extends State<VideoPlayer> {
           ),
         );
       }
+
+      // Arm a short fallback in case VLC fails to render on some devices
+      if (Platform.isAndroid) {
+        _vlcStartupFallback?.cancel();
+        _vlcStartupFallback = Timer(const Duration(seconds: 3), () async {
+          if (!mounted) return;
+          final notReady = _vlcController == null ||
+              !_vlcController!.value.isInitialized ||
+              _vlcController!.value.size == null ||
+              (_vlcController!.value.size?.width ?? 0) == 0;
+          if (notReady) {
+            debugPrint('VLC not ready, falling back to Exo');
+            await _initExoFallback();
+            if (mounted) setState(() {});
+          }
+        });
+      }
     }
 
     if (!_vlcListenerAttached) {
@@ -1586,50 +1621,115 @@ class _VideoPlayerState extends State<VideoPlayer> {
       });
     }
 
-    // In Android PiP: prefer Exo if initialized; otherwise keep VLC as fallback
-    if (_isAndroidPip) {
-      if (_exoController != null && _exoController!.value.isInitialized) {
-        final ar = _exoController!.value.aspectRatio > 0
-            ? _exoController!.value.aspectRatio
-            : (16 / 9);
-        return Stack(
-          children: [
-            Positioned.fill(child: Container(color: Colors.black)),
-            Center(
-              child: AspectRatio(
-                aspectRatio: ar,
-                child: exo.VideoPlayer(_exoController!),
-              ),
+    // Prefer Exo output when available: in Android PiP or as runtime fallback
+    if (_exoController != null && _exoController!.value.isInitialized) {
+      final ar = _exoController!.value.aspectRatio > 0
+          ? _exoController!.value.aspectRatio
+          : (16 / 9);
+      return Stack(
+        children: [
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () {
+                if (_isFullScreen) _showControlsWithTimer();
+              },
+              onDoubleTap: _toggleFullScreen,
+              child: Container(color: Colors.black),
             ),
-          ],
-        );
-      }
+          ),
+          Center(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                // Ensure we have valid constraints
+                if (constraints.maxWidth.isInfinite ||
+                    constraints.maxHeight.isInfinite) {
+                  return SizedBox(
+                    width: 400,
+                    height: 225,
+                    child: exo.VideoPlayer(_exoController!),
+                  );
+                }
+                return AspectRatio(
+                  aspectRatio: ar,
+                  child: exo.VideoPlayer(_exoController!),
+                );
+              },
+            ),
+          ),
+          if (widget.showControls && (!_isFullScreen || _showControls))
+            _buildCustomControls(),
+        ],
+      );
+    } else if (_isAndroidPip) {
       return const ColoredBox(color: Colors.black);
     }
 
     return Stack(
       children: [
-        GestureDetector(
-          onTap: () {
-            if (_isFullScreen) _showControlsWithTimer();
-          },
-          onDoubleTap: _toggleFullScreen,
-          child: Positioned.fill(
+        Positioned.fill(
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () {
+              if (_isFullScreen) _showControlsWithTimer();
+            },
+            onDoubleTap: _toggleFullScreen,
             child: FittedBox(
               fit: _getBoxFitFromString(_videoScaleMode),
               child: VlcPlayer(
                 controller: _vlcController!,
-                aspectRatio: 16 /
-                    9, // Default aspect ratio, will be overridden by FittedBox
+                aspectRatio: 16 / 9, // Default; FittedBox will scale
                 placeholder: const Center(child: CircularProgressIndicator()),
               ),
             ),
           ),
         ),
-        if (!_isAndroidPip && (!_isFullScreen || _showControls))
+        if (widget.showControls &&
+            !_isAndroidPip &&
+            (!_isFullScreen || _showControls))
           _buildCustomControls(),
       ],
     );
+  }
+
+  // Initialize Exo for Android as a VLC fallback (non-PiP & PiP)
+  Future<void> _initExoFallback() async {
+    if (!Platform.isAndroid) return;
+    if (_exoController != null) return;
+
+    try {
+      exo.VideoPlayerController controller;
+      if (widget.file != null) {
+        controller = exo.VideoPlayerController.file(widget.file!);
+      } else if (widget.streamingUrl != null) {
+        controller = exo.VideoPlayerController.networkUrl(
+            Uri.parse(widget.streamingUrl!));
+      } else if (widget.smbMrl != null) {
+        // Use local HTTP proxy for SMB to ensure Exo compatibility
+        try {
+          final proxied =
+              await SmbHttpProxyServer.instance.urlFor(widget.smbMrl!);
+          controller = exo.VideoPlayerController.networkUrl(proxied);
+        } catch (e) {
+          debugPrint('Exo fallback: proxy failed: $e');
+          return;
+        }
+      } else if (widget.fileStream != null) {
+        // Not supported directly by Exo; keep VLC path for streams
+        debugPrint('Exo fallback: stream source not supported, skipping');
+        return;
+      } else {
+        return;
+      }
+
+      await controller.initialize();
+      if (widget.autoPlay) {
+        await controller.play();
+      }
+      _exoController = controller;
+    } catch (e) {
+      debugPrint('Exo fallback init failed: $e');
+    }
   }
 
   // UI Helper Methods
@@ -1953,6 +2053,7 @@ class _VideoPlayerState extends State<VideoPlayer> {
       // Mobile platforms - use system chrome
       setState(() {
         _isFullScreen = !_isFullScreen;
+        VideoUiState.isFullscreen.value = _isFullScreen;
         if (_isFullScreen) {
           _showControls = true;
           _startHideControlsTimer();
@@ -1975,23 +2076,22 @@ class _VideoPlayerState extends State<VideoPlayer> {
 
   void _togglePlayPause() async {
     if (_player != null) {
-      setState(() {
-        _isPlaying = !_player!.state.playing;
-      });
-
       if (_player!.state.playing) {
         await _player!.pause();
       } else {
         await _player!.play();
       }
-
-      if (_isFullScreen) {
-        _showControlsWithTimer();
+      if (_isFullScreen) _showControlsWithTimer();
+      if (mounted) setState(() {});
+    } else if (_exoController != null) {
+      final playing = _exoController!.value.isPlaying;
+      if (playing) {
+        await _exoController!.pause();
+      } else {
+        await _exoController!.play();
       }
-
-      if (mounted) {
-        setState(() {});
-      }
+      if (_isFullScreen) _showControlsWithTimer();
+      if (mounted) setState(() {});
     } else if (_vlcController != null) {
       final playing = _vlcController!.value.isPlaying;
       if (playing) {
@@ -1999,6 +2099,8 @@ class _VideoPlayerState extends State<VideoPlayer> {
       } else {
         await _vlcController!.play();
       }
+      if (_isFullScreen) _showControlsWithTimer();
+      if (mounted) setState(() {});
     }
   }
 
@@ -2012,6 +2114,10 @@ class _VideoPlayerState extends State<VideoPlayer> {
           ? _player!.state.duration
           : newPosition;
       await _player!.seek(seekPosition);
+    } else if (_exoController != null) {
+      final pos = _exoController!.value.position;
+      final target = pos + Duration(seconds: seconds);
+      await _exoController!.seekTo(target);
     } else if (_vlcController != null) {
       final pos = _vlcController!.value.position;
       final targetMs = (pos.inMilliseconds + (seconds * 1000));
@@ -2032,6 +2138,11 @@ class _VideoPlayerState extends State<VideoPlayer> {
       final seekPosition =
           newPosition < Duration.zero ? Duration.zero : newPosition;
       await _player!.seek(seekPosition);
+    } else if (_exoController != null) {
+      final pos = _exoController!.value.position;
+      final target = pos - Duration(seconds: seconds);
+      await _exoController!
+          .seekTo(target < Duration.zero ? Duration.zero : target);
     } else if (_vlcController != null) {
       final v = _vlcController!.value;
       final targetMs = (v.position.inMilliseconds - (seconds * 1000));
@@ -2049,8 +2160,13 @@ class _VideoPlayerState extends State<VideoPlayer> {
       final currentVolume = _player!.state.volume;
       final newVolume = (currentVolume + 5).clamp(0.0, 100.0);
       await _player!.setVolume(newVolume);
+    } else if (_exoController != null) {
+      final v = _exoController!.value.volume; // 0..1
+      final nv = (v + 0.05).clamp(0.0, 1.0);
+      await _exoController!.setVolume(nv);
     } else if (_vlcController != null) {
-      final newVolume = (_vlcVolume + 5).clamp(0.0, 100.0);
+      final v = _vlcController!.value.volume.toDouble();
+      final newVolume = (v + 5).clamp(0.0, 100.0);
       await _vlcController!.setVolume(newVolume.toInt());
     }
   }
@@ -2060,21 +2176,36 @@ class _VideoPlayerState extends State<VideoPlayer> {
       final currentVolume = _player!.state.volume;
       final newVolume = (currentVolume - 5).clamp(0.0, 100.0);
       await _player!.setVolume(newVolume);
+    } else if (_exoController != null) {
+      final v = _exoController!.value.volume; // 0..1
+      final nv = (v - 0.05).clamp(0.0, 1.0);
+      await _exoController!.setVolume(nv);
     } else if (_vlcController != null) {
-      final newVolume = (_vlcVolume - 5).clamp(0.0, 100.0);
+      final v = _vlcController!.value.volume.toDouble();
+      final newVolume = (v - 5).clamp(0.0, 100.0);
       await _vlcController!.setVolume(newVolume.toInt());
     }
   }
 
   void _toggleMute() async {
     if (_player != null) {
-      if (_isMuted) {
+      final isMuted = _player!.state.volume <= 0.1;
+      if (isMuted) {
         await _player!.setVolume(_savedVolume);
       } else {
         await _player!.setVolume(0.0);
       }
+    } else if (_exoController != null) {
+      final isMuted = (_exoController!.value.volume) <= 0.001;
+      if (isMuted) {
+        final restore = (_lastVolume / 100.0).clamp(0.0, 1.0);
+        await _exoController!.setVolume(restore);
+      } else {
+        await _exoController!.setVolume(0.0);
+      }
     } else if (_vlcController != null) {
-      if (_vlcMuted) {
+      final isMuted = _vlcController!.value.volume <= 0;
+      if (isMuted) {
         await _vlcController!.setVolume(_lastVolume.toInt());
       } else {
         await _vlcController!.setVolume(0);
@@ -2089,44 +2220,159 @@ class _VideoPlayerState extends State<VideoPlayer> {
     if (isDesktop) {
       return _buildPipStyleControls();
     }
-    // Fallback to existing controls for non-desktop
+    // Mobile-specific redesigned controls
+    return _buildMobileControls();
+  }
+
+  // New: Mobile-focused overlay controls with cleaner layout & working bindings
+  Widget _buildMobileControls() {
     return Stack(
       children: [
+        // Top gradient
+        Positioned(
+          left: 0,
+          right: 0,
+          top: 0,
+          child: IgnorePointer(
+            ignoring: true,
+            child: Container(
+              height: 140,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.black.withValues(alpha: 0.6),
+                    Colors.transparent,
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+
+        // Center play/pause
+        if (_showControls)
+          Center(
+            child: _buildPlayPauseButton(),
+          ),
+
+        // Bottom controls
         Positioned(
           left: 0,
           right: 0,
           bottom: 0,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _buildCustomSeekBar(),
-              Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.bottomCenter,
-                    end: Alignment.topCenter,
-                    colors: [
-                      Colors.black.withValues(alpha: 0.8),
-                      Colors.black.withValues(alpha: 0.6),
-                    ],
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.3),
-                      blurRadius: 10,
-                      spreadRadius: 2,
-                    ),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.transparent,
+                  Colors.black.withValues(alpha: 0.75),
+                ],
+              ),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    // Current time
+                    _player != null
+                        ? StreamBuilder<Duration>(
+                            stream: _player!.stream.position,
+                            builder: (context, snap) {
+                              final pos = snap.data ?? Duration.zero;
+                              return Text(
+                                _formatDuration(pos),
+                                style: const TextStyle(
+                                    color: Colors.white70, fontSize: 12),
+                              );
+                            },
+                          )
+                        : _exoController != null
+                            ? ValueListenableBuilder<exo.VideoPlayerValue>(
+                                valueListenable: _exoController!,
+                                builder: (context, v, _) {
+                                  return Text(
+                                    _formatDuration(v.position),
+                                    style: const TextStyle(
+                                        color: Colors.white70, fontSize: 12),
+                                  );
+                                },
+                              )
+                            : ValueListenableBuilder<VlcPlayerValue>(
+                                valueListenable: _vlcController!,
+                                builder: (context, v, _) {
+                                  return Text(
+                                    _formatDuration(v.position),
+                                    style: const TextStyle(
+                                        color: Colors.white70, fontSize: 12),
+                                  );
+                                },
+                              ),
+
+                    const SizedBox(width: 8),
+
+                    // Slider expanded
+                    Expanded(child: _buildMobileSeekSlider()),
+
+                    const SizedBox(width: 8),
+
+                    // Duration
+                    _player != null
+                        ? Text(
+                            _formatDuration(_player!.state.duration),
+                            style: const TextStyle(
+                                color: Colors.white70, fontSize: 12),
+                          )
+                        : _exoController != null
+                            ? ValueListenableBuilder<exo.VideoPlayerValue>(
+                                valueListenable: _exoController!,
+                                builder: (context, v, _) {
+                                  return Text(
+                                    _formatDuration(v.duration),
+                                    style: const TextStyle(
+                                        color: Colors.white70, fontSize: 12),
+                                  );
+                                },
+                              )
+                            : ValueListenableBuilder<VlcPlayerValue>(
+                                valueListenable: _vlcController!,
+                                builder: (context, v, _) {
+                                  return Text(
+                                    _formatDuration(v.duration),
+                                    style: const TextStyle(
+                                        color: Colors.white70, fontSize: 12),
+                                  );
+                                },
+                              ),
                   ],
                 ),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                child: Row(
+                const SizedBox(height: 6),
+                Row(
                   children: [
+                    _buildControlButton(
+                      icon: Icons.replay_10,
+                      onPressed: () => _seekBackward(10),
+                      tooltip: 'Rewind 10s',
+                    ),
+                    const SizedBox(width: 4),
                     _buildPlayPauseButton(),
+                    const SizedBox(width: 4),
+                    _buildControlButton(
+                      icon: Icons.forward_10,
+                      onPressed: () => _seekForward(10),
+                      tooltip: 'Forward 10s',
+                    ),
                     const Spacer(),
-                    if (widget.allowMuting) _buildVolumeControl(),
+                    if (widget.allowMuting) _buildVolumeButtonOnly(),
+                    const SizedBox(width: 6),
                     _buildAdvancedControlsMenu(),
-                    if (widget.allowFullScreen)
+                    if (widget.allowFullScreen) ...[
+                      const SizedBox(width: 6),
                       _buildControlButton(
                         icon: _isFullScreen
                             ? Icons.fullscreen_exit
@@ -2137,14 +2383,163 @@ class _VideoPlayerState extends State<VideoPlayer> {
                             ? 'Exit fullscreen'
                             : 'Enter fullscreen',
                       ),
+                    ],
                   ],
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ],
     );
+  }
+
+  // Slider used by mobile controls with support for VLC/Exo/MediaKit
+  Widget _buildMobileSeekSlider() {
+    if (_player != null) {
+      return StreamBuilder<Duration>(
+        stream: _player!.stream.position,
+        builder: (context, snapshot) {
+          final position = snapshot.data ?? Duration.zero;
+          final duration = _player!.state.duration;
+          final maxMs =
+              duration.inMilliseconds <= 0 ? 1 : duration.inMilliseconds;
+          final value = position.inMilliseconds.clamp(0, maxMs).toDouble();
+          return SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              trackHeight: 3,
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+            ),
+            child: Slider(
+              value: value,
+              min: 0,
+              max: maxMs.toDouble(),
+              activeColor: Colors.white,
+              inactiveColor: Colors.white24,
+              onChangeStart: (_) => _isSeeking = true,
+              onChanged: (v) async {
+                final target = Duration(milliseconds: v.toInt());
+                await _player!.seek(target);
+              },
+              onChangeEnd: (_) {
+                _seekingTimer?.cancel();
+                _seekingTimer = Timer(const Duration(milliseconds: 200), () {
+                  if (mounted) _isSeeking = false;
+                });
+              },
+            ),
+          );
+        },
+      );
+    } else if (_exoController != null) {
+      return ValueListenableBuilder<exo.VideoPlayerValue>(
+        valueListenable: _exoController!,
+        builder: (context, v, _) {
+          final maxMs =
+              v.duration.inMilliseconds <= 0 ? 1 : v.duration.inMilliseconds;
+          final value = v.position.inMilliseconds.clamp(0, maxMs).toDouble();
+          return Slider(
+            value: value,
+            min: 0,
+            max: maxMs.toDouble(),
+            activeColor: Colors.white,
+            inactiveColor: Colors.white24,
+            onChangeStart: (_) => _isSeeking = true,
+            onChanged: (vv) async {
+              await _exoController!.seekTo(Duration(milliseconds: vv.toInt()));
+            },
+            onChangeEnd: (_) {
+              _seekingTimer?.cancel();
+              _seekingTimer = Timer(const Duration(milliseconds: 200), () {
+                if (mounted) _isSeeking = false;
+              });
+            },
+          );
+        },
+      );
+    } else {
+      return ValueListenableBuilder<VlcPlayerValue>(
+        valueListenable: _vlcController!,
+        builder: (context, v, _) {
+          final maxMs =
+              v.duration.inMilliseconds == 0 ? 1 : v.duration.inMilliseconds;
+          final value = v.position.inMilliseconds.clamp(0, maxMs).toDouble();
+          return Slider(
+            value: value,
+            min: 0,
+            max: maxMs.toDouble(),
+            activeColor: Colors.white,
+            inactiveColor: Colors.white24,
+            onChangeStart: (_) => _isSeeking = true,
+            onChanged: (vv) async {
+              await _vlcController?.seekTo(Duration(milliseconds: vv.toInt()));
+            },
+            onChangeEnd: (_) {
+              _seekingTimer?.cancel();
+              _seekingTimer = Timer(const Duration(milliseconds: 200), () {
+                if (mounted) _isSeeking = false;
+              });
+            },
+          );
+        },
+      );
+    }
+  }
+
+  // Mobile-only compact volume toggle button (no inline slider)
+  Widget _buildVolumeButtonOnly() {
+    if (_player != null) {
+      return StreamBuilder<double>(
+        stream: _player!.stream.volume,
+        initialData: _savedVolume,
+        builder: (context, snapshot) {
+          final volume = snapshot.data ?? _savedVolume;
+          final isMuted = volume <= 0.1;
+          return _buildControlButton(
+            icon: isMuted
+                ? Icons.volume_off
+                : volume < 50
+                    ? Icons.volume_down
+                    : Icons.volume_up,
+            onPressed: _toggleMute,
+            enabled: true,
+            tooltip: isMuted ? 'Unmute' : 'Mute',
+          );
+        },
+      );
+    } else if (_exoController != null) {
+      return ValueListenableBuilder<exo.VideoPlayerValue>(
+        valueListenable: _exoController!,
+        builder: (context, v, _) {
+          final vol = v.volume; // 0..1
+          final isMuted = vol <= 0.001;
+          return _buildControlButton(
+            icon: isMuted
+                ? Icons.volume_off
+                : (vol < 0.5 ? Icons.volume_down : Icons.volume_up),
+            onPressed: _toggleMute,
+            enabled: true,
+            tooltip: isMuted ? 'Unmute' : 'Mute',
+          );
+        },
+      );
+    } else {
+      return ValueListenableBuilder<VlcPlayerValue>(
+        valueListenable: _vlcController!,
+        builder: (context, v, _) {
+          final vol = v.volume; // 0..100
+          final isMuted = vol <= 0;
+          return _buildControlButton(
+            icon: isMuted
+                ? Icons.volume_off
+                : (vol < 50 ? Icons.volume_down : Icons.volume_up),
+            onPressed: _toggleMute,
+            enabled: true,
+            tooltip: isMuted ? 'Unmute' : 'Mute',
+          );
+        },
+      );
+    }
   }
 
   Widget _buildPipStyleControls() {
@@ -2320,12 +2715,25 @@ class _VideoPlayerState extends State<VideoPlayer> {
         stream: _player!.stream.playing,
         initialData: _isPlaying,
         builder: (context, snapshot) {
-          final isPlaying = snapshot.data ?? _isPlaying;
+          final isPlaying = snapshot.data ?? _player!.state.playing;
           return _buildControlButton(
             icon: isPlaying ? Icons.pause : Icons.play_arrow,
             onPressed: _togglePlayPause,
-            size: 36,
-            padding: 12,
+            size: 40,
+            padding: 10,
+            enabled: true,
+          );
+        },
+      );
+    } else if (_exoController != null) {
+      return ValueListenableBuilder<exo.VideoPlayerValue>(
+        valueListenable: _exoController!,
+        builder: (context, v, _) {
+          return _buildControlButton(
+            icon: v.isPlaying ? Icons.pause : Icons.play_arrow,
+            onPressed: _togglePlayPause,
+            size: 40,
+            padding: 10,
             enabled: true,
           );
         },
@@ -2337,8 +2745,8 @@ class _VideoPlayerState extends State<VideoPlayer> {
           return _buildControlButton(
             icon: v.isPlaying ? Icons.pause : Icons.play_arrow,
             onPressed: _togglePlayPause,
-            size: 36,
-            padding: 12,
+            size: 40,
+            padding: 10,
             enabled: true,
           );
         },
@@ -2525,41 +2933,49 @@ class _VideoPlayerState extends State<VideoPlayer> {
             builder: (context, snapshot) {
               final volume = snapshot.data ?? _savedVolume;
               final isMuted = volume <= 0.1;
-
               return _buildControlButton(
                 icon: isMuted
                     ? Icons.volume_off
                     : volume < 50
                         ? Icons.volume_down
                         : Icons.volume_up,
-                onPressed: () async {
-                  if (isMuted) {
-                    await _player!.setVolume(_savedVolume);
-                  } else {
-                    await _player!.setVolume(0.0);
-                  }
-                },
+                onPressed: _toggleMute,
+                enabled: true,
+                tooltip: isMuted ? 'Unmute' : 'Mute',
+              );
+            },
+          )
+        else if (_exoController != null)
+          ValueListenableBuilder<exo.VideoPlayerValue>(
+            valueListenable: _exoController!,
+            builder: (context, v, _) {
+              final vol = v.volume; // 0..1
+              final isMuted = vol <= 0.001;
+              return _buildControlButton(
+                icon: isMuted
+                    ? Icons.volume_off
+                    : (vol < 0.5 ? Icons.volume_down : Icons.volume_up),
+                onPressed: _toggleMute,
                 enabled: true,
                 tooltip: isMuted ? 'Unmute' : 'Mute',
               );
             },
           )
         else
-          _buildControlButton(
-            icon: _vlcMuted
-                ? Icons.volume_off
-                : _vlcVolume < 50
-                    ? Icons.volume_down
-                    : Icons.volume_up,
-            onPressed: () async {
-              if (_vlcMuted) {
-                await _vlcController!.setVolume(_lastVolume.toInt());
-              } else {
-                await _vlcController!.setVolume(0);
-              }
+          ValueListenableBuilder<VlcPlayerValue>(
+            valueListenable: _vlcController!,
+            builder: (context, v, _) {
+              final vol = v.volume; // 0..100
+              final isMuted = vol <= 0;
+              return _buildControlButton(
+                icon: isMuted
+                    ? Icons.volume_off
+                    : (vol < 50 ? Icons.volume_down : Icons.volume_up),
+                onPressed: _toggleMute,
+                enabled: true,
+                tooltip: isMuted ? 'Unmute' : 'Mute',
+              );
             },
-            enabled: true,
-            tooltip: _vlcMuted ? 'Unmute' : 'Mute',
           ),
         if (!_isFullScreen ||
             (Platform.isWindows || Platform.isLinux || Platform.isMacOS))
@@ -2592,16 +3008,37 @@ class _VideoPlayerState extends State<VideoPlayer> {
                       );
                     },
                   )
-                : Slider(
-                    value: _vlcVolume.clamp(0.0, 100.0),
-                    min: 0.0,
-                    max: 100.0,
-                    onChanged: (value) {
-                      _vlcController!.setVolume(value.toInt());
-                    },
-                    activeColor: Colors.white,
-                    inactiveColor: Colors.white.withValues(alpha: 0.3),
-                  ),
+                : _exoController != null
+                    ? ValueListenableBuilder<exo.VideoPlayerValue>(
+                        valueListenable: _exoController!,
+                        builder: (context, v, _) {
+                          return Slider(
+                            value: (v.volume * 100).clamp(0.0, 100.0),
+                            min: 0.0,
+                            max: 100.0,
+                            onChanged: (value) {
+                              _exoController!.setVolume((value / 100.0));
+                            },
+                            activeColor: Colors.white,
+                            inactiveColor: Colors.white.withValues(alpha: 0.3),
+                          );
+                        },
+                      )
+                    : ValueListenableBuilder<VlcPlayerValue>(
+                        valueListenable: _vlcController!,
+                        builder: (context, v, _) {
+                          return Slider(
+                            value: (v.volume.toDouble()).clamp(0.0, 100.0),
+                            min: 0.0,
+                            max: 100.0,
+                            onChanged: (value) {
+                              _vlcController!.setVolume(value.toInt());
+                            },
+                            activeColor: Colors.white,
+                            inactiveColor: Colors.white.withValues(alpha: 0.3),
+                          );
+                        },
+                      ),
           ),
       ],
     );

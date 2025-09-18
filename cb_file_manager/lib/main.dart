@@ -7,7 +7,6 @@ import 'dart:async';
 import 'dart:io';
 
 import 'ui/tab_manager/tab_main_screen.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'helpers/tags/tag_manager.dart';
 import 'package:media_kit/media_kit.dart'; // Import Media Kit
 // Ensure Windows video native libraries (mpv) are bundled.
@@ -31,6 +30,7 @@ import 'config/language_controller.dart'; // Import our language controller
 import 'config/languages/app_localizations_delegate.dart'; // Import our localization delegate
 import 'services/streaming_service_manager.dart'; // Import streaming service manager
 import 'ui/utils/safe_navigation_wrapper.dart'; // Import safe navigation wrapper
+// Permission explainer is pushed from TabMainScreen; no direct import needed here
 
 // Global access to test the video thumbnail screen (for development)
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
@@ -143,8 +143,7 @@ void main() async {
       }
     }
 
-    // Request storage permissions at startup
-    await _requestPermissions();
+    // Do not request permissions at startup; handled via explainer UI on demand
 
     // Khởi tạo cơ sở dữ liệu và hệ thống tag một cách an toàn
     try {
@@ -247,35 +246,6 @@ void goHome(BuildContext context) {
   }
 }
 
-Future<void> _requestPermissions() async {
-  // Request storage permissions
-  var storageStatus = await Permission.storage.request();
-
-  // For Android 11+, try to request manage external storage permission
-  if (Platform.isAndroid) {
-    try {
-      await Permission.manageExternalStorage.request();
-    } catch (e) {
-      debugPrint('Manage external storage permission not available: $e');
-    }
-
-    // For Android 13+ request granular media permissions if available
-    try {
-      // Permission.videos is supported on recent permission_handler versions
-      // Ignore if not available on this platform/SDK
-      // Requesting it alongside storage improves access to media files
-      // without MANAGE_EXTERNAL_STORAGE on API 33+.
-      // If the symbol doesn't exist, this will throw and be ignored below.
-      // ignore: deprecated_member_use
-      await Permission.videos.request();
-    } catch (e) {
-      debugPrint('Videos permission not available: $e');
-    }
-  }
-
-  debugPrint('Storage permission status: $storageStatus');
-}
-
 class CBFileApp extends StatefulWidget {
   const CBFileApp({Key? key}) : super(key: key);
 
@@ -351,7 +321,7 @@ class _CBFileAppState extends State<CBFileApp> with WidgetsBindingObserver {
     return SafeNavigationWrapper(
       child: MaterialApp(
         title: 'CoolBird - File Manager',
-        // Use our TabMainScreen as the default entry point
+        // Always start at main; we'll push explainer modally if needed
         home: const TabMainScreen(),
         navigatorKey: navigatorKey, // Add navigator key for global access
         theme: AppTheme.lightTheme,
@@ -375,3 +345,5 @@ class _CBFileAppState extends State<CBFileApp> with WidgetsBindingObserver {
     );
   }
 }
+
+// Explainer navigation handled inside TabMainScreen on first frame

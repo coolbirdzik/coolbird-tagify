@@ -9,6 +9,7 @@ import 'package:cb_file_manager/ui/screens/media_gallery/video_gallery_screen.da
 import 'package:cb_file_manager/ui/screens/media_gallery/image_viewer_screen.dart'; // Import the new ImageViewerScreen
 import '../components/common/shared_action_bar.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // Add for HapticFeedback and keyboard keys
 // Add for scheduler bindings
 import 'package:flutter/gestures.dart'; // Import for mouse buttons
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -16,8 +17,8 @@ import 'package:cb_file_manager/helpers/core/user_preferences.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
 import 'package:cb_file_manager/helpers/media/video_thumbnail_helper.dart'; // Add import for VideoThumbnailHelper
 import 'package:cb_file_manager/ui/widgets/thumbnail_loader.dart'; // Add import for ThumbnailLoader
+import 'package:cb_file_manager/ui/widgets/loading_skeleton.dart';
 import 'package:cb_file_manager/ui/utils/file_type_utils.dart';
-import 'package:flutter/services.dart'; // Import for keyboard keys
 import 'tab_manager.dart';
 import 'package:cb_file_manager/ui/utils/fluent_background.dart'; // Import the Fluent Design background
 
@@ -39,7 +40,6 @@ import 'package:cb_file_manager/helpers/files/trash_manager.dart'; // Import for
 import 'package:cb_file_manager/ui/screens/system_screen_router.dart'; // Import SystemScreenRouter
 
 // Add imports for hardware acceleration
-import 'package:flutter/rendering.dart' show RendererBinding;
 // For scheduler and timeDilation
 // Add import for value listenable builder
 import 'package:flutter/foundation.dart';
@@ -186,6 +186,8 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
 
   // Flag to track if there are background thumbnail tasks
   bool _hasPendingThumbnails = false;
+  bool _hasAnyContentLoaded =
+      false; // Track if any content has been shown to avoid empty flicker
 
   // Add a method to check if there are any video/image files in the current state
   bool _hasVideoOrImageFiles(FolderListState state) {
@@ -227,8 +229,7 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
 
     // Enable hardware acceleration for smoother animations
     WidgetsBinding.instance.renderView.automaticSystemUiAdjustment = false;
-    // Replace with platform-optimized settings
-    RendererBinding.instance.ensureSemantics();
+    // Avoid forcing semantics here to prevent render/semantics assertions on mobile
 
     // Initialize the blocs
     _folderListBloc = FolderListBloc();
@@ -729,10 +730,22 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
     }
 
     // Update the tab's path in the TabManager
+    // This will automatically handle navigation history through updatePath() method
     context.read<TabManagerBloc>().add(UpdateTabPath(widget.tabId, path));
 
-    // Also add this path to the tab's navigation history
-    context.read<TabManagerBloc>().add(AddToTabHistory(widget.tabId, path));
+    debugPrint('Navigating to path: $path');
+    debugPrint('Tab ID: ${widget.tabId}');
+
+    // Debug: Check navigation history after adding
+    final tabManagerBloc = context.read<TabManagerBloc>();
+    final updatedTab = tabManagerBloc.state.tabs.firstWhere(
+      (tab) => tab.id == widget.tabId,
+      orElse: () => TabData(id: '', name: '', path: ''),
+    );
+    debugPrint(
+        'Navigation history after adding: ${updatedTab.navigationHistory}');
+    debugPrint(
+        'Navigation history length: ${updatedTab.navigationHistory.length}');
 
     // Update the folder list to show the new path
     _folderListBloc.add(FolderListLoad(path));
@@ -783,6 +796,10 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
   // Handle back button press for Android
   Future<bool> _handleBackButton() async {
     try {
+      debugPrint('=== _handleBackButton called ===');
+      debugPrint('Hardware back button pressed!');
+      debugPrint('Back button pressed - current path: $_currentPath');
+
       // Stop any ongoing thumbnail processing when navigating
       VideoThumbnailHelper.stopAllProcessing();
 
@@ -797,8 +814,20 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
 
       // Check if we can navigate back in the folder hierarchy
       final tabManagerBloc = context.read<TabManagerBloc>();
+      final currentTab = tabManagerBloc.state.tabs.firstWhere(
+        (tab) => tab.id == widget.tabId,
+        orElse: () => TabData(id: '', name: '', path: ''),
+      );
+
+      debugPrint('Current tab path: ${currentTab.path}');
+      debugPrint('Navigation history: ${currentTab.navigationHistory}');
+      debugPrint(
+          'Navigation history length: ${currentTab.navigationHistory.length}');
+      debugPrint(
+          'Can navigate back: ${tabManagerBloc.canTabNavigateBack(widget.tabId)}');
       if (tabManagerBloc.canTabNavigateBack(widget.tabId)) {
         final previousPath = tabManagerBloc.getTabPreviousPath(widget.tabId);
+        debugPrint('Previous path: $previousPath');
         if (previousPath != null) {
           // Handle empty path case for Windows drive view
           if (previousPath.isEmpty && Platform.isWindows) {
@@ -813,28 +842,76 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
             return false; // Don't exit app, we're navigating to drives view
           }
 
-          // Regular path navigation
-          setState(() {
-            _currentPath = previousPath;
-            _pathController.text = previousPath;
-          });
-          _folderListBloc.add(FolderListLoad(previousPath));
-          return false; // Don't exit app, we navigated back
+          // Regular path navigation - use the bloc method
+          final newPath = tabManagerBloc.backNavigationToPath(widget.tabId);
+          debugPrint('Back navigation result: $newPath');
+          if (newPath != null) {
+            debugPrint('Successfully navigating back to: $newPath');
+            setState(() {
+              _currentPath = newPath;
+              _pathController.text = newPath;
+            });
+            _folderListBloc.add(FolderListLoad(newPath));
+            debugPrint('=== Back navigation completed successfully ===');
+            return false; // Don't exit app, we navigated back
+          } else {
+            debugPrint('Back navigation failed - newPath is null');
+          }
+        }
+      }
+
+      // For mobile, if we're at root directory, show exit confirmation
+      if (Platform.isAndroid || Platform.isIOS) {
+        if (_currentPath.isEmpty ||
+            _currentPath == '/storage/emulated/0' ||
+            _currentPath == '/storage/self/primary') {
+          // Show exit confirmation dialog
+          debugPrint('At root directory on mobile - showing exit confirmation');
+          final shouldExit = await _showExitConfirmation();
+          debugPrint('Exit confirmation result: $shouldExit');
+          return shouldExit;
         }
       }
 
       // If we can't navigate back in tab, check if we can pop the navigator
       if (Navigator.of(context).canPop()) {
+        debugPrint('Popping navigator route');
         Navigator.of(context).pop();
         return false; // Don't exit app
       }
 
       // If we're at the root and can't navigate back, don't allow back
+      debugPrint('At root directory - preventing back navigation');
       return false; // Don't exit app, just prevent back navigation
     } catch (e) {
       debugPrint('Error in _handleBackButton: $e');
-      return true; // Allow app to close on error
+      return false; // Don't exit app on error, just prevent back navigation
     }
+  }
+
+  // Show exit confirmation dialog for mobile
+  Future<bool> _showExitConfirmation() async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Thoát ứng dụng?'),
+        content: const Text('Bạn có chắc chắn muốn thoát ứng dụng không?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Hủy'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.red,
+            ),
+            child: const Text('Thoát'),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
   }
 
   // Centralized method to update path and reload folder contents
@@ -928,8 +1005,17 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
             _updatePath(currentTab.path);
           }
         },
-        child: WillPopScope(
-          onWillPop: _handleBackButton,
+        child: PopScope(
+          canPop: false,
+          onPopInvokedWithResult: (didPop, result) async {
+            debugPrint(
+                'TabbedFolderListScreen PopScope onPopInvokedWithResult: didPop=$didPop, result=$result');
+            if (!didPop) {
+              debugPrint(
+                  'Gesture navigation detected - calling _handleBackButton');
+              await _handleBackButton();
+            }
+          },
           // Wrap with Listener to detect mouse button events
           child: Listener(
             onPointerDown: (PointerDownEvent event) {
@@ -1103,8 +1189,23 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
     // Apply frame timing optimization before heavy UI operations
     FrameTimingOptimizer().optimizeBeforeHeavyOperation();
 
-    if (state.isLoading) {
-      return const Center(child: CircularProgressIndicator());
+    // Decide whether to show skeletons
+    final bool shouldShowSkeleton = state.isLoading ||
+        (!_hasAnyContentLoaded &&
+            state.error == null &&
+            state.folders.isEmpty &&
+            state.files.isEmpty);
+
+    if (shouldShowSkeleton) {
+      final Widget skeleton = state.viewMode == ViewMode.grid
+          ? LoadingSkeleton.grid(
+              crossAxisCount: state.gridZoomLevel, itemCount: 12)
+          : LoadingSkeleton.list(itemCount: 12);
+
+      return FluentBackground.container(
+        context: context,
+        child: skeleton,
+      );
     }
 
     if (state.error != null) {
@@ -1264,9 +1365,22 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
       );
     }
 
+    // Mark that we have content at least once to prevent future flicker
+    _hasAnyContentLoaded = true;
+
     // Default view - folders and files
     return RefreshIndicator(
+      // Improve mobile experience with better colors and behavior
+      color: Theme.of(context).colorScheme.primary,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      strokeWidth: 2.0,
+      displacement: Platform.isAndroid || Platform.isIOS ? 40.0 : 60.0,
       onRefresh: () async {
+        // Add haptic feedback for mobile
+        if (Platform.isAndroid || Platform.isIOS) {
+          HapticFeedback.lightImpact();
+        }
+
         // Create the completer first
         final completer = Completer<void>();
 
@@ -1277,6 +1391,10 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
         subscription = _folderListBloc.stream.listen((state) {
           // When loading is done (changed from true to false), complete the Future
           if (!state.isLoading) {
+            // Add success haptic feedback for mobile
+            if (Platform.isAndroid || Platform.isIOS) {
+              HapticFeedback.selectionClick();
+            }
             completer.complete();
             subscription.cancel();
           }
@@ -1323,7 +1441,14 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
         }
 
         // Wait for the loading to complete before returning
-        return completer.future;
+        // Add timeout to prevent infinite waiting
+        return completer.future.timeout(
+          const Duration(seconds: 10),
+          onTimeout: () {
+            debugPrint('Refresh timeout - completing anyway');
+            subscription.cancel();
+          },
+        );
       },
       child: _buildFolderAndFileList(state),
     );
@@ -1367,16 +1492,22 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
                 onSecondaryTapUp: (details) {
                   _showContextMenu(context, details.globalPosition);
                 },
-                // Handle drag selection
-                onPanStart: (details) {
-                  _startDragSelection(details.localPosition);
-                },
-                onPanUpdate: (details) {
-                  _updateDragSelection(details.localPosition);
-                },
-                onPanEnd: (details) {
-                  _endDragSelection();
-                },
+                // Handle drag selection (desktop only)
+                onPanStart: isDesktopPlatform
+                    ? (details) {
+                        _startDragSelection(details.localPosition);
+                      }
+                    : null,
+                onPanUpdate: isDesktopPlatform
+                    ? (details) {
+                        _updateDragSelection(details.localPosition);
+                      }
+                    : null,
+                onPanEnd: isDesktopPlatform
+                    ? (details) {
+                        _endDragSelection();
+                      }
+                    : null,
                 behavior: HitTestBehavior.translucent,
                 child: Listener(
                   onPointerSignal: (PointerSignalEvent event) {
@@ -1405,12 +1536,10 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
                   child: RepaintBoundary(
                     child: GridView.builder(
                       padding: const EdgeInsets.all(8.0),
-                      // Add physics for better scrolling performance
-                      physics: const BouncingScrollPhysics(
-                        parent: AlwaysScrollableScrollPhysics(),
-                      ),
-                      // Add caching for better scroll performance
-                      cacheExtent: 1000,
+                      // Optimized physics for smoother mobile scrolling
+                      physics: const ClampingScrollPhysics(),
+                      // Enhanced caching for better scroll performance
+                      cacheExtent: 1500,
                       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: state.gridZoomLevel,
                         crossAxisSpacing: 8,
@@ -1433,18 +1562,25 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
                             (BuildContext context, BoxConstraints constraints) {
                           // Register item position code...
                           WidgetsBinding.instance.addPostFrameCallback((_) {
-                            final RenderBox? renderBox =
-                                context.findRenderObject() as RenderBox?;
-                            if (renderBox != null && renderBox.hasSize) {
-                              final position =
-                                  renderBox.localToGlobal(Offset.zero);
-                              _registerItemPosition(
-                                  itemPath,
-                                  Rect.fromLTWH(
-                                      position.dx,
-                                      position.dy,
-                                      renderBox.size.width,
-                                      renderBox.size.height));
+                            try {
+                              final RenderBox? renderBox =
+                                  context.findRenderObject() as RenderBox?;
+                              if (renderBox != null &&
+                                  renderBox.hasSize &&
+                                  renderBox.attached) {
+                                final position =
+                                    renderBox.localToGlobal(Offset.zero);
+                                _registerItemPosition(
+                                    itemPath,
+                                    Rect.fromLTWH(
+                                        position.dx,
+                                        position.dy,
+                                        renderBox.size.width,
+                                        renderBox.size.height));
+                              }
+                            } catch (e) {
+                              // Silently ignore layout errors to prevent crashes
+                              debugPrint('Layout error in grid view: $e');
                             }
                           });
 
@@ -1559,16 +1695,22 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
                 onSecondaryTapUp: (details) {
                   _showContextMenu(context, details.globalPosition);
                 },
-                // Handle drag selection
-                onPanStart: (details) {
-                  _startDragSelection(details.localPosition);
-                },
-                onPanUpdate: (details) {
-                  _updateDragSelection(details.localPosition);
-                },
-                onPanEnd: (details) {
-                  _endDragSelection();
-                },
+                // Handle drag selection (desktop only)
+                onPanStart: isDesktopPlatform
+                    ? (details) {
+                        _startDragSelection(details.localPosition);
+                      }
+                    : null,
+                onPanUpdate: isDesktopPlatform
+                    ? (details) {
+                        _updateDragSelection(details.localPosition);
+                      }
+                    : null,
+                onPanEnd: isDesktopPlatform
+                    ? (details) {
+                        _endDragSelection();
+                      }
+                    : null,
                 behavior: HitTestBehavior.translucent,
                 child: RepaintBoundary(
                   child: folder_list_components.FileView(
@@ -1623,25 +1765,29 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
                 onSecondaryTapUp: (details) {
                   _showContextMenu(context, details.globalPosition);
                 },
-                // Handle drag selection
-                onPanStart: (details) {
-                  _startDragSelection(details.localPosition);
-                },
-                onPanUpdate: (details) {
-                  _updateDragSelection(details.localPosition);
-                },
-                onPanEnd: (details) {
-                  _endDragSelection();
-                },
+                // Handle drag selection (desktop only)
+                onPanStart: isDesktopPlatform
+                    ? (details) {
+                        _startDragSelection(details.localPosition);
+                      }
+                    : null,
+                onPanUpdate: isDesktopPlatform
+                    ? (details) {
+                        _updateDragSelection(details.localPosition);
+                      }
+                    : null,
+                onPanEnd: isDesktopPlatform
+                    ? (details) {
+                        _endDragSelection();
+                      }
+                    : null,
                 behavior: HitTestBehavior.translucent,
                 child: RepaintBoundary(
                   child: ListView.builder(
-                    // Add physics for better scrolling performance
-                    physics: const BouncingScrollPhysics(
-                      parent: AlwaysScrollableScrollPhysics(),
-                    ),
-                    // Add caching for better scroll performance
-                    cacheExtent: 500,
+                    // Optimized physics for smoother mobile scrolling
+                    physics: const ClampingScrollPhysics(),
+                    // Enhanced caching for better scroll performance
+                    cacheExtent: 800,
                     itemCount: state.folders.length + state.files.length,
                     itemBuilder: (context, index) {
                       // Get path for this item
@@ -1658,18 +1804,25 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
                           (BuildContext context, BoxConstraints constraints) {
                         // Register item position code...
                         WidgetsBinding.instance.addPostFrameCallback((_) {
-                          final RenderBox? renderBox =
-                              context.findRenderObject() as RenderBox?;
-                          if (renderBox != null && renderBox.hasSize) {
-                            final position =
-                                renderBox.localToGlobal(Offset.zero);
-                            _registerItemPosition(
-                                itemPath,
-                                Rect.fromLTWH(
-                                    position.dx,
-                                    position.dy,
-                                    renderBox.size.width,
-                                    renderBox.size.height));
+                          try {
+                            final RenderBox? renderBox =
+                                context.findRenderObject() as RenderBox?;
+                            if (renderBox != null &&
+                                renderBox.hasSize &&
+                                renderBox.attached) {
+                              final position =
+                                  renderBox.localToGlobal(Offset.zero);
+                              _registerItemPosition(
+                                  itemPath,
+                                  Rect.fromLTWH(
+                                      position.dx,
+                                      position.dy,
+                                      renderBox.size.width,
+                                      renderBox.size.height));
+                            }
+                          } catch (e) {
+                            // Silently ignore layout errors to prevent crashes
+                            debugPrint('Layout error in grid view: $e');
                           }
                         });
 

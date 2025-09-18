@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:cb_file_manager/main.dart' show goHome, CBFileApp;
 
 /// A wrapper widget that provides safe navigation handling
@@ -16,21 +17,44 @@ class SafeNavigationWrapper extends StatefulWidget {
 }
 
 class _SafeNavigationWrapperState extends State<SafeNavigationWrapper> {
+  FlutterExceptionHandler? _previousOnError;
   @override
   void initState() {
     super.initState();
 
     // Set up global error handling for navigation
+    _previousOnError = FlutterError.onError;
     FlutterError.onError = (FlutterErrorDetails details) {
+      final message = details.exceptionAsString();
+      // Filter extremely noisy, non-fatal render/semantics assertions
+      if (message.contains("semantics.parentDataDirty") ||
+          message.contains("Semantics") &&
+              message.contains("parentDataDirty")) {
+        // Forward to default handler without extra logging to avoid log spam
+        if (_previousOnError != null) {
+          _previousOnError!(details);
+        } else {
+          FlutterError.dumpErrorToConsole(details);
+        }
+        return;
+      }
+
       debugPrint(
           'Flutter Error in SafeNavigationWrapper: ${details.exception}');
 
       // Check if this is a navigation-related error
-      if (details.exception.toString().contains('_history.isNotEmpty') ||
-          details.exception.toString().contains('Navigator') ||
-          details.exception.toString().contains('pop')) {
+      if (message.contains('_history.isNotEmpty') ||
+          message.contains('Navigator') ||
+          message.contains('pop')) {
         debugPrint('Navigation error detected, attempting recovery...');
         _handleNavigationError();
+      }
+
+      // Always forward to previous handler for completeness
+      if (_previousOnError != null) {
+        _previousOnError!(details);
+      } else {
+        FlutterError.dumpErrorToConsole(details);
       }
     };
   }

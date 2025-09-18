@@ -172,11 +172,36 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
       return;
     }
 
+    // Special case for mobile - add retry mechanism for folder loading
+    if (Platform.isAndroid || Platform.isIOS) {
+      // Add a small delay to ensure directory is ready
+      await Future.delayed(const Duration(milliseconds: 100));
+    }
+
     try {
       final directory = Directory(event.path);
       if (await directory.exists()) {
         try {
-          List<FileSystemEntity> contents = await directory.list().toList();
+          // For mobile, add retry mechanism for directory listing
+          List<FileSystemEntity> contents = [];
+          int retryCount = 0;
+          const maxRetries = 3;
+
+          while (retryCount < maxRetries) {
+            try {
+              contents = await directory.list().toList();
+              break; // Success, exit retry loop
+            } catch (e) {
+              retryCount++;
+              if (retryCount < maxRetries) {
+                debugPrint(
+                    'Directory listing failed, retrying... ($retryCount/$maxRetries): $e');
+                await Future.delayed(Duration(milliseconds: 200 * retryCount));
+              } else {
+                rethrow; // Re-throw the last error
+              }
+            }
+          }
 
           // Separate folders and files
           final List<FileSystemEntity> folders = [];
@@ -642,6 +667,9 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
     try {
       // Skip special/system paths
       if (dirPath.startsWith('#')) return;
+
+      // On mobile, avoid prefetch to keep things lazy and smooth
+      if (Platform.isAndroid || Platform.isIOS) return;
 
       // Collect video file paths
       final videoPaths = files

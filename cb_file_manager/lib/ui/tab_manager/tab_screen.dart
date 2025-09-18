@@ -7,7 +7,6 @@ import 'dart:io';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart'; // Import Eva Icons
 import 'package:cb_file_manager/helpers/ui/frame_timing_optimizer.dart';
 import 'tab_manager.dart';
-import 'tab_data.dart';
 import '../drawer.dart';
 import 'package:cb_file_manager/helpers/core/user_preferences.dart';
 import 'tabbed_folder_list_screen.dart';
@@ -349,31 +348,74 @@ class _TabScreenState extends State<TabScreen> with TickerProviderStateMixin {
             actions: actions,
             child: FocusScope(
               autofocus: true,
-              child: WillPopScope(
-                onWillPop: () async {
-                  try {
-                    // Handle back button press - if any tab is open, navigate back in that tab
-                    final activeTab = state.activeTab;
-                    if (activeTab != null) {
-                      final navigatorState =
-                          activeTab.navigatorKey.currentState;
-                      if (navigatorState != null && navigatorState.canPop()) {
-                        navigatorState.pop();
-                        return false; // Don't close the app
+              child: PopScope(
+                canPop: false,
+                onPopInvokedWithResult: (didPop, result) async {
+                  debugPrint(
+                      'TabScreen PopScope onPopInvokedWithResult: didPop=$didPop, result=$result');
+                  if (!didPop) {
+                    try {
+                      // Let the active tab handle the back navigation first
+                      final activeTab = state.activeTab;
+                      if (activeTab != null) {
+                        debugPrint(
+                            'TabScreen: Active tab found: ${activeTab.id}, path: ${activeTab.path}');
+
+                        // Check if the active tab can navigate back
+                        if (activeTab.navigationHistory.length > 1) {
+                          debugPrint(
+                              'TabScreen: Tab can navigate back, handling back navigation');
+                          debugPrint(
+                              'TabScreen: Current navigation history: ${activeTab.navigationHistory}');
+                          debugPrint(
+                              'TabScreen: Current path: ${activeTab.path}');
+
+                          // Get the previous path from navigation history
+                          final previousPath = activeTab.navigationHistory[
+                              activeTab.navigationHistory.length - 2];
+                          debugPrint(
+                              'TabScreen: Previous path from history: $previousPath');
+
+                          // Use the proper backNavigationToPath method
+                          final tabManagerBloc = context.read<TabManagerBloc>();
+                          final newPath =
+                              tabManagerBloc.backNavigationToPath(activeTab.id);
+                          debugPrint(
+                              'TabScreen: Back navigation result: $newPath');
+
+                          if (newPath != null) {
+                            debugPrint(
+                                'TabScreen: Successfully navigated back to: $newPath');
+                          } else {
+                            debugPrint(
+                                'TabScreen: Back navigation failed - newPath is null');
+                          }
+
+                          return;
+                        }
+
+                        final navigatorState =
+                            activeTab.navigatorKey.currentState;
+                        if (navigatorState != null && navigatorState.canPop()) {
+                          debugPrint('TabScreen: Popping tab navigator');
+                          navigatorState.pop();
+                          return;
+                        }
                       }
-                    }
 
-                    // If no active tab or can't pop, check if we can pop the main navigator
-                    if (Navigator.of(context).canPop()) {
-                      Navigator.of(context).pop();
-                      return false; // Don't close the app
-                    }
+                      // If no active tab or can't pop, check if we can pop the main navigator
+                      if (Navigator.of(context).canPop()) {
+                        debugPrint('TabScreen: Popping main navigator');
+                        Navigator.of(context).pop();
+                        return;
+                      }
 
-                    // If we're at the root and can't navigate back, don't allow back
-                    return false; // Don't close the app, just prevent back navigation
-                  } catch (e) {
-                    debugPrint('Error in WillPopScope: $e');
-                    return true; // Allow app to close on error
+                      // If we're at the root and can't navigate back, don't allow back
+                      debugPrint(
+                          'TabScreen: At root, preventing back navigation');
+                    } catch (e) {
+                      debugPrint('Error in TabScreen PopScope: $e');
+                    }
                   }
                 },
                 child: Scaffold(

@@ -118,6 +118,14 @@ class TabData {
       // Remove current path
       navigationHistory.removeLast();
 
+      // Check if the new current path is the same as the one we just removed
+      // If so, keep going back until we find a different path
+      while (navigationHistory.length > 1 && navigationHistory.last == path) {
+        debugPrint(
+            'TabData: Removing duplicate path from history: ${navigationHistory.last}');
+        navigationHistory.removeLast();
+      }
+
       // Return the new current path (which was the previous one)
       return navigationHistory.last;
     }

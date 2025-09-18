@@ -1,1 +1,9 @@
 .qodo
+# BMAD (local only)
+.bmad-core/
+.bmad-*/
+.claude
+.trae
+.github
+.cursor
+.idea

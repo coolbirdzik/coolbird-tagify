@@ -908,24 +908,29 @@ class _ThumbnailLoaderState extends State<ThumbnailLoader>
           Expanded(
             flex: 1,
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 4),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Container(
-                    height: 10,
-                    decoration: BoxDecoration(
-                      color: Colors.grey[700],
-                      borderRadius: BorderRadius.circular(5),
+                  Flexible(
+                    child: Container(
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[700],
+                        borderRadius: BorderRadius.circular(3),
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Container(
-                    height: 8,
-                    width: 60,
-                    decoration: BoxDecoration(
-                      color: Colors.grey[700]?.withOpacity(0.7),
-                      borderRadius: BorderRadius.circular(4),
+                  const SizedBox(height: 2),
+                  Flexible(
+                    child: Container(
+                      height: 4,
+                      width: 40,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[700]?.withOpacity(0.7),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
                     ),
                   ),
                 ],

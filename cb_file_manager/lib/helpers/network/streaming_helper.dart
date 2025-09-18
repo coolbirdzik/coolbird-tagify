@@ -582,21 +582,29 @@ class StreamingHelper {
       // Fallback: Mở media player với các phương thức khác
       await Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (context) => result.fileStream != null
-              ? VideoPlayer.stream(
-                  fileStream: result.fileStream!,
-                  fileName: fileName,
-                  fileType: result.fileType!,
-                )
-              : result.streamingUrl != null
-                  ? VideoPlayer.url(
-                      streamingUrl: result.streamingUrl!,
+          builder: (context) => Scaffold(
+            backgroundColor: Colors.black,
+            appBar: (Platform.isAndroid || Platform.isIOS) ? null : null,
+            body: SafeArea(
+              top: Platform.isAndroid || Platform.isIOS,
+              bottom: Platform.isAndroid || Platform.isIOS,
+              child: result.fileStream != null
+                  ? VideoPlayer.stream(
+                      fileStream: result.fileStream!,
                       fileName: fileName,
                       fileType: result.fileType!,
                     )
-                  : throw Exception(
-                      'No streaming data available',
-                    ),
+                  : result.streamingUrl != null
+                      ? VideoPlayer.url(
+                          streamingUrl: result.streamingUrl!,
+                          fileName: fileName,
+                          fileType: result.fileType!,
+                        )
+                      : throw Exception(
+                          'No streaming data available',
+                        ),
+            ),
+          ),
         ),
       );
     } else {

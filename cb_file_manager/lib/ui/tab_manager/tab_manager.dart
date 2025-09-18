@@ -226,9 +226,15 @@ class TabManagerBloc extends Bloc<TabEvent, TabManagerState> {
     final tabs = state.tabs.map((tab) {
       if (tab.id == event.tabId) {
         final List<String> updatedHistory = List.from(tab.navigationHistory);
-        // Add path to history if it's different from the current path
-        if (updatedHistory.isEmpty || updatedHistory.last != event.path) {
+
+        // Only add if path is different from current path AND not already in history
+        if (event.path != tab.path && !updatedHistory.contains(event.path)) {
           updatedHistory.add(event.path);
+          debugPrint('Added to navigation history: ${event.path}');
+          debugPrint('Updated history: $updatedHistory');
+        } else {
+          debugPrint(
+              'Skipped adding path: ${event.path} (current: ${tab.path}, already in history: ${updatedHistory.contains(event.path)})');
         }
         return tab.copyWith(navigationHistory: updatedHistory);
       }
@@ -282,9 +288,19 @@ class TabManagerBloc extends Bloc<TabEvent, TabManagerState> {
 
     // Get a mutable copy of the tabs
     final tabs = List<TabData>.from(state.tabs);
+    final currentTab = tabs[tabIndex];
+
+    debugPrint('TabManager: backNavigationToPath for tab: $tabId');
+    debugPrint('TabManager: Current path: ${currentTab.path}');
+    debugPrint(
+        'TabManager: Navigation history before: ${currentTab.navigationHistory}');
 
     // Navigate back for this specific tab
     final previousPath = tabs[tabIndex].navigateBack();
+    debugPrint('TabManager: navigateBack() returned: $previousPath');
+    debugPrint(
+        'TabManager: Navigation history after: ${tabs[tabIndex].navigationHistory}');
+
     if (previousPath != null) {
       // Update the tab with the new path
       tabs[tabIndex] = tabs[tabIndex].copyWith(path: previousPath);

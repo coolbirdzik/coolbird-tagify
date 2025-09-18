@@ -152,8 +152,14 @@ class NetworkBrowsingBloc
     _log("  - directories: ${state.directories?.length ?? 0}");
     _log("  - files: ${state.files?.length ?? 0}");
 
-    // First, emit a loading state to show progress
-    emit(state.copyWith(isLoading: true, currentPath: event.path));
+    // First, emit a loading state to show progress and clear old contents
+    emit(state.copyWith(
+      isLoading: true,
+      currentPath: event.path,
+      clearDirectories: true,
+      clearFiles: true,
+      clearErrorMessage: true,
+    ));
 
     // Log once at the start of the request
     _log("NetworkBrowsingBloc: Requesting directory: ${event.path}");

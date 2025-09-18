@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:mobile_smb_native/mobile_smb_native.dart';
 import '../files/file_type_helper.dart';
@@ -63,10 +64,18 @@ class NativeVlcDirectHelper {
 
       await Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (context) => VideoPlayer.smb(
-            smbMrl: finalSmbMrl,
-            fileName: fileName,
-            fileType: fileType,
+          builder: (context) => Scaffold(
+            backgroundColor: Colors.black,
+            appBar: (Platform.isAndroid || Platform.isIOS) ? null : null,
+            body: SafeArea(
+              top: Platform.isAndroid || Platform.isIOS,
+              bottom: Platform.isAndroid || Platform.isIOS,
+              child: VideoPlayer.smb(
+                smbMrl: finalSmbMrl,
+                fileName: fileName,
+                fileType: fileType,
+              ),
+            ),
           ),
         ),
       );
@@ -111,7 +120,7 @@ class NativeVlcDirectHelper {
     try {
       // Try to initialize the native SMB service
       // This will throw an exception if the native library is not available
-      final smbService = SmbNativeService.instance;
+      SmbNativeService.instance;
       return true;
     } catch (e) {
       debugPrint('NativeVlcDirectHelper: Native SMB not available: $e');

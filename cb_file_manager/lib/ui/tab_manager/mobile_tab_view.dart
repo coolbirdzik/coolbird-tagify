@@ -12,6 +12,7 @@ import '../screens/network_browsing/network_browser_screen.dart';
 import '../screens/network_browsing/smb_browser_screen.dart'; // Added import for SMBBrowserScreen
 import '../../bloc/network_browsing/network_browsing_bloc.dart';
 import '../utils/route.dart';
+import 'package:cb_file_manager/ui/state/video_ui_state.dart';
 
 /// Giao diện kiểu Chrome cho thiết bị di động, hiển thị thanh địa chỉ ở trên
 /// và một nút hiển thị số lượng tab bên cạnh
@@ -26,7 +27,7 @@ class MobileTabView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Lấy theme để xác định màu sắc phù hợp
+    // Lấy theme để xác định màu sắc phù hợp (sử dụng brightness và màu nền)
     final theme = Theme.of(context);
     final isDarkMode = theme.brightness == Brightness.dark;
 
@@ -51,8 +52,14 @@ class MobileTabView extends StatelessWidget {
           child: SafeArea(
             child: Column(
               children: [
-                // Luôn hiển thị thanh địa chỉ kiểu Chrome
-                _buildEmptyOrNormalChromeBar(context, state),
+                // Ẩn thanh địa chỉ khi video fullscreen
+                ValueListenableBuilder<bool>(
+                  valueListenable: VideoUiState.isFullscreen,
+                  builder: (context, isFs, _) {
+                    if (isFs) return const SizedBox.shrink();
+                    return _buildEmptyOrNormalChromeBar(context, state);
+                  },
+                ),
 
                 // Nội dung chính: hiển thị nội dung tab hoặc màn hình trống
                 Expanded(
@@ -82,44 +89,31 @@ class MobileTabView extends StatelessWidget {
 
   /// Xây dựng thanh chrome style khi không có tab nào
   Widget _buildEmptyChromeStyleAddressBar(BuildContext context) {
-    // Lấy màu từ theme để đảm bảo đồng bộ với theme của ứng dụng
     final theme = Theme.of(context);
     final isDarkMode = theme.brightness == Brightness.dark;
-
-    // Sử dụng màu trắng hoặc đen tùy theo theme sáng/tối
-    final backgroundColor = isDarkMode ? Colors.black : Colors.white;
     final textColor = isDarkMode ? Colors.white : Colors.black;
+    final backgroundColor = Theme.of(context).scaffoldBackgroundColor;
+
+    // Lấy state hiện tại để hiển thị nút đếm tab (0)
+    final tState = context.read<TabManagerBloc>().state;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6.0, vertical: 8.0),
-      decoration: BoxDecoration(
-        color: backgroundColor,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 2,
-            offset: const Offset(0, 1),
-          ),
-        ],
-      ),
+      decoration: BoxDecoration(color: backgroundColor),
       child: Row(
         children: [
-          // Nút menu để mở drawer
+          // Nút menu
           IconButton(
             icon: Icon(EvaIcons.menu, color: textColor),
-            onPressed: () {
-              // Mở Scaffold drawer
-              Scaffold.of(context).openDrawer();
-            },
+            onPressed: () => Scaffold.of(context).openDrawer(),
           ),
 
-          // Thanh tiêu đề - sử dụng AddressBarWidget giống như khi có tab
+          // Thanh địa chỉ dạng placeholder, vẫn có nền rõ ràng
           Expanded(
             child: AddressBarWidget(
-              path: "",
-              name: "CoolBird File Manager",
+              path: '',
+              name: 'Search or enter path',
               onTap: () {
-                // Không cần hành động, hoặc có thể hiển thị thông báo cần mở tab trước
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                     content: Text('Vui lòng tạo một tab trước khi điều hướng'),
@@ -131,19 +125,20 @@ class MobileTabView extends StatelessWidget {
             ),
           ),
 
-          // Nút thêm tab mới
+          // Nút tạo tab mới nhanh (đặt trước nút số lượng tab)
           IconButton(
             icon: Icon(EvaIcons.plus, color: textColor),
-            tooltip: 'Add new tab',
+            tooltip: 'New tab',
             onPressed: onAddNewTab,
           ),
+
+          // Nút số lượng tab
+          _buildTabCountButton(context, tState, textColor),
 
           // Nút menu tùy chọn
           IconButton(
             icon: Icon(EvaIcons.moreVertical, color: textColor),
-            onPressed: () {
-              _showMobileTabOptions(context);
-            },
+            onPressed: () => _showMobileTabOptions(context),
           ),
         ],
       ),
@@ -161,22 +156,13 @@ class MobileTabView extends StatelessWidget {
     final theme = Theme.of(context);
     final isDarkMode = theme.brightness == Brightness.dark;
 
-    // Sử dụng màu trắng hoặc đen tùy theo theme sáng/tối
-    final backgroundColor = isDarkMode ? Colors.black : Colors.white;
+    // Màu nền rõ ràng để dễ nhìn toàn thanh
+    final backgroundColor = Theme.of(context).scaffoldBackgroundColor;
     final textColor = isDarkMode ? Colors.white : Colors.black;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6.0, vertical: 8.0),
-      decoration: BoxDecoration(
-        color: backgroundColor,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 2,
-            offset: const Offset(0, 1),
-          ),
-        ],
-      ),
+      decoration: BoxDecoration(color: backgroundColor),
       child: Row(
         children: [
           // Nút menu để mở drawer
@@ -200,6 +186,13 @@ class MobileTabView extends StatelessWidget {
             ),
           ),
 
+          // Nút thêm tab mới nhanh (đặt trước nút số lượng tab)
+          IconButton(
+            icon: Icon(EvaIcons.plus, color: textColor),
+            tooltip: 'New tab',
+            onPressed: onAddNewTab,
+          ),
+
           // Nút số lượng tab và menu tab - đã chuyển sang bên phải thanh địa chỉ
           _buildTabCountButton(context, state, textColor),
 
@@ -219,117 +212,122 @@ class MobileTabView extends StatelessWidget {
   void _showMobileTabOptions(BuildContext context) {
     final state = context.read<TabManagerBloc>().state;
     final activeTab = state.activeTab;
+    // Lấy TabManagerBloc reference trước khi tạo BottomSheet
+    final tabManagerBloc = context.read<TabManagerBloc>();
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        decoration: BoxDecoration(
-          color: Theme.of(context).scaffoldBackgroundColor,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-        ),
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.6,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Thanh kéo ở trên cùng
-            Container(
-              margin: const EdgeInsets.only(top: 8),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.grey.withOpacity(0.3),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
-              child: Text(
-                'Tùy chọn',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Theme.of(context).colorScheme.onSurface,
+      builder: (bottomSheetContext) => BlocProvider.value(
+        value: tabManagerBloc,
+        child: Container(
+          decoration: BoxDecoration(
+            color: Theme.of(bottomSheetContext).scaffoldBackgroundColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+          ),
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(bottomSheetContext).size.height * 0.6,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Thanh kéo ở trên cùng
+              Container(
+                margin: const EdgeInsets.only(top: 8),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(2),
                 ),
               ),
-            ),
 
-            const Divider(height: 1),
-
-            // Danh sách các tùy chọn
-            Flexible(
-              child: ListView(
-                shrinkWrap: true,
-                children: [
-                  // Thêm tab mới
-                  ListTile(
-                    leading: const Icon(EvaIcons.plus),
-                    title: const Text('Thêm tab mới'),
-                    onTap: () {
-                      Navigator.pop(context);
-                      onAddNewTab();
-                    },
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+                child: Text(
+                  'Tùy chọn',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(bottomSheetContext).colorScheme.onSurface,
                   ),
-
-                  // Làm mới tab hiện tại
-                  if (activeTab != null)
-                    ListTile(
-                      leading: const Icon(EvaIcons.refresh),
-                      title: const Text('Làm mới tab'),
-                      onTap: () {
-                        Navigator.pop(context);
-                        context
-                            .read<TabManagerBloc>()
-                            .add(UpdateTabPath(activeTab.id, activeTab.path));
-                      },
-                    ),
-
-                  // Xem thông tin chi tiết về tab
-                  if (activeTab != null)
-                    ListTile(
-                      leading: const Icon(EvaIcons.infoOutline),
-                      title: const Text('Thông tin tab'),
-                      onTap: () {
-                        Navigator.pop(context);
-                        _showTabInfoDialog(context, activeTab);
-                      },
-                    ),
-
-                  // Đóng tất cả các tab
-                  if (state.tabs.isNotEmpty)
-                    ListTile(
-                      leading: const Icon(EvaIcons.close),
-                      title: const Text('Đóng tất cả các tab'),
-                      onTap: () {
-                        RouteUtils.safePopDialog(context);
-                        _showCloseAllTabsConfirmation(context);
-                      },
-                    ),
-
-                  const Divider(),
-
-                  // Cài đặt
-                  ListTile(
-                    leading: const Icon(EvaIcons.settings2Outline),
-                    title: const Text('Cài đặt'),
-                    onTap: () {
-                      RouteUtils.safePopDialog(context);
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const SettingsScreen(),
-                        ),
-                      );
-                    },
-                  ),
-                ],
+                ),
               ),
-            ),
-          ],
+
+              const Divider(height: 1),
+
+              // Danh sách các tùy chọn
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [
+                    // Thêm tab mới
+                    ListTile(
+                      leading: const Icon(EvaIcons.plus),
+                      title: const Text('Thêm tab mới'),
+                      onTap: () {
+                        Navigator.pop(bottomSheetContext);
+                        onAddNewTab();
+                      },
+                    ),
+
+                    // Làm mới tab hiện tại
+                    if (activeTab != null)
+                      ListTile(
+                        leading: const Icon(EvaIcons.refresh),
+                        title: const Text('Làm mới tab'),
+                        onTap: () {
+                          Navigator.pop(bottomSheetContext);
+                          tabManagerBloc
+                              .add(UpdateTabPath(activeTab.id, activeTab.path));
+                        },
+                      ),
+
+                    // Xem thông tin chi tiết về tab
+                    if (activeTab != null)
+                      ListTile(
+                        leading: const Icon(EvaIcons.infoOutline),
+                        title: const Text('Thông tin tab'),
+                        onTap: () {
+                          Navigator.pop(bottomSheetContext);
+                          _showTabInfoDialog(context, activeTab);
+                        },
+                      ),
+
+                    // Đóng tất cả các tab
+                    if (state.tabs.isNotEmpty)
+                      ListTile(
+                        leading: const Icon(EvaIcons.close),
+                        title: const Text('Đóng tất cả các tab'),
+                        onTap: () {
+                          RouteUtils.safePopDialog(bottomSheetContext);
+                          _showCloseAllTabsConfirmation(context);
+                        },
+                      ),
+
+                    const Divider(),
+
+                    // Cài đặt
+                    ListTile(
+                      leading: const Icon(EvaIcons.settings2Outline),
+                      title: const Text('Cài đặt'),
+                      onTap: () {
+                        RouteUtils.safePopDialog(bottomSheetContext);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const SettingsScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -337,20 +335,23 @@ class MobileTabView extends StatelessWidget {
 
   /// Hiển thị hộp thoại xác nhận khi đóng tất cả các tab
   void _showCloseAllTabsConfirmation(BuildContext context) {
+    // Lấy TabManagerBloc reference trước khi tạo dialog
+    final tabBloc = context.read<TabManagerBloc>();
+
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text('Đóng tất cả các tab?'),
         content: const Text('Bạn có chắc chắn muốn đóng tất cả các tab không?'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialogContext),
             child: const Text('Hủy'),
           ),
           TextButton(
             onPressed: () {
-              Navigator.pop(context);
-              final tabBloc = context.read<TabManagerBloc>();
+              Navigator.pop(dialogContext);
+              // Sử dụng tabBloc reference đã lấy từ trước
               final tabs = List<TabData>.from(tabBloc.state.tabs);
               for (var tab in tabs) {
                 tabBloc.add(CloseTab(tab.id));
@@ -372,52 +373,56 @@ class MobileTabView extends StatelessWidget {
       context: context,
       builder: (context) => AlertDialog(
         title: Text(tab.name),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Thông tin tab:',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Text('Đường dẫn: ${tab.path}'),
-            const SizedBox(height: 4),
-            Text('Ghim: ${tab.isPinned ? 'Có' : 'Không'}'),
-            const SizedBox(height: 4),
-            Text('ID: ${tab.id}'),
-            const SizedBox(height: 16),
-            const Text(
-              'Lịch sử điều hướng:',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            if (tab.navigationHistory.isEmpty)
-              const Text('Không có lịch sử')
-            else
-              Flexible(
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: tab.navigationHistory.length,
-                  itemBuilder: (context, index) {
-                    final path = tab.navigationHistory[index];
-                    final isCurrentPath = path == tab.path;
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 2),
-                      child: Text(
-                        path.isEmpty ? 'Drives' : path,
-                        style: TextStyle(
-                          fontWeight: isCurrentPath ? FontWeight.bold : null,
-                          color: isCurrentPath
-                              ? Theme.of(context).colorScheme.primary
-                              : null,
-                        ),
-                      ),
-                    );
-                  },
-                ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Thông tin tab:',
+                style: TextStyle(fontWeight: FontWeight.bold),
               ),
-          ],
+              const SizedBox(height: 8),
+              Text('Đường dẫn: ${tab.path}'),
+              const SizedBox(height: 4),
+              Text('Ghim: ${tab.isPinned ? 'Có' : 'Không'}'),
+              const SizedBox(height: 4),
+              Text('ID: ${tab.id}'),
+              const SizedBox(height: 16),
+              const Text(
+                'Lịch sử điều hướng:',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              if (tab.navigationHistory.isEmpty)
+                const Text('Không có lịch sử')
+              else
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 200),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: tab.navigationHistory.map((path) {
+                        final isCurrentPath = path == tab.path;
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 2),
+                          child: Text(
+                            path.isEmpty ? 'Drives' : path,
+                            style: TextStyle(
+                              fontWeight:
+                                  isCurrentPath ? FontWeight.bold : null,
+                              color: isCurrentPath
+                                  ? Theme.of(context).colorScheme.primary
+                                  : null,
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
         actions: [
           if (tab.isPinned)
@@ -460,13 +465,8 @@ class MobileTabView extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
         margin: const EdgeInsets.only(left: 8.0),
         decoration: BoxDecoration(
-          color: isDarkMode ? Colors.grey[800] : Colors.white.withOpacity(0.9),
+          color: isDarkMode ? const Color(0xFF0F2C4C) : Colors.grey[200],
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: isDarkMode
-                ? Colors.grey[700]!
-                : theme.colorScheme.outline.withOpacity(0.3),
-          ),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -546,7 +546,7 @@ class MobileTabView extends StatelessWidget {
 
                   const Divider(height: 1),
 
-                  // Danh sách tab
+                  // Danh sách tab (Grid dạng Chrome)
                   Flexible(
                     child: updatedState.tabs.isEmpty
                         ? Center(
@@ -562,58 +562,34 @@ class MobileTabView extends StatelessWidget {
                               ),
                             ),
                           )
-                        : ListView.builder(
-                            shrinkWrap: true,
-                            padding: EdgeInsets.zero,
-                            itemCount: updatedState.tabs.length,
-                            itemBuilder: (context, index) {
-                              final tab = updatedState.tabs[index];
-                              final isActive =
-                                  tab.id == updatedState.activeTabId;
+                        : LayoutBuilder(
+                            builder: (context, constraints) {
+                              // Xác định số cột theo chiều rộng
+                              final width = constraints.maxWidth;
+                              int crossAxisCount = 2;
+                              if (width >= 480) crossAxisCount = 3;
+                              if (width >= 720) crossAxisCount = 4;
 
-                              return ListTile(
-                                leading: Icon(
-                                  tab.isPinned
-                                      ? EvaIcons.pin
-                                      : EvaIcons.folderOutline,
-                                  color: isActive
-                                      ? Theme.of(newContext).colorScheme.primary
-                                      : null,
+                              return GridView.builder(
+                                padding: const EdgeInsets.all(12.0),
+                                gridDelegate:
+                                    SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: crossAxisCount,
+                                  crossAxisSpacing: 12,
+                                  mainAxisSpacing: 12,
+                                  childAspectRatio: 1.2,
                                 ),
-                                title: Text(
-                                  tab.name,
-                                  style: TextStyle(
-                                    fontWeight:
-                                        isActive ? FontWeight.bold : null,
-                                    color: isActive
-                                        ? Theme.of(newContext)
-                                            .colorScheme
-                                            .primary
-                                        : null,
-                                  ),
-                                ),
-                                subtitle: Text(
-                                  tab.path,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                trailing: IconButton(
-                                  icon: const Icon(Icons.close),
-                                  onPressed: () {
-                                    // Sử dụng context mới có BlocProvider để đóng tab
-                                    BlocProvider.of<TabManagerBloc>(newContext)
-                                        .add(CloseTab(tab.id));
-                                  },
-                                ),
-                                selected: isActive,
-                                onTap: () {
-                                  if (!isActive) {
-                                    // Sử dụng context mới có BlocProvider để chuyển tab
-                                    BlocProvider.of<TabManagerBloc>(newContext)
-                                        .add(SwitchToTab(tab.id));
-                                  }
-                                  Navigator.pop(
-                                      newContext); // Đóng bottom sheet
+                                itemCount: updatedState.tabs.length,
+                                itemBuilder: (context, index) {
+                                  final tab = updatedState.tabs[index];
+                                  final isActive =
+                                      tab.id == updatedState.activeTabId;
+
+                                  return _buildTabGridTile(
+                                    context: newContext,
+                                    tab: tab,
+                                    isActive: isActive,
+                                  );
                                 },
                               );
                             },
@@ -626,6 +602,133 @@ class MobileTabView extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  // Thay thế class riêng bằng builder private để tránh class lồng nhau
+  Widget _buildTabGridTile({
+    required BuildContext context,
+    required TabData tab,
+    required bool isActive,
+  }) {
+    final theme = Theme.of(context);
+    final borderColor = isActive
+        ? theme.colorScheme.primary.withOpacity(0.5)
+        : theme.dividerColor.withOpacity(0.3);
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: () {
+        if (!isActive) {
+          BlocProvider.of<TabManagerBloc>(context).add(SwitchToTab(tab.id));
+        }
+        Navigator.pop(context);
+      },
+      child: Ink(
+        decoration: BoxDecoration(
+          color: theme.cardColor,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: borderColor),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Stack(
+          children: [
+            Positioned(
+              top: 4,
+              right: 4,
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: () {
+                    BlocProvider.of<TabManagerBloc>(context)
+                        .add(CloseTab(tab.id));
+                  },
+                  child: const Padding(
+                    padding: EdgeInsets.all(6.0),
+                    child: Icon(Icons.close, size: 16),
+                  ),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(12.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        tab.isPinned ? EvaIcons.pin : EvaIcons.folderOutline,
+                        size: 18,
+                        color: isActive
+                            ? theme.colorScheme.primary
+                            : theme.iconTheme.color,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          tab.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontWeight:
+                                isActive ? FontWeight.w600 : FontWeight.w500,
+                            color: isActive
+                                ? theme.colorScheme.primary
+                                : theme.colorScheme.onSurface,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: Container(
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        color:
+                            theme.colorScheme.surfaceVariant.withOpacity(0.3),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      alignment: Alignment.center,
+                      child: Icon(
+                        EvaIcons.fileTextOutline,
+                        size: 28,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    tab.path.isEmpty ? 'Drives' : _shortenPath(tab.path),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _shortenPath(String p) {
+    final parts =
+        p.split(Platform.pathSeparator).where((e) => e.isNotEmpty).toList();
+    if (parts.isEmpty) return p;
+    if (parts.length == 1) return parts.first;
+    return '${parts[parts.length - 2]}/${parts.last}';
   }
 
   Widget _buildEmptyTabsView(BuildContext context) {
@@ -870,10 +973,7 @@ class MobileTabView extends StatelessWidget {
                           final tabBloc =
                               BlocProvider.of<TabManagerBloc>(newContext);
 
-                          // Add this path to navigation history
-                          tabBloc.add(AddToTabHistory(tab.id, currentPath));
-
-                          // Update the tab path
+                          // Update the tab path (this will automatically handle navigation history)
                           tabBloc.add(UpdateTabPath(tab.id, currentPath));
 
                           // Update tab name
@@ -929,11 +1029,7 @@ class MobileTabView extends StatelessWidget {
                                 final tabBloc =
                                     BlocProvider.of<TabManagerBloc>(newContext);
 
-                                // Add the navigation history
-                                tabBloc
-                                    .add(AddToTabHistory(tab.id, historyPath));
-
-                                // Update the tab path
+                                // Update the tab path (this will automatically handle navigation history)
                                 tabBloc.add(UpdateTabPath(tab.id, historyPath));
                               }
                             },
@@ -1034,7 +1130,7 @@ class AddressBarWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    // Using Colors directly below
 
     return InkWell(
       onTap: onTap,
@@ -1043,19 +1139,15 @@ class AddressBarWidget extends StatelessWidget {
         height: 40,
         padding: const EdgeInsets.symmetric(horizontal: 12.0),
         decoration: BoxDecoration(
-          color: isDarkMode ? Colors.grey[800] : Colors.white.withOpacity(0.9),
-          borderRadius: BorderRadius.circular(20.0),
-          border: Border.all(
-            color: isDarkMode
-                ? Colors.grey[700]!
-                : theme.colorScheme.outline.withOpacity(0.3),
-          ),
+          // Nền rõ ràng cho thanh địa chỉ (đồng nhất dark)
+          color: isDarkMode ? const Color(0xFF0F2C4C) : Colors.grey[200],
+          borderRadius: BorderRadius.circular(12.0),
         ),
         child: Row(
           children: [
             Icon(
-              EvaIcons.folderOutline,
-              size: 16,
+              EvaIcons.search,
+              size: 18,
               color: isDarkMode ? Colors.white70 : Colors.black87,
             ),
             const SizedBox(width: 8),
@@ -1071,7 +1163,7 @@ class AddressBarWidget extends StatelessWidget {
             Icon(
               EvaIcons.chevronDown,
               size: 20,
-              color: isDarkMode ? Colors.white70 : Colors.black87,
+              color: isDarkMode ? Colors.white54 : Colors.black54,
             ),
           ],
         ),

@@ -379,76 +379,50 @@ Future<List<Directory>> getAdditionalAndroidPaths() async {
     return [];
   }
 
-  List<Directory> additionalPaths = [];
-  List<String> pathsToCheck = [
-    // Root directory
-    '/',
-    // Standard Android internal storage
-    '/sdcard',
-    '/storage/emulated/0',
-    '/storage/self/primary',
-    // System directories
-    '/system',
-    '/data',
-    // Mount points that might contain storage devices
-    '/mnt',
-    '/mnt/sdcard',
-    '/mnt/media_rw',
-    '/storage',
-  ];
+  final List<Directory> result = [];
 
-  // Check common SD card path patterns
-  for (int i = 0; i < 5; i++) {
-    pathsToCheck.add('/storage/sdcard$i');
-    pathsToCheck.add('/mnt/sdcard$i');
-    pathsToCheck.add('/storage/extSdCard');
-    pathsToCheck.add('/storage/emulated/$i');
-  }
-
-  // Try to list /storage/* directories to find mounted SD cards
+  // Include primary internal storage if readable
   try {
-    Directory storageDir = Directory('/storage');
+    final primary = Directory('/storage/emulated/0');
+    if (await primary.exists()) {
+      await primary.list().first.timeout(const Duration(milliseconds: 500),
+          onTimeout: () {
+        throw TimeoutException('Access check timed out');
+      });
+      result.add(primary);
+    }
+  } catch (_) {}
+
+  // Include removable/external storages with UUID-like folder names under /storage
+  try {
+    final Directory storageDir = Directory('/storage');
     if (await storageDir.exists()) {
-      List<FileSystemEntity> entries = await storageDir.list().toList();
-      for (var entry in entries) {
-        if (entry is Directory && !pathsToCheck.contains(entry.path)) {
-          pathsToCheck.add(entry.path);
+      final entries = await storageDir.list().toList();
+      final uuidPattern = RegExp(r'^[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}$');
+      for (final entry in entries) {
+        if (entry is Directory) {
+          final name = pathlib.basename(entry.path);
+          if (name == 'emulated' || name == 'self' || name.isEmpty) {
+            continue;
+          }
+          if (!uuidPattern.hasMatch(name)) {
+            continue;
+          }
+          try {
+            await entry.list().first.timeout(const Duration(milliseconds: 500),
+                onTimeout: () {
+              throw TimeoutException('Access check timed out');
+            });
+            result.add(entry);
+          } catch (_) {}
         }
       }
     }
   } catch (e) {
-    debugPrint('Error listing /storage directory: $e');
+    debugPrint('Error scanning /storage for external volumes: $e');
   }
 
-  // Check if each path exists and is accessible
-  for (String path in pathsToCheck) {
-    try {
-      Directory dir = Directory(path);
-      if (await dir.exists()) {
-        try {
-          // Try to list at least one file to ensure we have read access
-          await dir.list().first.timeout(
-            const Duration(milliseconds: 500),
-            onTimeout: () {
-              throw TimeoutException('Access check timed out');
-            },
-          );
-
-          // If we got here, the directory exists and is accessible
-          additionalPaths.add(dir);
-          debugPrint('Found additional storage location: ${dir.path}');
-        } catch (accessError) {
-          // Path exists but we can't list files (no permission)
-          debugPrint('Storage path exists but not accessible: $path');
-        }
-      }
-    } catch (e) {
-      // Path doesn't exist or other error
-      debugPrint('Storage path not found or error: $path - $e');
-    }
-  }
-
-  return additionalPaths;
+  return result;
 }
 
 /// Get all available storage locations across platforms
@@ -493,13 +467,19 @@ Future<List<Directory>> getAllStorageLocations() async {
     }
   }
 
-  // Remove duplicates based on path
+  // Remove duplicates using canonicalized paths to avoid aliases (/sdcard vs /storage/emulated/0)
   final uniquePaths = <String>{};
   storageLocations = storageLocations.where((dir) {
-    final path = dir.path;
-    final isNew = !uniquePaths.contains(path);
-    if (isNew) uniquePaths.add(path);
-    return isNew;
+    String canonical = dir.path;
+    try {
+      canonical = Directory(canonical).resolveSymbolicLinksSync();
+    } catch (_) {
+      // ignore resolve errors
+    }
+    if (canonical.endsWith(Platform.pathSeparator) && canonical.length > 1) {
+      canonical = canonical.substring(0, canonical.length - 1);
+    }
+    return uniquePaths.add(canonical);
   }).toList();
 
   return storageLocations;
