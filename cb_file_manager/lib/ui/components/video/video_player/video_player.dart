@@ -1354,13 +1354,27 @@ class _VideoPlayerState extends State<VideoPlayer> {
 
   @override
   Widget build(BuildContext context) {
-    if (widget.file != null) {
-      // For local files, use the original CustomVideoPlayer-style UI
-      return _buildLocalFilePlayer();
-    } else {
-      // For streaming sources, use the StreamingMediaPlayer-style UI
-      return _buildStreamingPlayer();
-    }
+    // Determine the appropriate player widget
+    final Widget playerWidget = widget.file != null
+        ? _buildLocalFilePlayer()
+        : _buildStreamingPlayer();
+    // Overlay a loading indicator when still initializing
+    return Stack(
+      children: [
+        playerWidget,
+        if (_isLoading)
+          Positioned.fill(
+            child: Container(
+              color: Colors.black45,
+              child: const Center(
+                child: CircularProgressIndicator(
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
   }
 
   Widget _buildLocalFilePlayer() {

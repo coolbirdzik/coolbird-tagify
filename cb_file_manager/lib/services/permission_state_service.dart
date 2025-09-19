@@ -53,16 +53,31 @@ class PermissionStateService {
   }
 
   Future<bool> requestStorageOrPhotos() async {
-    // Request ONE permission per tap to avoid multiple sequential system dialogs
     if (Platform.isAndroid) {
       try {
-        // Prefer Photos (Android 13+). On older Android this may map to storage handling.
-        final status = await Permission.photos.request();
-        if (status.isGranted || status.isLimited) return true;
-        // Do not auto-chain to other permissions. User can try again or open settings.
+        // On Android 13+ use granular media permissions. Try all relevant ones.
+        final videos = await Permission.videos.request();
+        if (videos.isGranted || videos.isLimited) return true;
+
+        final photos = await Permission.photos.request();
+        if (photos.isGranted || photos.isLimited) return true;
+
+        final audio = await Permission.audio.request();
+        if (audio.isGranted || audio.isLimited) return true;
+
+        // For older Android versions (<=12) or OEM behaviors, also request legacy storage.
+        final storage = await Permission.storage.request();
+        if (storage.isGranted) return true;
+
+        // As a last resort, request manage external storage (All files access) when applicable.
+        final manage = await Permission.manageExternalStorage.request();
+        if (manage.isGranted) return true;
+
+        // If nothing is granted, guide user to App Settings for All files access toggle.
+        await openAppSettings();
         return false;
       } catch (e) {
-        debugPrint('Error requesting Android media permission: $e');
+        debugPrint('Error requesting Android media/storage permissions: $e');
         return false;
       }
     }
