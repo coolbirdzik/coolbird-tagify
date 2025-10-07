@@ -63,6 +63,14 @@ class FolderSortManager {
   Future<bool> saveFolderSortOption(
       String folderPath, SortOption sortOption) async {
     try {
+      // Skip saving for invalid paths (URLs, protocols, etc.)
+      if (folderPath.contains('://') || folderPath.isEmpty) {
+        debugPrint('Skipping sort option save for invalid path: $folderPath');
+        // Still cache it in memory for the session
+        _folderSortCache[folderPath] = sortOption;
+        return true; // Return true to avoid error messages
+      }
+
       bool success = false;
 
       // Use JSON config for all platforms and paths - NO TIMEOUT for faster saving

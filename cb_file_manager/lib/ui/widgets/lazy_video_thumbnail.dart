@@ -314,7 +314,7 @@ class _LazyVideoThumbnailState extends State<LazyVideoThumbnail>
     _progressTimer?.cancel();
     _progressNotifier.value = 0.0;
 
-    _progressTimer = Timer.periodic(const Duration(milliseconds: 100), (timer) {
+    _progressTimer = Timer.periodic(const Duration(milliseconds: 200), (timer) {
       if (!mounted || _thumbnailPathNotifier.value != null) {
         timer.cancel();
         return;
@@ -324,7 +324,7 @@ class _LazyVideoThumbnailState extends State<LazyVideoThumbnail>
       // Simulate progress with diminishing returns curve
       if (currentValue < 0.95) {
         // Increment faster at the beginning, slower as we get closer to 95%
-        double increment = (1.0 - currentValue) * 0.05;
+        double increment = (1.0 - currentValue) * 0.035;
         _progressNotifier.value = currentValue + increment;
       }
     });

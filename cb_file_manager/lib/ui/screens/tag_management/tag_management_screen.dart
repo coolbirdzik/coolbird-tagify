@@ -12,6 +12,7 @@ import 'package:cb_file_manager/ui/tab_manager/core/tab_manager.dart';
 import 'package:cb_file_manager/ui/tab_manager/core/tab_data.dart';
 import 'package:cb_file_manager/config/languages/app_localizations.dart';
 import '../../utils/route.dart';
+import '../../widgets/debug_tags_widget.dart';
 
 class TagManagementScreen extends StatefulWidget {
   final String startingDirectory;
@@ -146,7 +147,8 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Lỗi khi tải thẻ: $e'),
+            content:
+                Text(AppLocalizations.of(context)!.errorLoadingTags + '$e'),
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 3),
           ),
@@ -491,155 +493,6 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
     );
   }
 
-  Future<void> _showAboutDialog(BuildContext context) async {
-    final AppLocalizations localizations = AppLocalizations.of(context)!;
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(localizations.aboutTags),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              localizations.aboutTagsTitle,
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Text(localizations.aboutTagsDescription),
-            const SizedBox(height: 16),
-            Text(
-              localizations.aboutTagsScreenDescription,
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Text(localizations.aboutTagsScreenDescription),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => RouteUtils.safePopDialog(context),
-            child: Text(localizations.close.toUpperCase()),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // Force reload tags
-  Future<void> _forceReloadTags() async {
-    try {
-      debugPrint('TagManagementScreen: Force reloading tags...');
-      setState(() {
-        _isLoading = true;
-      });
-
-      await _loadAllTags();
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Đã reload ${_allTags.length} thẻ'),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      }
-    } catch (e) {
-      debugPrint('TagManagementScreen: Error force reloading: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Lỗi khi reload: $e'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
-  // Debug database and add sample tags
-  Future<void> _debugDatabase() async {
-    try {
-      // Initialize TagManager and check status
-      await TagManager.initialize();
-      debugPrint('TagManager initialized');
-
-      // Get current tags using TagManager
-      final currentTags = await TagManager.getAllUniqueTags("");
-      debugPrint('Current tags count: ${currentTags.length}');
-      debugPrint('Current tags: $currentTags');
-
-      // Add some sample tags if none exist
-      if (currentTags.isEmpty) {
-        debugPrint('No tags found, adding sample tags...');
-
-        // Create some sample files and add tags to them
-        final sampleFiles = [
-          '/tmp/sample1.txt',
-          '/tmp/sample2.txt',
-          '/tmp/sample3.txt',
-        ];
-
-        final sampleTags = [
-          'work',
-          'important',
-          'project',
-          'personal',
-          'urgent'
-        ];
-
-        for (int i = 0; i < sampleFiles.length; i++) {
-          final file = sampleFiles[i];
-          final tag = sampleTags[i % sampleTags.length];
-          await TagManager.addTag(file, tag);
-          debugPrint('Added tag "$tag" to file "$file"');
-        }
-
-        // Reload tags
-        await _loadAllTags();
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Đã thêm ${sampleTags.length} thẻ mẫu để test'),
-              backgroundColor: Colors.green,
-              duration: const Duration(seconds: 2),
-            ),
-          );
-        }
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Database OK. Tìm thấy ${currentTags.length} thẻ'),
-              backgroundColor: Colors.blue,
-              duration: const Duration(seconds: 2),
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      debugPrint('Debug error: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Debug error: $e'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      }
-    }
-  }
-
   // Toggle search mode
   void _toggleSearch() {
     setState(() {
@@ -653,6 +506,28 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: AppBar(
+        title: Text(AppLocalizations.of(context)!.tagManagementTitle),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.bug_report),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const DebugTagsWidget(),
+                ),
+              );
+            },
+            tooltip: AppLocalizations.of(context)!.debugTags,
+          ),
+          IconButton(
+            icon: const Icon(Icons.search),
+            onPressed: _toggleSearch,
+            tooltip: AppLocalizations.of(context)!.searchTags,
+          ),
+        ],
+      ),
       body: _isSearching
           ? Column(
               children: [
@@ -662,7 +537,7 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
                   child: TextField(
                     controller: _searchController,
                     decoration: InputDecoration(
-                      hintText: 'Tìm kiếm thẻ...',
+                      hintText: AppLocalizations.of(context)!.searchTagsHint,
                       prefixIcon: const Icon(Icons.search),
                       suffixIcon: IconButton(
                         icon: const Icon(Icons.close),
@@ -693,7 +568,7 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
               : _selectedTag == null
                   ? _buildTagsList()
                   : _buildFilesByTagList(),
-      floatingActionButton: _selectedTag == null && !_isSearching
+      floatingActionButton: _selectedTag == null
           ? FloatingActionButton(
               onPressed: _showCreateTagDialog,
               backgroundColor: Theme.of(context).primaryColor,
@@ -702,7 +577,7 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
                 color: Colors.white,
                 size: 28,
               ),
-              tooltip: 'Tạo thẻ mới',
+              tooltip: AppLocalizations.of(context)!.newTagTooltip,
             )
           : null,
     );
@@ -718,7 +593,7 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
             children: [
               ListTile(
                 leading: const Icon(Icons.color_lens),
-                title: const Text('Thay đổi màu sắc'),
+                title: Text(AppLocalizations.of(context)!.changeTagColor),
                 onTap: () {
                   Navigator.pop(context);
                   _showColorPickerDialog(tag);
@@ -728,7 +603,7 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
               if (widget.onTagSelected == null)
                 ListTile(
                   leading: const Icon(Icons.tab),
-                  title: const Text('Mở trong tab mới'),
+                  title: Text(AppLocalizations.of(context)!.openInNewTab),
                   onTap: () {
                     Navigator.pop(context);
                     _directTagSearch(tag);
@@ -736,8 +611,8 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
                 ),
               ListTile(
                 leading: const Icon(Icons.delete, color: Colors.red),
-                title:
-                    const Text('Xóa thẻ', style: TextStyle(color: Colors.red)),
+                title: Text(AppLocalizations.of(context)!.deleteTag,
+                    style: const TextStyle(color: Colors.red)),
                 onTap: () {
                   Navigator.pop(context);
                   _confirmDeleteTag(tag);
@@ -765,20 +640,20 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
               color: Theme.of(context).colorScheme.secondary.withOpacity(0.5),
             ),
             const SizedBox(height: 24),
-            const Text(
-              'Không tìm thấy thẻ nào',
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w500),
+            Text(
+              AppLocalizations.of(context)!.noTagsFoundMessage,
+              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w500),
             ),
             const SizedBox(height: 16),
-            const Text(
-              'Tạo thẻ mới để bắt đầu phân loại tệp',
-              style: TextStyle(fontSize: 16, color: Colors.grey),
+            Text(
+              AppLocalizations.of(context)!.noTagsFoundDescription,
+              style: const TextStyle(fontSize: 16, color: Colors.grey),
             ),
             const SizedBox(height: 24),
             ElevatedButton.icon(
               onPressed: _showCreateTagDialog,
               icon: const Icon(Icons.add),
-              label: const Text('Tạo thẻ mới'),
+              label: Text(AppLocalizations.of(context)!.createNewTagButton),
               style: ElevatedButton.styleFrom(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
@@ -801,7 +676,9 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
             ),
             const SizedBox(height: 24),
             Text(
-              'Không có thẻ nào phù hợp với "${_searchController.text}"',
+              AppLocalizations.of(context)!
+                  .noMatchingTagsMessage
+                  .replaceAll('\${searchTags}', _searchController.text),
               style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w500),
               textAlign: TextAlign.center,
             ),
@@ -811,7 +688,8 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
                 _searchController.clear();
               },
               icon: const Icon(Icons.clear, size: 20),
-              label: const Text('Xóa tìm kiếm', style: TextStyle(fontSize: 16)),
+              label: Text(AppLocalizations.of(context)!.clearSearch,
+                  style: const TextStyle(fontSize: 16)),
               style: OutlinedButton.styleFrom(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
@@ -856,7 +734,7 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Quản lý thẻ',
+                              AppLocalizations.of(context)!.tagManagementHeader,
                               style: TextStyle(
                                 fontSize: 24,
                                 fontWeight: FontWeight.w700,
@@ -866,7 +744,8 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              '${_filteredTags.length} thẻ đã tạo',
+                              '${_filteredTags.length} ' +
+                                  AppLocalizations.of(context)!.tagsCreated,
                               style: TextStyle(
                                 fontSize: 14,
                                 color: isDarkMode
@@ -890,7 +769,7 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: PopupMenuButton<String>(
-                            tooltip: 'Sắp xếp thẻ',
+                            tooltip: AppLocalizations.of(context)!.sortTags,
                             onSelected: _changeSortCriteria,
                             child: Padding(
                               padding: const EdgeInsets.symmetric(
@@ -907,7 +786,7 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
                                   ),
                                   const SizedBox(width: 8),
                                   Text(
-                                    'Sắp xếp',
+                                    AppLocalizations.of(context)!.sortTags,
                                     style: TextStyle(
                                       fontSize: 14,
                                       fontWeight: FontWeight.w500,
@@ -932,9 +811,10 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
                                       size: 18,
                                     ),
                                     const SizedBox(width: 12),
-                                    const Text(
-                                      'Theo bảng chữ cái',
-                                      style: TextStyle(fontSize: 16),
+                                    Text(
+                                      AppLocalizations.of(context)!
+                                          .sortByAlphabet,
+                                      style: const TextStyle(fontSize: 16),
                                     ),
                                     if (_sortCriteria == 'name')
                                       Padding(
@@ -961,9 +841,10 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
                                       size: 18,
                                     ),
                                     const SizedBox(width: 12),
-                                    const Text(
-                                      'Theo phổ biến',
-                                      style: TextStyle(fontSize: 16),
+                                    Text(
+                                      AppLocalizations.of(context)!
+                                          .sortByPopular,
+                                      style: const TextStyle(fontSize: 16),
                                     ),
                                     if (_sortCriteria == 'popularity')
                                       Padding(
@@ -990,9 +871,10 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
                                       size: 18,
                                     ),
                                     const SizedBox(width: 12),
-                                    const Text(
-                                      'Sử dụng gần đây',
-                                      style: TextStyle(fontSize: 16),
+                                    Text(
+                                      AppLocalizations.of(context)!
+                                          .sortByRecent,
+                                      style: const TextStyle(fontSize: 16),
                                     ),
                                     if (_sortCriteria == 'recent')
                                       Padding(
@@ -1034,8 +916,8 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
                               size: 20,
                             ),
                             tooltip: _isGridView
-                                ? 'Chế độ danh sách'
-                                : 'Chế độ lưới',
+                                ? AppLocalizations.of(context)!.listViewMode
+                                : AppLocalizations.of(context)!.gridViewMode,
                             padding: const EdgeInsets.all(12),
                           ),
                         ),
@@ -1043,9 +925,9 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
                     ],
                   ),
                   const SizedBox(height: 12),
-                  const Text(
-                    'Nhấn vào thẻ để xem tất cả tệp có gắn thẻ đó. Sử dụng các nút bên phải để thay đổi màu hoặc xóa thẻ.',
-                    style: TextStyle(color: Colors.grey, fontSize: 15),
+                  Text(
+                    AppLocalizations.of(context)!.tagManagementDescription,
+                    style: const TextStyle(color: Colors.grey, fontSize: 15),
                   ),
                 ],
               ),
@@ -1071,10 +953,11 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
                       icon: const Icon(Icons.navigate_before),
                       iconSize: 24,
                       onPressed: _currentPage > 0 ? _previousPage : null,
-                      tooltip: 'Trang trước',
+                      tooltip: AppLocalizations.of(context)!.previousPage,
                     ),
                     Text(
-                      'Trang ${_currentPage + 1} / $_totalPages',
+                      AppLocalizations.of(context)!.page +
+                          ' ${_currentPage + 1} / $_totalPages',
                       style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 16,
@@ -1085,7 +968,7 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
                       iconSize: 24,
                       onPressed:
                           _currentPage < _totalPages - 1 ? _nextPage : null,
-                      tooltip: 'Trang sau',
+                      tooltip: AppLocalizations.of(context)!.nextPage,
                     ),
                   ],
                 ),
@@ -1121,13 +1004,13 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
                       icon: const Icon(Icons.first_page),
                       iconSize: 22,
                       onPressed: _currentPage > 0 ? () => _goToPage(0) : null,
-                      tooltip: 'Trang đầu',
+                      tooltip: AppLocalizations.of(context)!.firstPage,
                     ),
                     IconButton(
                       icon: const Icon(Icons.navigate_before),
                       iconSize: 22,
                       onPressed: _currentPage > 0 ? _previousPage : null,
-                      tooltip: 'Trang trước',
+                      tooltip: AppLocalizations.of(context)!.previousPage,
                     ),
                     ..._buildPageIndicators(),
                     IconButton(
@@ -1135,7 +1018,7 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
                       iconSize: 22,
                       onPressed:
                           _currentPage < _totalPages - 1 ? _nextPage : null,
-                      tooltip: 'Trang sau',
+                      tooltip: AppLocalizations.of(context)!.nextPage,
                     ),
                     IconButton(
                       icon: const Icon(Icons.last_page),
@@ -1143,7 +1026,7 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
                       onPressed: _currentPage < _totalPages - 1
                           ? () => _goToPage(_totalPages - 1)
                           : null,
-                      tooltip: 'Trang cuối',
+                      tooltip: AppLocalizations.of(context)!.lastPage,
                     ),
                   ],
                 ),
@@ -1305,7 +1188,7 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            'Nhấn để xem tệp',
+                            AppLocalizations.of(context)!.clickToViewFiles,
                             style: TextStyle(
                               fontSize: 14,
                               color:
@@ -1326,7 +1209,7 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
                             color: isDarkMode ? Colors.white70 : Colors.black54,
                           ),
                           onPressed: () => _showColorPickerDialog(tag),
-                          tooltip: 'Thay đổi màu thẻ',
+                          tooltip: AppLocalizations.of(context)!.changeTagColor,
                           splashRadius: 24,
                         ),
                         IconButton(
@@ -1337,7 +1220,8 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
                                 .withOpacity(isDarkMode ? 0.8 : 0.7),
                           ),
                           onPressed: () => _confirmDeleteTag(tag),
-                          tooltip: 'Xóa thẻ này khỏi tất cả tệp',
+                          tooltip: AppLocalizations.of(context)!
+                              .deleteTagFromAllFiles,
                           splashRadius: 24,
                         ),
                       ],
@@ -1447,7 +1331,7 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
                           color: isDarkMode ? Colors.white70 : Colors.black54,
                         ),
                         onPressed: () => _showColorPickerDialog(tag),
-                        tooltip: 'Thay đổi màu',
+                        tooltip: AppLocalizations.of(context)!.changeColor,
                         padding: const EdgeInsets.all(2),
                         constraints: const BoxConstraints(
                           minWidth: 24,
@@ -1462,7 +1346,7 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
                               .withOpacity(isDarkMode ? 0.8 : 0.7),
                         ),
                         onPressed: () => _confirmDeleteTag(tag),
-                        tooltip: 'Xóa thẻ',
+                        tooltip: AppLocalizations.of(context)!.deleteTag,
                         padding: const EdgeInsets.all(2),
                         constraints: const BoxConstraints(
                           minWidth: 24,
@@ -1499,13 +1383,15 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
               color: Theme.of(context).colorScheme.secondary.withOpacity(0.5),
             ),
             const SizedBox(height: 24),
-            const Text(
-              'Không tìm thấy tệp nào có thẻ này',
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w500),
+            Text(
+              AppLocalizations.of(context)!.noFilesWithTag,
+              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w500),
             ),
             const SizedBox(height: 16),
             Text(
-              'Thông tin gỡ lỗi: đang tìm thẻ "${_selectedTag ?? 'none'}"',
+              AppLocalizations.of(context)!
+                  .debugInfo
+                  .replaceAll('\${tag}', _selectedTag ?? 'none'),
               style: const TextStyle(fontSize: 14, color: Colors.grey),
             ),
             const SizedBox(height: 24),
@@ -1515,8 +1401,8 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
                 ElevatedButton.icon(
                   icon: const Icon(Icons.arrow_back,
                       size: 22, color: Colors.white),
-                  label: const Text('Quay về tất cả thẻ',
-                      style: TextStyle(
+                  label: Text(AppLocalizations.of(context)!.backToAllTags,
+                      style: const TextStyle(
                           fontSize: 16,
                           color: Colors.white,
                           fontWeight: FontWeight.w500)),
@@ -1533,8 +1419,8 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
                 ElevatedButton.icon(
                   icon:
                       const Icon(Icons.refresh, size: 22, color: Colors.white),
-                  label: const Text('Thử lại',
-                      style: TextStyle(
+                  label: Text(AppLocalizations.of(context)!.tryAgain,
+                      style: const TextStyle(
                           fontSize: 16,
                           color: Colors.white,
                           fontWeight: FontWeight.bold)),
@@ -1581,8 +1467,8 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
                     ElevatedButton.icon(
                       icon: const Icon(Icons.arrow_back,
                           size: 22, color: Colors.white),
-                      label: const Text('Quay về tất cả thẻ',
-                          style: TextStyle(
+                      label: Text(AppLocalizations.of(context)!.backToAllTags,
+                          style: const TextStyle(
                               fontSize: 16,
                               color: Colors.white,
                               fontWeight: FontWeight.w500)),
@@ -1600,9 +1486,9 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
                       ElevatedButton.icon(
                         icon: const Icon(Icons.color_lens,
                             size: 20, color: Colors.white),
-                        label: const Text(
-                          'Thay đổi màu',
-                          style: TextStyle(
+                        label: Text(
+                          AppLocalizations.of(context)!.changeColor,
+                          style: const TextStyle(
                               fontSize: 15,
                               color: Colors.white,
                               fontWeight: FontWeight.bold),
@@ -1643,7 +1529,8 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
                       ),
                       const SizedBox(width: 12),
                       Text(
-                        '${_filesBySelectedTag.length} ${_filesBySelectedTag.length == 1 ? 'tệp' : 'tệp'}',
+                        '${_filesBySelectedTag.length} ' +
+                            AppLocalizations.of(context)!.filesWithTagCount,
                         style: TextStyle(
                           fontSize: 16,
                           color: isDarkMode ? Colors.white70 : Colors.black54,
@@ -1794,7 +1681,7 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
               ),
               ListTile(
                 leading: const Icon(Icons.info_outline),
-                title: const Text('Xem chi tiết'),
+                title: Text(AppLocalizations.of(context)!.viewDetails),
                 onTap: () {
                   Navigator.pop(context);
                   Navigator.push(
@@ -1809,7 +1696,7 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
               ),
               ListTile(
                 leading: const Icon(Icons.folder_open),
-                title: const Text('Mở thư mục chứa'),
+                title: Text(AppLocalizations.of(context)!.openContainingFolder),
                 onTap: () {
                   Navigator.pop(context);
                   final directory = pathlib.dirname(filePath);
@@ -1818,7 +1705,7 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
               ),
               ListTile(
                 leading: const Icon(Icons.edit),
-                title: const Text('Chỉnh sửa thẻ'),
+                title: Text(AppLocalizations.of(context)!.editTags),
                 onTap: () {
                   Navigator.pop(context);
                   Navigator.push(
@@ -1848,12 +1735,12 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
       barrierDismissible: false,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: const Text('Tạo thẻ mới'),
+          title: Text(AppLocalizations.of(context)!.newTagTitle),
           content: TextField(
             controller: tagController,
-            decoration: const InputDecoration(
-              hintText: 'Nhập tên thẻ...',
-              prefixIcon: Icon(Icons.tag),
+            decoration: InputDecoration(
+              hintText: AppLocalizations.of(context)!.enterTagName,
+              prefixIcon: const Icon(Icons.tag),
             ),
             autofocus: true,
             textInputAction: TextInputAction.done,
@@ -1866,13 +1753,13 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
           ),
           actions: <Widget>[
             TextButton(
-              child: const Text('Hủy'),
+              child: Text(AppLocalizations.of(context)!.cancel),
               onPressed: () {
                 Navigator.of(context).pop();
               },
             ),
             TextButton(
-              child: const Text('Tạo'),
+              child: Text(AppLocalizations.of(context)!.create),
               onPressed: () {
                 final tagName = tagController.text.trim();
                 if (tagName.isNotEmpty) {
@@ -1898,7 +1785,9 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
       if (_allTags.contains(tagName)) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Thẻ "$tagName" đã tồn tại'),
+            content: Text(AppLocalizations.of(context)!
+                .tagAlreadyExists
+                .replaceAll('\${tagName}', tagName)),
             backgroundColor: Colors.orange,
           ),
         );
@@ -1923,7 +1812,9 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Đã tạo thẻ "$tagName" thành công'),
+            content: Text(AppLocalizations.of(context)!
+                .tagCreatedSuccessfully
+                .replaceAll('\${tagName}', tagName)),
             backgroundColor: Colors.green,
           ),
         );
@@ -1933,7 +1824,8 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Lỗi khi tạo thẻ: $e'),
+            content:
+                Text(AppLocalizations.of(context)!.errorCreatingTag + '$e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -1954,7 +1846,9 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
       try {
         // Hiển thị thông báo
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Opening folder: $folderPath')),
+          SnackBar(
+              content: Text(
+                  AppLocalizations.of(context)!.openingFolder + '$folderPath')),
         );
 
         // Nếu trong môi trường tab, thêm tab mới hoặc chuyển đến tab đã mở
@@ -1997,9 +1891,10 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
       } catch (e) {}
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Folder not found: $folderPath')),
+        SnackBar(
+            content: Text(
+                AppLocalizations.of(context)!.folderNotFound + '$folderPath')),
       );
     }
   }
 }
-

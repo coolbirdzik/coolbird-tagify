@@ -191,8 +191,16 @@ class TagManager {
     final tagsFilePath = await _getGlobalTagsFilePath();
     final file = File(tagsFilePath);
 
+    // If the new path doesn't exist, try to find and migrate from legacy locations
     if (!await file.exists()) {
-      return {};
+      try {
+        final migrated = await _tryMigrateFromLegacyLocations(tagsFilePath);
+        if (!migrated) {
+          return {};
+        }
+      } catch (_) {
+        return {};
+      }
     }
 
     try {
@@ -200,6 +208,59 @@ class TagManager {
       return json.decode(content);
     } catch (e) {
       return {};
+    }
+  }
+
+  /// Attempt to migrate tags file from legacy locations to the current path.
+  /// Returns true if a legacy file was found and migrated.
+  static Future<bool> _tryMigrateFromLegacyLocations(String targetPath) async {
+    try {
+      // Known legacy locations to check
+      final List<String> candidates = [];
+
+      // 1) Home directory fallback used by older builds on some platforms
+      final home =
+          Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'];
+      if (home != null && home.isNotEmpty) {
+        candidates.add('$home/$globalTagsFilename');
+        candidates.add('$home/coolbird/$globalTagsFilename');
+      }
+
+      // 2) App documents directory without the "coolbird" subfolder (older layout)
+      try {
+        final appDir = await getApplicationDocumentsDirectory();
+        candidates.add('${appDir.path}/$globalTagsFilename');
+      } catch (_) {}
+
+      // Find the first existing legacy file
+      String? legacyPath;
+      for (final path in candidates) {
+        if (await File(path).exists()) {
+          legacyPath = path;
+          break;
+        }
+      }
+
+      if (legacyPath == null) return false;
+
+      // Ensure target directory exists
+      final targetDir = File(targetPath).parent;
+      if (!await targetDir.exists()) {
+        await targetDir.create(recursive: true);
+      }
+
+      // Try rename (move); if it fails (e.g., cross-device), fallback to copy
+      try {
+        await File(legacyPath).rename(targetPath);
+      } catch (_) {
+        final data = await File(legacyPath).readAsBytes();
+        await File(targetPath).writeAsBytes(data);
+      }
+
+      debugPrint('TagManager: Migrated legacy tags file from ' + legacyPath);
+      return true;
+    } catch (_) {
+      return false;
     }
   }
 
@@ -273,20 +334,35 @@ class TagManager {
     _saveRecentTags();
   }
 
-  /// Save recent tags to SharedPreferences
+  /// Save recent tags to database
   static Future<void> _saveRecentTags() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final jsonString = json.encode(_recentTags);
-      await prefs.setString('recent_tags', jsonString);
+      await initialize();
+      if (_useObjectBox && _databaseManager != null) {
+        final jsonString = json.encode(_recentTags);
+        await _databaseManager!.saveStringPreference('recent_tags', jsonString);
+      } else {
+        // Fallback to SharedPreferences for JSON mode
+        final prefs = await SharedPreferences.getInstance();
+        final jsonString = json.encode(_recentTags);
+        await prefs.setString('recent_tags', jsonString);
+      }
     } catch (e) {}
   }
 
-  /// Load recent tags from SharedPreferences
+  /// Load recent tags from database
   static Future<void> _loadRecentTags() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final jsonString = prefs.getString('recent_tags');
+      await initialize();
+      String? jsonString;
+
+      if (_useObjectBox && _databaseManager != null) {
+        jsonString = await _databaseManager!.getStringPreference('recent_tags');
+      } else {
+        // Fallback to SharedPreferences for JSON mode
+        final prefs = await SharedPreferences.getInstance();
+        jsonString = prefs.getString('recent_tags');
+      }
 
       if (jsonString != null) {
         final List<dynamic> decoded = json.decode(jsonString);

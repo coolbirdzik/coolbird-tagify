@@ -151,6 +151,102 @@ class EnglishLocalizations implements AppLocalizations {
       '• Options to delete tags';
   @override
   String get deleteTag => 'Delete this tag from all files';
+  @override
+  String get deleteAlbum => 'Delete Album';
+
+  // Tag Management Screen
+  @override
+  String get tagManagementTitle => 'Tag Management';
+  @override
+  String get debugTags => 'Debug Tags';
+  @override
+  String get searchTags => 'Search';
+  @override
+  String get searchTagsHint => 'Search tags...';
+  @override
+  String get createNewTag => 'Create New Tag';
+  @override
+  String get newTagTooltip => 'Create new tag';
+  @override
+  String get errorLoadingTags => 'Error loading tags: ';
+  @override
+  String get noTagsFoundMessage => 'No tags found';
+  @override
+  String get noTagsFoundDescription =>
+      'Create new tags to start organizing files';
+  @override
+  String get createNewTagButton => 'Create New Tag';
+  @override
+  String get noMatchingTagsMessage => 'No tags match "\${searchTags}"';
+  @override
+  String get clearSearch => 'Clear Search';
+  @override
+  String get tagManagementHeader => 'Tag Management';
+  @override
+  String get tagsCreated => 'tags created';
+  @override
+  String get tagManagementDescription =>
+      'Tap on a tag to view all files with that tag. Use the buttons on the right to change color or delete tags.';
+  @override
+  String get sortTags => 'Sort Tags';
+  @override
+  String get sortByAlphabet => 'By Alphabet';
+  @override
+  String get sortByPopular => 'By Popular';
+  @override
+  String get listViewMode => 'List Mode';
+  @override
+  String get gridViewMode => 'Grid Mode';
+  @override
+  String get previousPage => 'Previous Page';
+  @override
+  String get nextPage => 'Next Page';
+  @override
+  String get page => 'Page';
+  @override
+  String get firstPage => 'First Page';
+  @override
+  String get lastPage => 'Last Page';
+  @override
+  String get clickToViewFiles => 'Tap to view files';
+  @override
+  String get changeTagColor => 'Change Tag Color';
+  @override
+  String get deleteTagFromAllFiles => 'Delete this tag from all files';
+  @override
+  String get openInNewTab => 'Open in New Tab';
+  @override
+  String get changeColor => 'Change Color';
+  @override
+  String get noFilesWithTag => 'No files found with this tag';
+  @override
+  String get debugInfo => 'Debug info: searching for tag "\${tag}"';
+  @override
+  String get backToAllTags => 'Back to All Tags';
+  @override
+  String get tryAgain => 'Try Again';
+  @override
+  String get filesWithTagCount => 'files';
+  @override
+  String get viewDetails => 'View Details';
+  @override
+  String get openContainingFolder => 'Open Containing Folder';
+  @override
+  String get editTags => 'Edit Tags';
+  @override
+  String get newTagTitle => 'Create New Tag';
+  @override
+  String get enterTagName => 'Enter tag name...';
+  @override
+  String get tagAlreadyExists => 'Tag "\${tagName}" already exists';
+  @override
+  String get tagCreatedSuccessfully => 'Tag "\${tagName}" created successfully';
+  @override
+  String get errorCreatingTag => 'Error creating tag: ';
+  @override
+  String get openingFolder => 'Opening folder: ';
+  @override
+  String get folderNotFound => 'Folder not found: ';
 
   // Gallery
   @override

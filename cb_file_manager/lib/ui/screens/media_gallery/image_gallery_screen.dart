@@ -14,16 +14,24 @@ import 'package:cb_file_manager/helpers/files/folder_sort_manager.dart';
 import 'package:cb_file_manager/config/languages/app_localizations.dart';
 import 'package:cb_file_manager/helpers/tags/tag_manager.dart';
 import 'package:cb_file_manager/ui/widgets/tag_chip.dart';
+import 'package:cb_file_manager/services/album_service.dart';
+import 'package:cb_file_manager/models/objectbox/album.dart';
 import '../../utils/route.dart';
 
 class ImageGalleryScreen extends StatefulWidget {
   final String path;
+  final String? directoryPath;
+  final String? title;
   final bool recursive;
+  final bool showAllImages;
 
   const ImageGalleryScreen({
     Key? key,
-    required this.path,
+    this.path = '',
+    this.directoryPath,
+    this.title,
     this.recursive = true,
+    this.showAllImages = false,
   }) : super(key: key);
 
   @override
@@ -34,6 +42,7 @@ class ImageGalleryScreenState extends State<ImageGalleryScreen> {
   late Future<List<File>> _imageFilesFuture;
   late UserPreferences _preferences;
   late double _thumbnailSize = 150.0; // Default size
+  final AlbumService _albumService = AlbumService.instance;
 
   List<File> _imageFiles = [];
   Map<String, List<String>> _fileTagsMap = {};
@@ -43,12 +52,18 @@ class ImageGalleryScreenState extends State<ImageGalleryScreen> {
   ViewMode _viewMode = ViewMode.grid;
   String? _searchQuery;
 
+  // Album view mode
+  bool _isAlbumView = false;
+  List<Album> _albums = [];
+  Album? _selectedAlbum;
+
   @override
   void initState() {
     super.initState();
     _preferences = UserPreferences.instance;
     _loadPreferences();
     _loadImages();
+    _loadAlbums();
   }
 
   Future<void> _loadPreferences() async {
@@ -66,26 +81,102 @@ class ImageGalleryScreenState extends State<ImageGalleryScreen> {
     }
   }
 
-  Future<void> _loadImages() async {
-    _imageFilesFuture = getAllImages(widget.path, recursive: widget.recursive);
-    _imageFilesFuture.then((images) async {
-      Map<String, List<String>> tagsMap = {};
-      for (var imageFile in images) {
-        try {
-          tagsMap[imageFile.path] = await TagManager.getTags(imageFile.path);
-        } catch (e) {
-          debugPrint('Error loading tags for ${imageFile.path}: $e');
-          tagsMap[imageFile.path] = [];
-        }
+  Future<List<File>> _getAllImagesFromCommonPaths() async {
+    final List<File> allImages = [];
+    final commonPaths = [
+      '/storage/emulated/0/DCIM',
+      '/storage/emulated/0/Pictures',
+      '/storage/emulated/0/Download',
+      '/storage/emulated/0/Camera',
+    ];
+
+    for (final path in commonPaths) {
+      try {
+        final images = await getAllImages(path, recursive: true);
+        allImages.addAll(images);
+      } catch (e) {
+        debugPrint('Error loading images from $path: $e');
       }
+    }
+
+    return allImages;
+  }
+
+  Future<void> _loadImages() async {
+    if (_isAlbumView && _selectedAlbum != null) {
+      // Load images from selected album
+      try {
+        final albumFiles =
+            await _albumService.getAlbumFiles(_selectedAlbum!.id);
+        final images = albumFiles
+            .map((albumFile) => File(albumFile.filePath))
+            .where((file) => file.existsSync())
+            .toList();
+
+        Map<String, List<String>> tagsMap = {};
+        for (var imageFile in images) {
+          try {
+            tagsMap[imageFile.path] = await TagManager.getTags(imageFile.path);
+          } catch (e) {
+            debugPrint('Error loading tags for ${imageFile.path}: $e');
+            tagsMap[imageFile.path] = [];
+          }
+        }
+
+        if (mounted) {
+          setState(() {
+            _imageFiles = images;
+            _fileTagsMap = tagsMap;
+            _sortImageFiles();
+          });
+        }
+      } catch (e) {
+        debugPrint('Error loading album images: $e');
+      }
+    } else {
+      // Load images from folder
+      String targetPath = widget.directoryPath ?? widget.path;
+
+      if (widget.showAllImages) {
+        // Load all images from common directories
+        _imageFilesFuture = _getAllImagesFromCommonPaths();
+      } else {
+        _imageFilesFuture =
+            getAllImages(targetPath, recursive: widget.recursive);
+      }
+
+      _imageFilesFuture.then((images) async {
+        Map<String, List<String>> tagsMap = {};
+        for (var imageFile in images) {
+          try {
+            tagsMap[imageFile.path] = await TagManager.getTags(imageFile.path);
+          } catch (e) {
+            debugPrint('Error loading tags for ${imageFile.path}: $e');
+            tagsMap[imageFile.path] = [];
+          }
+        }
+        if (mounted) {
+          setState(() {
+            _imageFiles = images;
+            _fileTagsMap = tagsMap;
+            _sortImageFiles();
+          });
+        }
+      });
+    }
+  }
+
+  Future<void> _loadAlbums() async {
+    try {
+      final albums = await _albumService.getAllAlbums();
       if (mounted) {
         setState(() {
-          _imageFiles = images;
-          _fileTagsMap = tagsMap;
-          _sortImageFiles();
+          _albums = albums;
         });
       }
-    });
+    } catch (e) {
+      debugPrint('Error loading albums: $e');
+    }
   }
 
   void _sortImageFiles() {
@@ -357,6 +448,13 @@ class ImageGalleryScreenState extends State<ImageGalleryScreen> {
                   : () => _showDeleteConfirmationDialog(context),
             ),
             IconButton(
+              icon: const Icon(Icons.album),
+              tooltip: 'Add to Album',
+              onPressed: _selectedFilePaths.isEmpty
+                  ? null
+                  : () => _showAddToAlbumDialog(context),
+            ),
+            IconButton(
               icon: const Icon(Icons.select_all),
               tooltip: 'Chọn tất cả',
               onPressed: () {
@@ -375,59 +473,158 @@ class ImageGalleryScreenState extends State<ImageGalleryScreen> {
       );
     }
 
-    List<Widget> actions = SharedActionBar.buildCommonActions(
-      context: context,
-      onSearchPressed: () => _showSearchDialog(context),
-      onSortOptionSelected: _setSortOption,
-      currentSortOption: _currentSortOption,
-      viewMode: _viewMode,
-      onViewModeToggled: () {
-        setState(() {
-          _viewMode =
-              _viewMode == ViewMode.grid ? ViewMode.list : ViewMode.grid;
-        });
-        _saveViewModeSetting(_viewMode);
-      },
-      onRefresh: () {
-        setState(() {
-          _searchQuery = null;
-          _loadImages();
-        });
-      },
-      onGridSizePressed: () => SharedActionBar.showGridSizeDialog(
-        context,
-        currentGridSize: _thumbnailSize.round(),
-        onApply: (size) async {
+    List<Widget> actions = [
+      // Album/Folder toggle button
+      IconButton(
+        icon: Icon(_isAlbumView ? Icons.folder : Icons.photo_album),
+        tooltip:
+            _isAlbumView ? 'Switch to Folder View' : 'Switch to Album View',
+        onPressed: () {
           setState(() {
-            _thumbnailSize = size.toDouble();
+            _isAlbumView = !_isAlbumView;
+            _selectedAlbum = null;
+            _searchQuery = null;
           });
-
-          try {
-            await _preferences.setImageGalleryThumbnailSize(size.toDouble());
-          } catch (e) {
-            debugPrint('Error saving thumbnail size: $e');
-          }
+          _loadImages();
         },
       ),
-      onSelectionModeToggled: () {
-        setState(() {
-          _isSelectionMode = true;
-        });
-      },
-    );
+      // Album selector (only show in album view)
+      if (_isAlbumView && _albums.isNotEmpty)
+        PopupMenuButton<Album>(
+          icon: const Icon(Icons.album),
+          tooltip: 'Select Album',
+          onSelected: (Album album) {
+            setState(() {
+              _selectedAlbum = album;
+              _searchQuery = null;
+            });
+            _loadImages();
+          },
+          itemBuilder: (context) => _albums.map((album) {
+            return PopupMenuItem<Album>(
+              value: album,
+              child: Row(
+                children: [
+                  Container(
+                    width: 24,
+                    height: 24,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(4),
+                      color: album.colorTheme != null
+                          ? Color(int.parse(
+                              album.colorTheme!.replaceFirst('#', '0xFF')))
+                          : Colors.grey[300],
+                    ),
+                    child: album.coverImagePath != null &&
+                            File(album.coverImagePath!).existsSync()
+                        ? ClipRRect(
+                            borderRadius: BorderRadius.circular(4),
+                            child: Image.file(
+                              File(album.coverImagePath!),
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) {
+                                return const Icon(Icons.photo_album,
+                                    size: 16, color: Colors.white);
+                              },
+                            ),
+                          )
+                        : const Icon(Icons.photo_album,
+                            size: 16, color: Colors.white),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      album.name,
+                      style: TextStyle(
+                        fontWeight: _selectedAlbum?.id == album.id
+                            ? FontWeight.bold
+                            : FontWeight.normal,
+                      ),
+                    ),
+                  ),
+                  if (_selectedAlbum?.id == album.id)
+                    const Icon(Icons.check, size: 16),
+                ],
+              ),
+            );
+          }).toList(),
+        ),
+      ...SharedActionBar.buildCommonActions(
+        context: context,
+        onSearchPressed: () => _showSearchDialog(context),
+        onSortOptionSelected: _setSortOption,
+        currentSortOption: _currentSortOption,
+        viewMode: _viewMode,
+        onViewModeToggled: () {
+          setState(() {
+            _viewMode =
+                _viewMode == ViewMode.grid ? ViewMode.list : ViewMode.grid;
+          });
+          _saveViewModeSetting(_viewMode);
+        },
+        onRefresh: () {
+          setState(() {
+            _searchQuery = null;
+            _loadImages();
+            _loadAlbums();
+          });
+        },
+        onGridSizePressed: () => SharedActionBar.showGridSizeDialog(
+          context,
+          currentGridSize: _thumbnailSize.round(),
+          onApply: (size) async {
+            setState(() {
+              _thumbnailSize = size.toDouble();
+            });
 
-    return BaseScreen(
-      title: 'Image Gallery: ${pathlib.basename(widget.path)}',
-      actions: actions,
-      body: _buildImageContent(),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
+            try {
+              await _preferences.setImageGalleryThumbnailSize(size.toDouble());
+            } catch (e) {
+              debugPrint('Error saving thumbnail size: $e');
+            }
+          },
+        ),
+        onSelectionModeToggled: () {
           setState(() {
             _isSelectionMode = true;
           });
         },
-        child: const Icon(Icons.checklist),
       ),
+    ];
+
+    String title;
+    if (widget.title != null) {
+      // Use custom title from GalleryHubScreen
+      title = widget.title!;
+    } else if (_isAlbumView) {
+      if (_selectedAlbum != null) {
+        title = 'Album: ${_selectedAlbum!.name}';
+      } else {
+        title = 'Albums';
+      }
+    } else {
+      String targetPath = widget.directoryPath ?? widget.path;
+      title = 'Image Gallery: ${pathlib.basename(targetPath)}';
+    }
+
+    return BaseScreen(
+      title: title,
+      actions: actions,
+      body: _buildImageContent(),
+      floatingActionButton: _isAlbumView && _albums.isEmpty
+          ? FloatingActionButton.extended(
+              onPressed: _showCreateAlbumDialog,
+              icon: const Icon(Icons.add),
+              label: const Text('Create Album'),
+            )
+          : FloatingActionButton(
+              onPressed: () {
+                setState(() {
+                  _isSelectionMode = true;
+                });
+              },
+              child: const Icon(Icons.checklist),
+            ),
     );
   }
 
@@ -831,6 +1028,14 @@ class ImageGalleryScreenState extends State<ImageGalleryScreen> {
             },
           ),
           ListTile(
+            leading: const Icon(Icons.album),
+            title: const Text('Add to Album'),
+            onTap: () {
+              Navigator.pop(context);
+              _showAddToAlbumDialog(context, [file.path]);
+            },
+          ),
+          ListTile(
             leading: const Icon(Icons.share),
             title: const Text('Chia sẻ'),
             onTap: () {
@@ -1002,10 +1207,235 @@ class ImageGalleryScreenState extends State<ImageGalleryScreen> {
     }
   }
 
+  Future<void> _showAddToAlbumDialog(BuildContext context,
+      [List<String>? specificPaths]) async {
+    final paths = specificPaths ?? _selectedFilePaths.toList();
+    if (paths.isEmpty) return;
+
+    try {
+      final albums = await _albumService.getAllAlbums();
+
+      if (!mounted) return;
+
+      if (albums.isEmpty) {
+        // Show dialog to create first album
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('No Albums Found'),
+            content: const Text(
+                'You need to create an album first. Would you like to go to the Album Management screen?'),
+            actions: [
+              TextButton(
+                onPressed: () => RouteUtils.safePopDialog(context),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  RouteUtils.safePopDialog(context);
+                  Navigator.pushNamed(context, '/albums');
+                },
+                child: const Text('Go to Albums'),
+              ),
+            ],
+          ),
+        );
+        return;
+      }
+
+      // Show album selection dialog
+      final selectedAlbum = await showDialog<Album>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(
+              'Add ${paths.length} ${paths.length == 1 ? 'image' : 'images'} to Album'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: albums.length,
+              itemBuilder: (context, index) {
+                final album = albums[index];
+                return ListTile(
+                  leading: Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      color: album.colorTheme != null
+                          ? Color(int.parse(
+                              album.colorTheme!.replaceFirst('#', '0xFF')))
+                          : Colors.grey[300],
+                    ),
+                    child: album.coverImagePath != null &&
+                            File(album.coverImagePath!).existsSync()
+                        ? ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: Image.file(
+                              File(album.coverImagePath!),
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) {
+                                return const Icon(Icons.photo_album, size: 20);
+                              },
+                            ),
+                          )
+                        : const Icon(Icons.photo_album,
+                            size: 20, color: Colors.white),
+                  ),
+                  title: Text(album.name),
+                  subtitle: album.description != null
+                      ? Text(album.description!)
+                      : null,
+                  onTap: () => Navigator.of(context).pop(album),
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => RouteUtils.safePopDialog(context),
+              child: const Text('Cancel'),
+            ),
+          ],
+        ),
+      );
+
+      if (selectedAlbum != null) {
+        // Show loading dialog
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => const AlertDialog(
+            content: Row(
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(width: 16),
+                Text('Adding images to album...'),
+              ],
+            ),
+          ),
+        );
+
+        final successCount =
+            await _albumService.addFilesToAlbum(selectedAlbum.id, paths);
+
+        if (mounted) {
+          Navigator.pop(context); // Close loading dialog
+
+          setState(() {
+            _isSelectionMode = false;
+            _selectedFilePaths.clear();
+          });
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                  'Added $successCount ${successCount == 1 ? 'image' : 'images'} to "${selectedAlbum.name}"'),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('Error adding images to album: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error adding images to album: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   String _formatFileSize(int bytes) {
     if (bytes <= 0) return "0 B";
     const suffixes = ["B", "KB", "MB", "GB", "TB"];
     var i = (log(bytes) / log(1024)).floor();
     return '${(bytes / pow(1024, i)).toStringAsFixed(1)} ${suffixes[i]}';
+  }
+
+  void _showCreateAlbumDialog() {
+    String albumName = '';
+    String albumDescription = '';
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Create New Album'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              autofocus: true,
+              decoration: const InputDecoration(
+                labelText: 'Album Name',
+                hintText: 'Enter album name...',
+              ),
+              onChanged: (value) => albumName = value,
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              decoration: const InputDecoration(
+                labelText: 'Description (Optional)',
+                hintText: 'Enter album description...',
+              ),
+              onChanged: (value) => albumDescription = value,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              if (albumName.trim().isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Please enter an album name')),
+                );
+                return;
+              }
+
+              Navigator.of(context).pop();
+
+              try {
+                final album = await _albumService.createAlbum(
+                  name: albumName.trim(),
+                  description: albumDescription.trim().isEmpty
+                      ? null
+                      : albumDescription.trim(),
+                );
+
+                if (mounted && album != null) {
+                  setState(() {
+                    _albums.add(album);
+                    _selectedAlbum = album;
+                  });
+                  _loadImages();
+
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                        content:
+                            Text('Album "${album.name}" created successfully')),
+                  );
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Error creating album: ${e.toString()}'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              }
+            },
+            child: const Text('Create'),
+          ),
+        ],
+      ),
+    );
   }
 }

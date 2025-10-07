@@ -35,7 +35,7 @@ class ObjectBoxDatabaseProvider implements IDatabaseProvider {
 
     try {
       final dir = await getApplicationDocumentsDirectory();
-      final dbDir = Directory(path.join(dir.path, 'CBFileManager'));
+      final dbDir = Directory(path.join(dir.path, 'CBFileManager_v2'));
 
       if (!dbDir.existsSync()) {
         dbDir.createSync(recursive: true);

@@ -4,8 +4,10 @@ import 'package:cb_file_manager/main.dart' show goHome, CBFileApp;
 import 'package:cb_file_manager/ui/drawer.dart';
 import 'package:cb_file_manager/helpers/core/user_preferences.dart'; // Add UserPreferences import
 import 'package:cb_file_manager/config/translation_helper.dart'; // Import translation helper
-import 'package:remixicon/remixicon.dart' as remix; 
+import 'package:remixicon/remixicon.dart' as remix;
 import 'package:cb_file_manager/ui/utils/route.dart'; // Import RouteUtils
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:cb_file_manager/ui/tab_manager/core/tab_manager.dart';
 // For Platform check
 
 /// A base screen widget that handles common functionality across all screens
@@ -156,38 +158,33 @@ class _BaseScreenState extends State<BaseScreen> {
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, result) {
-        if (!didPop) {
-          RouteUtils.safeBackNavigation(context);
-        }
-      },
+      canPop: true,
       child: Scaffold(
         key: _scaffoldKey, // Use instance-specific key
         appBar: (widget.showAppBar && !_inAndroidPip)
             ? AppBar(
-          title: Text(widget.title),
-          leading: widget.automaticallyImplyLeading
-              ? _buildLeadingIcon(context)
-              : null,
-          actions: <Widget>[
-            // // Always add the menu button as the first action
-            // IconButton(
-            //   icon: const Icon(remix.Remix.menu_2_line),
-            //   onPressed: () => _scaffoldKey.currentState?.openDrawer(),
-            // ),
+                title: Text(widget.title),
+                leading: widget.automaticallyImplyLeading
+                    ? _buildLeadingIcon(context)
+                    : null,
+                actions: <Widget>[
+                  // // Always add the menu button as the first action
+                  // IconButton(
+                  //   icon: const Icon(remix.Remix.menu_2_line),
+                  //   onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+                  // ),
 
-            // // Home button for emergency navigation
-            // IconButton(
-            //   icon: const Icon(remix.Remix.home_3_line),
-            //   tooltip: context.tr.home,
-            //   onPressed: () => goHome(context),
-            // ),
+                  // // Home button for emergency navigation
+                  // IconButton(
+                  //   icon: const Icon(remix.Remix.home_3_line),
+                  //   tooltip: context.tr.home,
+                  //   onPressed: () => goHome(context),
+                  // ),
 
-            // Add any additional actions
-            if (widget.actions != null) ...widget.actions!,
-          ],
-        )
+                  // Add any additional actions
+                  if (widget.actions != null) ...widget.actions!,
+                ],
+              )
             : null,
         drawer: CBDrawer(
           context,
@@ -209,7 +206,46 @@ class _BaseScreenState extends State<BaseScreen> {
   Widget _buildLeadingIcon(BuildContext context) {
     return IconButton(
       icon: const Icon(remix.Remix.arrow_left_line),
-      onPressed: () => RouteUtils.safeBackNavigation(context),
+      onPressed: () {
+        // 1) Try to pop the local navigator stack if possible
+        final navigator = Navigator.of(context);
+        if (navigator.canPop()) {
+          navigator.pop();
+          return;
+        }
+
+        // 2) If running inside the tab system, handle back via TabManager
+        TabManagerBloc? tabBloc;
+        try {
+          tabBloc = context.read<TabManagerBloc>();
+        } catch (_) {
+          tabBloc = null;
+        }
+        if (tabBloc != null) {
+          final activeTab = tabBloc.state.activeTab;
+          if (activeTab != null) {
+            // 2a) Pop any nested navigator in the active tab (e.g. viewer/player)
+            final nestedNav = activeTab.navigatorKey.currentState;
+            if (nestedNav != null && nestedNav.canPop()) {
+              nestedNav.pop();
+              return;
+            }
+
+            // 2b) Navigate back within tab path history if available
+            if (activeTab.navigationHistory.length > 1) {
+              tabBloc.backNavigationToPath(activeTab.id);
+              return;
+            }
+
+            // 2c) No history: close the current tab
+            tabBloc.add(CloseTab(activeTab.id));
+            return;
+          }
+        }
+
+        // 3) Fallback: try a maybePop to gracefully handle other contexts
+        Navigator.maybePop(context);
+      },
     );
   }
 }

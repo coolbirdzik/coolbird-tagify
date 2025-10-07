@@ -2,14 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:cb_file_manager/helpers/core/user_preferences.dart';
 import 'package:cb_file_manager/ui/utils/base_screen.dart';
 import 'package:cb_file_manager/config/language_controller.dart';
-import 'package:cb_file_manager/config/translation_helper.dart';
-import 'package:cb_file_manager/helpers/media/video_thumbnail_helper.dart'; // Add import for VideoThumbnailHelper
-import 'package:cb_file_manager/helpers/network/network_thumbnail_helper.dart'; // Add import for NetworkThumbnailHelper
-import 'package:cb_file_manager/helpers/network/win32_smb_helper.dart'; // Add import for Win32SmbHelper
-import 'package:cb_file_manager/ui/screens/settings/database_settings_screen.dart'; // Import for database settings screen
-import 'package:cb_file_manager/ui/screens/settings/theme_settings_screen.dart'; // Import for theme settings screen
-import 'package:file_picker/file_picker.dart'; // Import for FilePicker
-import 'package:intl/intl.dart'; // Import for DateFormat
+import 'package:cb_file_manager/helpers/media/video_thumbnail_helper.dart';
+import 'package:cb_file_manager/helpers/network/network_thumbnail_helper.dart';
+import 'package:cb_file_manager/helpers/network/win32_smb_helper.dart';
+import 'package:cb_file_manager/ui/screens/settings/database_settings_screen.dart';
+import 'package:cb_file_manager/ui/screens/settings/theme_settings_screen.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:intl/intl.dart';
 import 'package:remixicon/remixicon.dart' as remix;
 import 'package:cb_file_manager/config/languages/app_localizations.dart';
 
@@ -27,9 +26,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late String _currentLanguageCode;
   late bool _isLoading = true;
 
-  // Video thumbnail timestamp value
-
-  // Video thumbnail percentage value (new setting)
+  // Video thumbnail percentage value
   late int _videoThumbnailPercentage;
 
   // Show file tags setting
@@ -39,15 +36,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _isClearingVideoCache = false;
   bool _isClearingNetworkCache = false;
   bool _isClearingTempFiles = false;
-
-  // Add a loading indicator state for cache clearing operation
   bool _isClearingCache = false;
-
-  // Cache directory information
-  String? _networkCachePath;
-  String? _videoCachePath;
-  String? _tempFilesPath;
-  Map<String, dynamic>? _networkCacheStats;
 
   @override
   void initState() {
@@ -81,30 +70,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error loading preferences: $e'),
+            content:
+                Text(AppLocalizations.of(context)!.errorLoadingTags + '$e'),
             behavior: SnackBarBehavior.floating,
           ),
         );
       }
     }
-  }
-
-  Future<void> _updateThemePreference(ThemePreference preference) async {
-    await _preferences.setThemePreference(preference);
-    setState(() {
-      _themePreference = preference;
-    });
-
-    ScaffoldMessenger.of(context).clearSnackBars();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(context.tr.save),
-        duration: const Duration(seconds: 1),
-        behavior: SnackBarBehavior.floating,
-        width: 160,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      ),
-    );
   }
 
   Future<void> _updateLanguage(String languageCode) async {
@@ -116,7 +88,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     ScaffoldMessenger.of(context).clearSnackBars();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('${context.tr.language} ${context.tr.save}'),
+        content: Text(
+            '${AppLocalizations.of(context)!.language} ${AppLocalizations.of(context)!.save}'),
         duration: const Duration(seconds: 1),
         behavior: SnackBarBehavior.floating,
         width: 200,
@@ -131,14 +104,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _videoThumbnailPercentage = percentage;
     });
 
-    // Refresh the percentage in VideoThumbnailHelper
     await VideoThumbnailHelper.refreshThumbnailPercentage();
 
     ScaffoldMessenger.of(context).clearSnackBars();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(
-            'Đã đặt vị trí hình thu nhỏ video tại $percentage% thời lượng video'),
+        content: Text(AppLocalizations.of(context)!.thumbnailPositionUpdated +
+            '$percentage%'),
         duration: const Duration(seconds: 1),
         behavior: SnackBarBehavior.floating,
         width: 320,
@@ -157,8 +129,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(showTags
-            ? 'Đã bật hiển thị tag của file'
-            : 'Đã tắt hiển thị tag của file'),
+            ? AppLocalizations.of(context)!.fileTagsEnabled
+            : AppLocalizations.of(context)!.fileTagsDisabled),
         duration: const Duration(seconds: 1),
         behavior: SnackBarBehavior.floating,
         width: 200,
@@ -167,33 +139,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  // Add method to clear the video thumbnail cache
   Future<void> _clearVideoThumbnailCache() async {
     setState(() {
       _isClearingCache = true;
     });
 
     try {
-      // Call the clearCache method from VideoThumbnailHelper
       await VideoThumbnailHelper.clearCache();
 
-      // Không tự động tạo lại thumbnail sau khi xoá cache.
-
-      // Force refresh of the UI without closing the screen
       if (mounted) {
-        // Notify the ImageCache to clear Flutter's internal image cache
         PaintingBinding.instance.imageCache.clear();
         PaintingBinding.instance.imageCache.clearLiveImages();
-
-        // VideoThumbnailHelper already notifies all listeners via onCacheChanged stream
-        // No need to manually refresh this screen since we're already showing proper state
         VideoThumbnailHelper.setVerboseLogging(true);
 
-        // Show success message
         ScaffoldMessenger.of(context).clearSnackBars();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('Đã xoá tất cả thumbnail video'),
+            content: Text(AppLocalizations.of(context)!.thumbnailCleared),
             duration: const Duration(seconds: 2),
             behavior: SnackBarBehavior.floating,
             width: 320,
@@ -203,12 +165,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
         );
       }
     } catch (e) {
-      // Show error message
       if (mounted) {
         ScaffoldMessenger.of(context).clearSnackBars();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Lỗi khi xoá thumbnail: $e'),
+            content: Text(
+                AppLocalizations.of(context)!.errorClearingThumbnail + '$e'),
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 2),
             behavior: SnackBarBehavior.floating,
@@ -220,7 +182,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
       debugPrint('Error clearing video thumbnail cache: $e');
     } finally {
-      // Make sure to reset loading state even if there's an error
       if (mounted) {
         setState(() {
           _isClearingCache = false;
@@ -231,18 +192,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _loadCacheInfo() async {
     try {
-      // Get network thumbnail cache path
-      final networkHelper = NetworkThumbnailHelper();
-      _networkCachePath = await networkHelper.getCacheDirectoryPath();
-      _networkCacheStats = await networkHelper.getCacheStats();
-
-      // Get video thumbnail cache path
-      _videoCachePath = await VideoThumbnailHelper.getCacheDirectoryPath();
-
-      // Get temp files path
-      final win32Helper = Win32SmbHelper();
-      _tempFilesPath = win32Helper.tempDirectoryPath;
-
+      // Cache info loading is now handled in individual cache operations
       if (mounted) {
         setState(() {});
       }
@@ -254,1086 +204,413 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     return BaseScreen(
-      title: context.tr.settings,
+      title: AppLocalizations.of(context)!.settings,
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              children: [
-                const SizedBox(height: 16),
-                _buildLanguageSection(context),
-                const Divider(),
-                _buildThemeSection(context),
-                const Divider(),
-                _buildVideoThumbnailSection(context),
-                const Divider(),
-                _buildFileTagsSection(context),
-                const Divider(),
-                _buildCacheManagementSection(
-                    context), // Add cache management section
-                const Divider(),
-                _buildDatabaseSection(context),
-              ],
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildQuickSettingsSection(),
+                  const SizedBox(height: 24),
+                  _buildMediaSettingsSection(),
+                  const SizedBox(height: 24),
+                  _buildCacheManagementSection(),
+                  const SizedBox(height: 24),
+                  _buildDatabaseSection(),
+                ],
+              ),
             ),
     );
   }
 
-  Widget _buildLanguageSection(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-            child: Row(
-              children: [
-                Icon(remix.Remix.global_line, size: 24),
-                const SizedBox(width: 16),
-                Text(
-                  context.tr.language,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
-            child: Text(
-              context.tr.selectLanguage,
-              style: const TextStyle(
-                fontSize: 14,
-                color: Colors.grey,
+  Widget _buildQuickSettingsSection() {
+    return _buildSectionCard(
+      title: AppLocalizations.of(context)!.interface,
+      icon: remix.Remix.settings_3_line,
+      children: [
+        _buildCompactSettingTile(
+          title: AppLocalizations.of(context)!.language,
+          subtitle: _currentLanguageCode == 'vi'
+              ? AppLocalizations.of(context)!.vietnameseLanguage
+              : AppLocalizations.of(context)!.englishLanguage,
+          icon: remix.Remix.global_line,
+          onTap: () => _showLanguageDialog(),
+        ),
+        _buildCompactSettingTile(
+          title: AppLocalizations.of(context)!.theme,
+          subtitle: _getThemeDisplayName(),
+          icon: remix.Remix.palette_line,
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const ThemeSettingsScreen(),
               ),
-            ),
+            );
+          },
+        ),
+        _buildCompactSettingTile(
+          title: AppLocalizations.of(context)!.showFileTags,
+          subtitle: AppLocalizations.of(context)!.showFileTagsToggleDescription,
+          icon: remix.Remix.price_tag_3_line,
+          trailing: Switch(
+            value: _showFileTags,
+            onChanged: _updateShowFileTags,
           ),
-          const SizedBox(height: 8),
-          _buildLanguageOption(
-            title: context.tr.vietnameseLanguage,
-            value: LanguageController.vietnamese,
-            icon: remix.Remix.global_line,
-            flagEmoji: '🇻🇳',
-          ),
-          _buildLanguageOption(
-            title: context.tr.englishLanguage,
-            value: LanguageController.english,
-            icon: remix.Remix.global_line,
-            flagEmoji: '🇬🇧',
-          ),
-          const SizedBox(height: 8),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
-  Widget _buildThemeSection(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-            child: Row(
-              children: [
-                Icon(remix.Remix.palette_line, size: 24),
-                const SizedBox(width: 16),
-                Text(
-                  context.tr.interface,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
+  Widget _buildMediaSettingsSection() {
+    return _buildSectionCard(
+      title: AppLocalizations.of(context)!.videoThumbnails,
+      icon: remix.Remix.video_line,
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    AppLocalizations.of(context)!.thumbnailPosition,
+                    style: const TextStyle(fontWeight: FontWeight.w500),
                   ),
-                ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
-            child: Text(
-              context.tr.selectInterfaceTheme,
-              style: const TextStyle(
-                fontSize: 14,
-                color: Colors.grey,
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          ListTile(
-            title: Text(context.tr.chooseInterface),
-            subtitle: Text(context.tr.interfaceDescription),
-            leading: Icon(remix.Remix.palette_line),
-            trailing: Icon(remix.Remix.arrow_right_s_line, size: 16),
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const ThemeSettingsScreen(),
-                ),
-              );
-            },
-          ),
-          const SizedBox(height: 8),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildVideoThumbnailSection(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-            child: Row(
-              children: [
-                Icon(remix.Remix.video_line, size: 24),
-                const SizedBox(width: 16),
-                Text(
-                  context.tr.videoThumbnails,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
-            child: Text(
-              context.tr.selectThumbnailPosition,
-              style: const TextStyle(
-                fontSize: 14,
-                color: Colors.grey,
-              ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(context.tr.thumbnailPosition),
-                    Text(
-                      '$_videoThumbnailPercentage% ${context.tr.percentOfVideo}',
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).primaryColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      '$_videoThumbnailPercentage%',
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         color: Theme.of(context).primaryColor,
+                        fontSize: 12,
                       ),
                     ),
-                  ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Slider(
+                value: _videoThumbnailPercentage.toDouble(),
+                min: UserPreferences.minVideoThumbnailPercentage.toDouble(),
+                max: UserPreferences.maxVideoThumbnailPercentage.toDouble(),
+                divisions: 20,
+                onChanged: (value) {
+                  setState(() {
+                    _videoThumbnailPercentage = value.round();
+                  });
+                },
+                onChangeEnd: (value) {
+                  _updateVideoThumbnailPercentage(value.round());
+                },
+              ),
+              const SizedBox(height: 8),
+              Text(
+                AppLocalizations.of(context)!.thumbnailDescription,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey[600],
                 ),
-                const SizedBox(height: 8),
-                Slider(
-                  value: _videoThumbnailPercentage.toDouble(),
-                  min: UserPreferences.minVideoThumbnailPercentage.toDouble(),
-                  max: UserPreferences.maxVideoThumbnailPercentage.toDouble(),
-                  divisions: 20,
-                  label: '$_videoThumbnailPercentage%',
-                  onChanged: (value) {
-                    setState(() {
-                      _videoThumbnailPercentage = value.round();
-                    });
-                  },
-                  onChangeEnd: (value) {
-                    _updateVideoThumbnailPercentage(value.round());
-                  },
-                ),
-                Text(
-                  context.tr.thumbnailDescription,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCacheManagementSection() {
+    return _buildSectionCard(
+      title: AppLocalizations.of(context)!.cacheManagement,
+      icon: remix.Remix.brush_line,
+      children: [
+        // Cache info summary
+        Container(
+          margin: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color:
+                Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                remix.Remix.information_line,
+                size: 16,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  AppLocalizations.of(context)!.cacheManagementDescription,
                   style: TextStyle(
                     fontSize: 12,
-                    color: Colors.grey[600],
-                    fontStyle: FontStyle.italic,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
-                ),
-                const SizedBox(height: 8),
-                // Add button to regenerate all thumbnails with new percentage
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: _isClearingCache
-                        ? null
-                        : () async {
-                            setState(() {
-                              _isClearingCache = true;
-                            });
-
-                            try {
-                              // Clear existing cache and regenerate with new percentage
-                              await VideoThumbnailHelper.clearCache();
-                              await VideoThumbnailHelper
-                                  .refreshThumbnailPercentage();
-
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                        'Đã xóa cache và sẽ tạo lại thumbnail với vị trí $_videoThumbnailPercentage%'),
-                                    behavior: SnackBarBehavior.floating,
-                                  ),
-                                );
-                              }
-                            } catch (e) {
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text('Lỗi: $e'),
-                                    behavior: SnackBarBehavior.floating,
-                                    backgroundColor: Colors.red,
-                                  ),
-                                );
-                              }
-                            } finally {
-                              if (mounted) {
-                                setState(() {
-                                  _isClearingCache = false;
-                                });
-                              }
-                            }
-                          },
-                    icon: _isClearingCache
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : Icon(remix.Remix.refresh_line, size: 16),
-                    label: Text(_isClearingCache
-                        ? 'Đang xử lý...'
-                        : 'Tạo lại thumbnail với vị trí mới'),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const Divider(height: 32, indent: 16, endIndent: 16),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  context.tr.thumbnailCache,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  context.tr.thumbnailCacheDescription,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed:
-                        _isClearingCache ? null : _clearVideoThumbnailCache,
-                    icon: _isClearingCache
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor:
-                                  AlwaysStoppedAnimation<Color>(Colors.white),
-                            ),
-                          )
-                        : Icon(remix.Remix.brush_line),
-                    label: Text(_isClearingCache
-                        ? context.tr.clearing
-                        : context.tr.clearThumbnailCache),
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFileTagsSection(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-            child: Row(
-              children: [
-                Icon(remix.Remix.price_tag_3_line, size: 24),
-                const SizedBox(width: 16),
-                Text(
-                  context.tr.showFileTags,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
-            child: Text(
-              context.tr.showFileTagsDescription,
-              style: const TextStyle(
-                fontSize: 14,
-                color: Colors.grey,
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          SwitchListTile(
-            title: Text(context.tr.showFileTagsToggle),
-            subtitle: Text(context.tr.showFileTagsToggleDescription),
-            value: _showFileTags,
-            onChanged: (value) {
-              _updateShowFileTags(value);
-            },
-            secondary: Icon(remix.Remix.price_tag_3_line),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-          ),
-          const SizedBox(height: 8),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCacheManagementSection(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-            child: Row(
-              children: [
-                Icon(remix.Remix.brush_line, size: 24),
-                const SizedBox(width: 16),
-                Text(
-                  context.tr.cacheManagement,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
-            child: Text(
-              context.tr.cacheManagementDescription,
-              style: const TextStyle(
-                fontSize: 14,
-                color: Colors.grey,
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Cache location information section
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Card(
-              elevation: 0,
-              color:
-                  Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8)),
-              child: Padding(
-                padding: const EdgeInsets.all(12.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(remix.Remix.folder_settings_line,
-                            size: 18,
-                            color: Theme.of(context).colorScheme.primary),
-                        const SizedBox(width: 8),
-                        Text(
-                          context.tr.cacheFolder,
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: Theme.of(context).colorScheme.onSurface,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-
-                    // Network cache info
-                    if (_networkCacheStats != null) ...[
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Icon(remix.Remix.image_line, size: 16),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  context.tr.networkThumbnails,
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w500,
-                                    fontSize: 13,
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .onSurfaceVariant,
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  _networkCachePath ??
-                                      context.tr.notInitialized,
-                                  style: const TextStyle(fontSize: 12),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                if (_networkCacheStats?['fileCount'] != null)
-                                  Text(
-                                    '${_networkCacheStats!['fileCount']} files (${_networkCacheStats!['totalSizeMB']} MB)',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .secondary,
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                      const Divider(height: 12),
-                    ],
-
-                    // Video cache info
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(remix.Remix.video_line, size: 16),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                context.tr.videoThumbnailsCache,
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w500,
-                                  fontSize: 13,
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onSurfaceVariant,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                _videoCachePath ?? 'Chưa khởi tạo',
-                                style: const TextStyle(fontSize: 12),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    const Divider(height: 12),
-
-                    // Temp files info
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(remix.Remix.folder_zip_line, size: 16),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'File tạm:',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w500,
-                                  fontSize: 13,
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onSurfaceVariant,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                _tempFilesPath ?? 'Chưa khởi tạo',
-                                style: const TextStyle(fontSize: 12),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 4),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: TextButton.icon(
-                        onPressed: () async {
-                          await _loadCacheInfo();
-                          if (mounted) {
-                            setState(() {});
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Đã cập nhật thông tin cache'),
-                                behavior: SnackBarBehavior.floating,
-                              ),
-                            );
-                          }
-                        },
-                        icon: Icon(remix.Remix.refresh_line, size: 16),
-                        label: const Text('Làm mới',
-                            style: TextStyle(fontSize: 12)),
-                      ),
-                    ),
-                  ],
                 ),
               ),
-            ),
+            ],
           ),
+        ),
 
-          const SizedBox(height: 16),
-
-          // Video thumbnails cache
-          ListTile(
-            title: const Text('Xóa cache video thumbnails'),
-            subtitle: const Text('Xóa các thumbnail video đã tạo'),
-            leading: Icon(remix.Remix.video_line),
-            trailing: _isClearingVideoCache
-                ? const SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : Icon(remix.Remix.delete_bin_line),
-            onTap: _isClearingVideoCache
-                ? null
-                : () async {
-                    setState(() {
-                      _isClearingVideoCache = true;
-                    });
-
-                    try {
-                      await VideoThumbnailHelper.clearCache();
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Đã xóa cache thumbnails video'),
-                            behavior: SnackBarBehavior.floating,
-                          ),
-                        );
-                        // Refresh cache info after clearing
-                        _loadCacheInfo();
-                      }
-                    } catch (e) {
-                      debugPrint('Error clearing video cache: $e');
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('Lỗi: $e'),
-                            behavior: SnackBarBehavior.floating,
-                            backgroundColor: Colors.red,
-                          ),
-                        );
-                      }
-                    } finally {
-                      if (mounted) {
-                        setState(() {
-                          _isClearingVideoCache = false;
-                        });
-                      }
-                    }
-                  },
+        // Quick clear buttons
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _buildCacheButton(
+                label: AppLocalizations.of(context)!.clearVideoThumbnailsCache,
+                icon: remix.Remix.video_line,
+                isLoading: _isClearingVideoCache,
+                onTap: _clearVideoThumbnailCache,
+              ),
+              _buildCacheButton(
+                label:
+                    AppLocalizations.of(context)!.clearNetworkThumbnailsCache,
+                icon: remix.Remix.cloud_line,
+                isLoading: _isClearingNetworkCache,
+                onTap: _clearNetworkCache,
+              ),
+              _buildCacheButton(
+                label: AppLocalizations.of(context)!.clearTempFilesCache,
+                icon: remix.Remix.folder_reduce_line,
+                isLoading: _isClearingTempFiles,
+                onTap: _clearTempFiles,
+              ),
+            ],
           ),
+        ),
 
-          // Network thumbnails cache
-          ListTile(
-            title: const Text('Xóa cache SMB/network thumbnails'),
-            subtitle: const Text('Xóa các thumbnail mạng đã tạo'),
-            leading: Icon(remix.Remix.cloud_line),
-            trailing: _isClearingNetworkCache
+        const SizedBox(height: 16),
+
+        // Clear all button
+        Container(
+          margin: const EdgeInsets.symmetric(horizontal: 16),
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: _isAnyCacheClearing ? null : _clearAllCache,
+            icon: _isAnyCacheClearing
                 ? const SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : Icon(remix.Remix.delete_bin_line),
-            onTap: _isClearingNetworkCache
-                ? null
-                : () async {
-                    setState(() {
-                      _isClearingNetworkCache = true;
-                    });
-
-                    try {
-                      final networkHelper = NetworkThumbnailHelper();
-                      await networkHelper.clearCache();
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Đã xóa cache thumbnails mạng'),
-                            behavior: SnackBarBehavior.floating,
-                          ),
-                        );
-                        // Refresh cache info after clearing
-                        _loadCacheInfo();
-                      }
-                    } catch (e) {
-                      debugPrint('Error clearing network cache: $e');
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('Lỗi: $e'),
-                            behavior: SnackBarBehavior.floating,
-                            backgroundColor: Colors.red,
-                          ),
-                        );
-                      }
-                    } finally {
-                      if (mounted) {
-                        setState(() {
-                          _isClearingNetworkCache = false;
-                        });
-                      }
-                    }
-                  },
-          ),
-
-          // Temporary files
-          ListTile(
-            title: const Text('Xóa các file tạm'),
-            subtitle: const Text('Xóa file tạm từ chia sẻ mạng'),
-            leading: Icon(remix.Remix.folder_reduce_line),
-            trailing: _isClearingTempFiles
-                ? const SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : Icon(remix.Remix.delete_bin_line),
-            onTap: _isClearingTempFiles
-                ? null
-                : () async {
-                    setState(() {
-                      _isClearingTempFiles = true;
-                    });
-
-                    try {
-                      final win32Helper = Win32SmbHelper();
-                      await win32Helper.clearTempFileCache();
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Đã xóa các file tạm'),
-                            behavior: SnackBarBehavior.floating,
-                          ),
-                        );
-                        // Refresh cache info after clearing
-                        _loadCacheInfo();
-                      }
-                    } catch (e) {
-                      debugPrint('Error clearing temp files: $e');
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('Lỗi: $e'),
-                            behavior: SnackBarBehavior.floating,
-                            backgroundColor: Colors.red,
-                          ),
-                        );
-                      }
-                    } finally {
-                      if (mounted) {
-                        setState(() {
-                          _isClearingTempFiles = false;
-                        });
-                      }
-                    }
-                  },
-          ),
-
-          // Clear all cache
-          ListTile(
-            title: const Text('Xóa tất cả cache'),
-            subtitle: const Text('Xóa tất cả dữ liệu cache'),
-            leading: Icon(remix.Remix.brush_line),
-            trailing: _isClearingVideoCache ||
-                    _isClearingNetworkCache ||
-                    _isClearingTempFiles ||
-                    _isClearingCache
-                ? const SizedBox(
-                    width: 24,
-                    height: 24,
+                    width: 16,
+                    height: 16,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : Icon(remix.Remix.delete_bin_2_line),
-            onTap: _isClearingVideoCache ||
-                    _isClearingNetworkCache ||
-                    _isClearingTempFiles ||
-                    _isClearingCache
-                ? null
-                : () async {
-                    setState(() {
-                      _isClearingCache = true;
-                    });
-
-                    try {
-                      // Clear all caches
-                      await VideoThumbnailHelper.clearCache();
-                      final networkHelper = NetworkThumbnailHelper();
-                      await networkHelper.clearCache();
-                      final win32Helper = Win32SmbHelper();
-                      await win32Helper.clearTempFileCache();
-
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Đã xóa tất cả dữ liệu cache'),
-                            behavior: SnackBarBehavior.floating,
-                          ),
-                        );
-                        // Refresh cache info after clearing
-                        _loadCacheInfo();
-                      }
-                    } catch (e) {
-                      debugPrint('Error clearing all caches: $e');
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('Lỗi: $e'),
-                            behavior: SnackBarBehavior.floating,
-                            backgroundColor: Colors.red,
-                          ),
-                        );
-                      }
-                    } finally {
-                      if (mounted) {
-                        setState(() {
-                          _isClearingCache = false;
-                        });
-                      }
-                    }
-                  },
+            label: Text(AppLocalizations.of(context)!.clearAllCache),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red.withOpacity(0.1),
+              foregroundColor: Colors.red,
+              elevation: 0,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+            ),
           ),
-          const SizedBox(height: 8),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
-  Widget _buildDatabaseSection(BuildContext context) {
+  Widget _buildDatabaseSection() {
+    return _buildSectionCard(
+      title: AppLocalizations.of(context)!.databaseSettings,
+      icon: remix.Remix.database_2_line,
+      children: [
+        _buildCompactSettingTile(
+          title: AppLocalizations.of(context)!.databaseSettings,
+          subtitle: AppLocalizations.of(context)!.databaseDescription,
+          icon: remix.Remix.settings_3_line,
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const DatabaseSettingsScreen(),
+              ),
+            );
+          },
+        ),
+        _buildCompactSettingTile(
+          title: AppLocalizations.of(context)!.exportSettings,
+          subtitle: AppLocalizations.of(context)!.exportDescription,
+          icon: remix.Remix.upload_line,
+          onTap: _exportSettings,
+        ),
+        _buildCompactSettingTile(
+          title: AppLocalizations.of(context)!.importSettings,
+          subtitle: AppLocalizations.of(context)!.importDescription,
+          icon: remix.Remix.download_line,
+          onTap: _importSettings,
+        ),
+        _buildCompactSettingTile(
+          title: AppLocalizations.of(context)!.settingsData,
+          subtitle: AppLocalizations.of(context)!.viewManageSettings,
+          icon: remix.Remix.pie_chart_line,
+          onTap: _showSettingsData,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSectionCard({
+    required String title,
+    required IconData icon,
+    required List<Widget> children,
+  }) {
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(
+          color: Theme.of(context).dividerColor.withOpacity(0.1),
+        ),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            padding: const EdgeInsets.all(16),
             child: Row(
               children: [
-                Icon(remix.Remix.database_2_line, size: 24),
-                const SizedBox(width: 16),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).primaryColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    icon,
+                    size: 20,
+                    color: Theme.of(context).primaryColor,
+                  ),
+                ),
+                const SizedBox(width: 12),
                 Text(
-                  context.tr.databaseSettings,
+                  title,
                   style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ],
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
-            child: Text(
-              context.tr.databaseDescription,
-              style: const TextStyle(
-                fontSize: 14,
-                color: Colors.grey,
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          ListTile(
-            title: Text(context.tr.databaseSettings),
-            subtitle: Text(context.tr.databaseDescription),
-            leading: Icon(remix.Remix.settings_3_line),
-            trailing: Icon(remix.Remix.arrow_right_s_line, size: 16),
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const DatabaseSettingsScreen(),
-                ),
-              );
-            },
-          ),
+          ...children,
           const SizedBox(height: 8),
-          _buildImportExportSection(context),
-          const SizedBox(height: 8),
-          ListTile(
-            title: Text(context.tr.settingsData),
-            subtitle: Text(context.tr.viewManageSettings),
-            leading: Icon(remix.Remix.pie_chart_line),
-            onTap: () {
-              final settingsData = _preferences.getAllSettings();
-              showDialog(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: Text(context.tr.settingsData),
-                  content: Container(
-                    width: double.maxFinite,
-                    constraints: BoxConstraints(
-                      maxHeight: MediaQuery.of(context).size.height * 0.7,
-                    ),
-                    child: SingleChildScrollView(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: settingsData.keys.map((setting) {
-                          final String value = settingsData[setting].toString();
-                          return ListTile(
-                            title: Text(setting),
-                            subtitle: Text(value), // Convert Object to String
-                          );
-                        }).toList(),
-                      ),
-                    ),
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: Text(context.tr.close),
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
         ],
       ),
     );
   }
 
-  Widget _buildImportExportSection(BuildContext context) {
-    return Column(
-      children: [
-        ListTile(
-          title: Text(context.tr.exportSettings),
-          subtitle: Text(context.tr.exportDescription),
-          leading: Icon(remix.Remix.upload_line),
-          onTap: () async {
-            try {
-              // Ask the user to select where to save the file
-              String? saveLocation = await FilePicker.platform.saveFile(
-                dialogTitle: context.tr.saveSettingsExport,
-                fileName:
-                    'coolbird_preferences_${DateFormat('yyyyMMdd_HHmmss').format(DateTime.now())}.json',
-                type: FileType.custom,
-                allowedExtensions: ['json'],
-              );
+  Widget _buildCompactSettingTile({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    Widget? trailing,
+    VoidCallback? onTap,
+  }) {
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      leading: Icon(icon, size: 20),
+      title: Text(
+        title,
+        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+      ),
+      subtitle: Text(
+        subtitle,
+        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      trailing: trailing ??
+          (onTap != null
+              ? Icon(remix.Remix.arrow_right_s_line, size: 16)
+              : null),
+      onTap: onTap,
+    );
+  }
 
-              if (saveLocation != null) {
-                final filePath = await _preferences.exportPreferences(
-                    customPath: saveLocation);
-                if (filePath != null) {
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(context.tr.exportSuccess + filePath),
-                        behavior: SnackBarBehavior.floating,
-                      ),
-                    );
-                  }
-                } else {
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(context.tr.exportFailed),
-                        behavior: SnackBarBehavior.floating,
-                        backgroundColor: Colors.red,
-                      ),
-                    );
-                  }
-                }
-              }
-            } catch (e) {
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(context.tr.errorExporting + e.toString()),
-                    behavior: SnackBarBehavior.floating,
-                    backgroundColor: Colors.red,
-                  ),
-                );
-              }
-            }
-          },
+  Widget _buildCacheButton({
+    required String label,
+    required IconData icon,
+    required bool isLoading,
+    required VoidCallback onTap,
+  }) {
+    return OutlinedButton.icon(
+      onPressed: isLoading ? null : onTap,
+      icon: isLoading
+          ? const SizedBox(
+              width: 12,
+              height: 12,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : Icon(icon, size: 14),
+      label: Text(
+        label,
+        style: const TextStyle(fontSize: 12),
+      ),
+      style: OutlinedButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        minimumSize: Size.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+    );
+  }
+
+  String _getThemeDisplayName() {
+    switch (_themePreference) {
+      case ThemePreference.system:
+        return AppLocalizations.of(context)!.systemMode;
+      case ThemePreference.light:
+        return AppLocalizations.of(context)!.lightMode;
+      case ThemePreference.dark:
+        return AppLocalizations.of(context)!.darkMode;
+    }
+  }
+
+  bool get _isAnyCacheClearing =>
+      _isClearingVideoCache ||
+      _isClearingNetworkCache ||
+      _isClearingTempFiles ||
+      _isClearingCache;
+
+  void _showLanguageDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(AppLocalizations.of(context)!.language),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildLanguageOption(
+              title: AppLocalizations.of(context)!.vietnameseLanguage,
+              value: LanguageController.vietnamese,
+              flagEmoji: '🇻🇳',
+            ),
+            _buildLanguageOption(
+              title: AppLocalizations.of(context)!.englishLanguage,
+              value: LanguageController.english,
+              flagEmoji: '🇬🇧',
+            ),
+          ],
         ),
-        ListTile(
-          title: Text(context.tr.importSettings),
-          subtitle: Text(context.tr.importDescription),
-          leading: Icon(remix.Remix.download_line),
-          onTap: () async {
-            try {
-              final success = await _preferences.importPreferences();
-              if (success) {
-                // Reload preferences after import
-                await _loadPreferences();
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(context.tr.importSuccess),
-                      behavior: SnackBarBehavior.floating,
-                    ),
-                  );
-                }
-              } else {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(context.tr.importFailed),
-                      behavior: SnackBarBehavior.floating,
-                      backgroundColor: Colors.orange,
-                    ),
-                  );
-                }
-              }
-            } catch (e) {
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(context.tr.errorImporting + e.toString()),
-                    behavior: SnackBarBehavior.floating,
-                    backgroundColor: Colors.red,
-                  ),
-                );
-              }
-            }
-          },
-        ),
-        const Divider(),
-        ListTile(
-          title: Text(context.tr.completeBackup),
-          subtitle: Text(context.tr.exportAllData),
-          leading: Icon(remix.Remix.save_line),
-          onTap: () async {
-            try {
-              final dirPath = await _preferences.exportAllData();
-              if (dirPath != null) {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(context.tr.exportSuccess + dirPath),
-                      behavior: SnackBarBehavior.floating,
-                    ),
-                  );
-                }
-              } else {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(context.tr.exportFailed),
-                      behavior: SnackBarBehavior.floating,
-                      backgroundColor: Colors.red,
-                    ),
-                  );
-                }
-              }
-            } catch (e) {
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(context.tr.errorExporting + e.toString()),
-                    behavior: SnackBarBehavior.floating,
-                    backgroundColor: Colors.red,
-                  ),
-                );
-              }
-            }
-          },
-        ),
-        ListTile(
-          title: Text(context.tr.completeRestore),
-          subtitle: Text(context.tr.importAllData),
-          leading: Icon(remix.Remix.restart_line),
-          onTap: () async {
-            try {
-              final success = await _preferences.importAllData();
-              if (success) {
-                // Reload preferences after import
-                await _loadPreferences();
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(context.tr.importSuccess),
-                      behavior: SnackBarBehavior.floating,
-                    ),
-                  );
-                }
-              } else {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(context.tr.importFailed),
-                      behavior: SnackBarBehavior.floating,
-                      backgroundColor: Colors.orange,
-                    ),
-                  );
-                }
-              }
-            } catch (e) {
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(context.tr.errorImporting + e.toString()),
-                    behavior: SnackBarBehavior.floating,
-                    backgroundColor: Colors.red,
-                  ),
-                );
-              }
-            }
-          },
-        ),
-      ],
+      ),
     );
   }
 
   Widget _buildLanguageOption({
     required String title,
     required String value,
-    required IconData icon,
     required String flagEmoji,
   }) {
     final isSelected = _currentLanguageCode == value;
@@ -1350,31 +627,247 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ? Icon(remix.Remix.checkbox_circle_line,
               color: Theme.of(context).primaryColor)
           : null,
-      onTap: () => _updateLanguage(value),
+      onTap: () {
+        _updateLanguage(value);
+        Navigator.pop(context);
+      },
       selected: isSelected,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
     );
   }
 
-  Widget _buildThemeOption({
-    required String title,
-    required String subtitle,
-    required ThemePreference value,
-    required IconData icon,
-  }) {
-    final isSelected = _themePreference == value;
+  Future<void> _clearNetworkCache() async {
+    setState(() {
+      _isClearingNetworkCache = true;
+    });
 
-    return ListTile(
-      title: Text(title),
-      subtitle: Text(subtitle),
-      leading: Icon(icon),
-      trailing: isSelected
-          ? Icon(remix.Remix.checkbox_circle_line,
-              color: Theme.of(context).primaryColor)
-          : null,
-      onTap: () => _updateThemePreference(value),
-      selected: isSelected,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+    try {
+      final networkHelper = NetworkThumbnailHelper();
+      await networkHelper.clearCache();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(AppLocalizations.of(context)!.networkCacheCleared),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        _loadCacheInfo();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content:
+                Text(AppLocalizations.of(context)!.errorClearingCache + '$e'),
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isClearingNetworkCache = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _clearTempFiles() async {
+    setState(() {
+      _isClearingTempFiles = true;
+    });
+
+    try {
+      final win32Helper = Win32SmbHelper();
+      await win32Helper.clearTempFileCache();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(AppLocalizations.of(context)!.tempFilesCleared),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        _loadCacheInfo();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content:
+                Text(AppLocalizations.of(context)!.errorClearingCache + '$e'),
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isClearingTempFiles = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _clearAllCache() async {
+    setState(() {
+      _isClearingCache = true;
+    });
+
+    try {
+      await VideoThumbnailHelper.clearCache();
+      final networkHelper = NetworkThumbnailHelper();
+      await networkHelper.clearCache();
+      final win32Helper = Win32SmbHelper();
+      await win32Helper.clearTempFileCache();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(AppLocalizations.of(context)!.allCacheCleared),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        _loadCacheInfo();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content:
+                Text(AppLocalizations.of(context)!.errorClearingCache + '$e'),
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isClearingCache = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _exportSettings() async {
+    try {
+      String? saveLocation = await FilePicker.platform.saveFile(
+        dialogTitle: AppLocalizations.of(context)!.saveSettingsExport,
+        fileName:
+            'coolbird_preferences_${DateFormat('yyyyMMdd_HHmmss').format(DateTime.now())}.json',
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+      );
+
+      if (saveLocation != null) {
+        final filePath =
+            await _preferences.exportPreferences(customPath: saveLocation);
+        if (filePath != null) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                    AppLocalizations.of(context)!.exportSuccess + filePath),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(AppLocalizations.of(context)!.exportFailed),
+                behavior: SnackBarBehavior.floating,
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                AppLocalizations.of(context)!.errorExporting + e.toString()),
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _importSettings() async {
+    try {
+      final success = await _preferences.importPreferences();
+      if (success) {
+        await _loadPreferences();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(AppLocalizations.of(context)!.importSuccess),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(AppLocalizations.of(context)!.importFailed),
+              behavior: SnackBarBehavior.floating,
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                AppLocalizations.of(context)!.errorImporting + e.toString()),
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  void _showSettingsData() {
+    final settingsData = _preferences.getAllSettings();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(AppLocalizations.of(context)!.settingsData),
+        content: Container(
+          width: double.maxFinite,
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.7,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: settingsData.keys.map((setting) {
+                final String value = settingsData[setting].toString();
+                return ListTile(
+                  title: Text(setting),
+                  subtitle: Text(value),
+                );
+              }).toList(),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(AppLocalizations.of(context)!.close),
+          ),
+        ],
+      ),
     );
   }
 }

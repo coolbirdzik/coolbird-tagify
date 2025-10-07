@@ -1211,17 +1211,22 @@ class VideoThumbnailHelper {
               'VideoThumbnail FutureBuilder error for $videoPath: ${snapshot.error}');
           content = fallbackBuilder?.call() ?? defaultFallback();
         } else if (thumbnailPath != null) {
-          content = Image.file(
-            File(thumbnailPath),
+          final int? cWidth =
+              (width.isFinite && width > 0) ? width.toInt() : null;
+          final int? cHeight =
+              (height.isFinite && height > 0) ? height.toInt() : null;
+          content = Image(
+            image: ResizeImage(
+              FileImage(File(thumbnailPath)),
+              width: cWidth,
+              height: cHeight,
+            ),
             key: ValueKey(thumbnailPath),
             width: width,
             height: height,
             fit: fit,
-            // Add null checks and validation before converting to int
-            cacheWidth: (width.isFinite && width > 0) ? (width).toInt() : null,
-            cacheHeight:
-                (height.isFinite && height > 0) ? (height).toInt() : null,
             filterQuality: FilterQuality.high,
+            gaplessPlayback: true,
             frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
               if (wasSynchronouslyLoaded) return child;
               return AnimatedOpacity(

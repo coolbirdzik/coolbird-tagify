@@ -148,6 +148,102 @@ class VietnameseLocalizations implements AppLocalizations {
       '• Tùy chọn để xóa thẻ';
   @override
   String get deleteTag => 'Xóa thẻ này khỏi tất cả tệp';
+  @override
+  String get deleteAlbum => 'Xóa Album';
+
+  // Tag Management Screen
+  @override
+  String get tagManagementTitle => 'Quản lý Tags';
+  @override
+  String get debugTags => 'Debug Tags';
+  @override
+  String get searchTags => 'Tìm kiếm';
+  @override
+  String get searchTagsHint => 'Tìm kiếm thẻ...';
+  @override
+  String get createNewTag => 'Tạo thẻ mới';
+  @override
+  String get newTagTooltip => 'Tạo thẻ mới';
+  @override
+  String get errorLoadingTags => 'Lỗi khi tải thẻ: ';
+  @override
+  String get noTagsFoundMessage => 'Không tìm thấy thẻ nào';
+  @override
+  String get noTagsFoundDescription => 'Tạo thẻ mới để bắt đầu phân loại tệp';
+  @override
+  String get createNewTagButton => 'Tạo thẻ mới';
+  @override
+  String get noMatchingTagsMessage =>
+      'Không có thẻ nào phù hợp với "\${searchTags}"';
+  @override
+  String get clearSearch => 'Xóa tìm kiếm';
+  @override
+  String get tagManagementHeader => 'Quản lý thẻ';
+  @override
+  String get tagsCreated => 'thẻ đã tạo';
+  @override
+  String get tagManagementDescription =>
+      'Nhấn vào thẻ để xem tất cả tệp có gắn thẻ đó. Sử dụng các nút bên phải để thay đổi màu hoặc xóa thẻ.';
+  @override
+  String get sortTags => 'Sắp xếp thẻ';
+  @override
+  String get sortByAlphabet => 'Theo bảng chữ cái';
+  @override
+  String get sortByPopular => 'Theo phổ biến';
+  @override
+  String get listViewMode => 'Chế độ danh sách';
+  @override
+  String get gridViewMode => 'Chế độ lưới';
+  @override
+  String get previousPage => 'Trang trước';
+  @override
+  String get nextPage => 'Trang sau';
+  @override
+  String get page => 'Trang';
+  @override
+  String get firstPage => 'Trang đầu';
+  @override
+  String get lastPage => 'Trang cuối';
+  @override
+  String get clickToViewFiles => 'Nhấn để xem tệp';
+  @override
+  String get changeTagColor => 'Thay đổi màu sắc';
+  @override
+  String get deleteTagFromAllFiles => 'Xóa thẻ này khỏi tất cả tệp';
+  @override
+  String get openInNewTab => 'Mở trong tab mới';
+  @override
+  String get changeColor => 'Thay đổi màu';
+  @override
+  String get noFilesWithTag => 'Không tìm thấy tệp nào có thẻ này';
+  @override
+  String get debugInfo => 'Thông tin gỡ lỗi: đang tìm thẻ "\${tag}"';
+  @override
+  String get backToAllTags => 'Quay về tất cả thẻ';
+  @override
+  String get tryAgain => 'Thử lại';
+  @override
+  String get filesWithTagCount => 'tệp';
+  @override
+  String get viewDetails => 'Xem chi tiết';
+  @override
+  String get openContainingFolder => 'Mở thư mục chứa';
+  @override
+  String get editTags => 'Chỉnh sửa thẻ';
+  @override
+  String get newTagTitle => 'Tạo thẻ mới';
+  @override
+  String get enterTagName => 'Nhập tên thẻ...';
+  @override
+  String get tagAlreadyExists => 'Thẻ "\${tagName}" đã tồn tại';
+  @override
+  String get tagCreatedSuccessfully => 'Đã tạo thẻ "\${tagName}" thành công';
+  @override
+  String get errorCreatingTag => 'Lỗi khi tạo thẻ: ';
+  @override
+  String get openingFolder => 'Opening folder: ';
+  @override
+  String get folderNotFound => 'Folder not found: ';
 
   // Gallery
   @override

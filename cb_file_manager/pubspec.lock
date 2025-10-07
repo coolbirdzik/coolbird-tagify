@@ -137,14 +137,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.0.4"
-  chewie:
-    dependency: "direct main"
-    description:
-      name: chewie
-      sha256: "8bc4ac4cf3f316e50a25958c0f5eb9bb12cf7e8308bb1d74a43b230da2cfc144"
-      url: "https://pub.dev"
-    source: hosted
-    version: "1.7.5"
   clock:
     dependency: transitive
     description:
@@ -302,14 +294,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.4.1"
-  flutter_chips_input:
-    dependency: "direct main"
-    description:
-      name: flutter_chips_input
-      sha256: "9828e45e75f268ff51a08e8d05848776b0a4d8327867d2b347a733030bafe64f"
-      url: "https://pub.dev"
-    source: hosted
-    version: "2.0.0"
   flutter_colorpicker:
     dependency: "direct main"
     description:
@@ -844,14 +828,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.5.0"
-  redux:
-    dependency: "direct main"
-    description:
-      name: redux
-      sha256: "1e86ed5b1a9a717922d0a0ca41f9bf49c1a587d50050e9426fc65b14e85ec4d7"
-      url: "https://pub.dev"
-    source: hosted
-    version: "5.0.0"
   remixicon:
     dependency: "direct main"
     description:
@@ -1145,14 +1121,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.3.1"
-  system_info_plus:
-    dependency: "direct main"
-    description:
-      name: system_info_plus
-      sha256: df94187e95527f9cb459e6a9f6e0b1ea20c157d8029bc233de34b3c1e17e1c48
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.0.6"
   term_glyph:
     dependency: transitive
     description:

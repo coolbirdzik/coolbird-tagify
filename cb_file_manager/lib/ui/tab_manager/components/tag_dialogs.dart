@@ -9,6 +9,38 @@ import 'dart:ui' as ui; // Import for ImageFilter
 import 'package:cb_file_manager/ui/widgets/tag_management_section.dart';
 import 'package:cb_file_manager/helpers/tags/tag_color_manager.dart';
 import '../../utils/route.dart';
+import '../core/tab_manager.dart';
+import '../core/tab_data.dart';
+
+/// Opens a new tab with search results for the selected tag
+void _openTagSearchTab(BuildContext context, String tag) {
+  // Create a unique system ID for this tag search
+  final searchSystemId = '#tag:$tag';
+  final tabName = 'Tag: $tag';
+
+  // Get tab manager
+  final tabBloc = BlocProvider.of<TabManagerBloc>(context);
+
+  // Check if this tab already exists
+  final existingTab = tabBloc.state.tabs.firstWhere(
+    (tab) => tab.path == searchSystemId,
+    orElse: () => TabData(id: '', name: '', path: ''),
+  );
+
+  if (existingTab.id.isNotEmpty) {
+    // If tab exists, switch to it
+    tabBloc.add(SwitchToTab(existingTab.id));
+  } else {
+    // Otherwise, create a new tab for this tag search
+    tabBloc.add(
+      AddTab(
+        path: searchSystemId,
+        name: tabName,
+        switchToTab: true,
+      ),
+    );
+  }
+}
 
 /// Dialog for adding a tag to a file
 void showAddTagToFileDialog(BuildContext context, String filePath) {
@@ -328,9 +360,11 @@ void showBatchAddTagDialog(BuildContext context, List<String> selectedFiles) {
             }
 
             void handleTagSelected(String tag) {
-              setState(() {
-                addTag(tag);
-              });
+              // Close the dialog first
+              RouteUtils.safePopDialog(context);
+
+              // Navigate to tag search page
+              _openTagSearchTab(context, tag);
             }
 
             return BackdropFilter(
@@ -411,7 +445,7 @@ void showBatchAddTagDialog(BuildContext context, List<String> selectedFiles) {
                                   : Colors.grey[100],
                               borderRadius: BorderRadius.circular(8),
                               border: Border.all(
-                                color: Colors.grey.withOpacity(0.2),
+                                color: Colors.grey.withValues(alpha: 0.2),
                               ),
                             ),
                             child: ListView.builder(
@@ -835,11 +869,11 @@ class _AnimatedTagChipState extends State<AnimatedTagChip>
 
     // Dynamic colors based on hover state and tag color
     final Color backgroundColor = hasCustomColor
-        ? (tagColor.withOpacity(_isHovered ? 0.3 : 0.2))
+        ? (tagColor.withValues(alpha: _isHovered ? 0.3 : 0.2))
         : (_isHovered
             ? (isDark
-                ? Colors.blue.withOpacity(0.3)
-                : theme.colorScheme.primary.withOpacity(0.15))
+                ? Colors.blue.withValues(alpha: 0.3)
+                : theme.colorScheme.primary.withValues(alpha: 0.15))
             : (isDark ? Colors.grey[700]! : Colors.grey[200]!));
 
     final Color textColor = hasCustomColor
@@ -855,9 +889,9 @@ class _AnimatedTagChipState extends State<AnimatedTagChip>
             : (isDark ? Colors.grey[400]! : Colors.grey[600]!));
 
     final Color borderColor = hasCustomColor
-        ? (tagColor.withOpacity(_isHovered ? 0.8 : 0.3))
+        ? (tagColor.withValues(alpha: _isHovered ? 0.8 : 0.3))
         : (_isHovered
-            ? theme.colorScheme.primary.withOpacity(0.5)
+            ? theme.colorScheme.primary.withValues(alpha: 0.5)
             : Colors.transparent);
 
     return MouseRegion(
@@ -1226,7 +1260,7 @@ class _RemoveTagsChipDialogState extends State<RemoveTagsChipDialog> {
                                     : Colors.grey[100],
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(
-                              color: Colors.grey.withOpacity(0.2),
+                              color: Colors.grey.withValues(alpha: 0.2),
                             ),
                           ),
                           child: ListView(

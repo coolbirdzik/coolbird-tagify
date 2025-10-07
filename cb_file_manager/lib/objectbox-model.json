@@ -4,150 +4,247 @@
   "_note3": "If you have VCS merge conflicts, you must resolve them according to ObjectBox docs.",
   "entities": [
     {
-      "id": "1:6420280273397156805",
-      "lastPropertyId": "3:7947662376134884422",
-      "name": "FileTag",
+      "id": "1:5143898110390256028",
+      "lastPropertyId": "8:7104370144707587186",
+      "name": "Album",
       "properties": [
         {
-          "id": "1:1079964129057126256",
+          "id": "1:1929943447747413047",
           "name": "id",
           "type": 6,
           "flags": 1
         },
         {
-          "id": "2:3689101270339757553",
-          "name": "filePath",
+          "id": "2:8242535741771196657",
+          "name": "name",
           "type": 9,
           "flags": 2048,
-          "indexId": "1:4627900701356382367"
+          "indexId": "1:7388045328485041676"
         },
         {
-          "id": "3:7947662376134884422",
-          "name": "tag",
-          "type": 9,
-          "flags": 2048,
-          "indexId": "2:3785247201596081420"
-        }
-      ],
-      "relations": []
-    },
-    {
-      "id": "2:802553438266831037",
-      "lastPropertyId": "9:4004233855652818143",
-      "name": "UserPreference",
-      "properties": [
-        {
-          "id": "1:8134669715548537491",
-          "name": "id",
-          "type": 6,
-          "flags": 1
-        },
-        {
-          "id": "2:6299629533262048361",
-          "name": "stringValue",
+          "id": "3:7971044673736803455",
+          "name": "description",
           "type": 9
         },
         {
-          "id": "3:3319213449331022466",
-          "name": "intValue",
-          "type": 6
+          "id": "4:3951312716219981008",
+          "name": "coverImagePath",
+          "type": 9
         },
         {
-          "id": "4:4191952925163115257",
-          "name": "doubleValue",
-          "type": 8
+          "id": "5:1087904695384721368",
+          "name": "createdAt",
+          "type": 10
         },
         {
-          "id": "5:1498618922325554597",
-          "name": "boolValue",
+          "id": "6:5556788609067141943",
+          "name": "modifiedAt",
+          "type": 10
+        },
+        {
+          "id": "7:2780012000551111728",
+          "name": "colorTheme",
+          "type": 9
+        },
+        {
+          "id": "8:7104370144707587186",
+          "name": "isSystemAlbum",
           "type": 1
-        },
-        {
-          "id": "6:7094931550144377287",
-          "name": "key",
-          "type": 9,
-          "flags": 2080,
-          "indexId": "3:2690286472131489868"
-        },
-        {
-          "id": "8:6079279981932733498",
-          "name": "timestamp",
-          "type": 6
-        },
-        {
-          "id": "9:4004233855652818143",
-          "name": "typeValue",
-          "type": 5
         }
       ],
       "relations": []
     },
     {
-      "id": "3:7601612105610997067",
-      "lastPropertyId": "9:3066354330843171996",
-      "name": "NetworkCredentials",
+      "id": "2:9129152327337653024",
+      "lastPropertyId": "7:1933986167312715564",
+      "name": "AlbumFile",
       "properties": [
         {
-          "id": "1:3583246625690998622",
+          "id": "1:8445380510269387539",
           "name": "id",
           "type": 6,
           "flags": 1
         },
         {
-          "id": "2:5534440979501677115",
+          "id": "2:4794139252072615300",
+          "name": "albumId",
+          "type": 6,
+          "flags": 8,
+          "indexId": "2:8910574062951500387"
+        },
+        {
+          "id": "3:3626758200920050589",
+          "name": "filePath",
+          "type": 9,
+          "flags": 2048,
+          "indexId": "3:2910510691877524821"
+        },
+        {
+          "id": "4:6119208815174450843",
+          "name": "orderIndex",
+          "type": 6
+        },
+        {
+          "id": "5:3972177555062226749",
+          "name": "addedAt",
+          "type": 10
+        },
+        {
+          "id": "6:2991473314200879026",
+          "name": "caption",
+          "type": 9
+        },
+        {
+          "id": "7:1933986167312715564",
+          "name": "isCover",
+          "type": 1
+        }
+      ],
+      "relations": []
+    },
+    {
+      "id": "3:8336324679431031106",
+      "lastPropertyId": "3:1165792884101459074",
+      "name": "FileTag",
+      "properties": [
+        {
+          "id": "1:5113321196187212683",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:8183118758118872870",
+          "name": "filePath",
+          "type": 9,
+          "flags": 2048,
+          "indexId": "4:5461401798872689695"
+        },
+        {
+          "id": "3:1165792884101459074",
+          "name": "tag",
+          "type": 9,
+          "flags": 2048,
+          "indexId": "5:7936667415471607556"
+        }
+      ],
+      "relations": []
+    },
+    {
+      "id": "4:5943290169100748402",
+      "lastPropertyId": "9:5874694679331112670",
+      "name": "NetworkCredentials",
+      "properties": [
+        {
+          "id": "1:7895101648917096223",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:6339263640462601610",
           "name": "serviceType",
           "type": 9
         },
         {
-          "id": "3:4894066231335562941",
+          "id": "3:1690596764556311930",
           "name": "host",
           "type": 9
         },
         {
-          "id": "4:1512355342509337407",
+          "id": "4:8479007645482200673",
           "name": "username",
           "type": 9
         },
         {
-          "id": "5:6181782070738729868",
+          "id": "5:7168465125157893157",
           "name": "password",
           "type": 9
         },
         {
-          "id": "6:4510501619612566042",
+          "id": "6:6928731021884167758",
           "name": "port",
           "type": 6
         },
         {
-          "id": "7:2596249702761254653",
+          "id": "7:7922582909552015213",
           "name": "domain",
           "type": 9
         },
         {
-          "id": "8:5410606016458189550",
+          "id": "8:7400665885988518880",
           "name": "additionalOptions",
           "type": 9
         },
         {
-          "id": "9:3066354330843171996",
+          "id": "9:5874694679331112670",
           "name": "lastConnected",
           "type": 10
         }
       ],
       "relations": []
+    },
+    {
+      "id": "5:1325907199832929183",
+      "lastPropertyId": "8:2141535480574122672",
+      "name": "UserPreference",
+      "properties": [
+        {
+          "id": "1:656663352622602341",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:8639318240102994986",
+          "name": "key",
+          "type": 9,
+          "flags": 2080,
+          "indexId": "6:1453680630834694226"
+        },
+        {
+          "id": "3:2125129317340269927",
+          "name": "stringValue",
+          "type": 9
+        },
+        {
+          "id": "4:3961414552172590357",
+          "name": "intValue",
+          "type": 6
+        },
+        {
+          "id": "5:7123151727405562764",
+          "name": "doubleValue",
+          "type": 8
+        },
+        {
+          "id": "6:5206864587505014452",
+          "name": "boolValue",
+          "type": 1
+        },
+        {
+          "id": "7:2517845582945166902",
+          "name": "typeValue",
+          "type": 5
+        },
+        {
+          "id": "8:2141535480574122672",
+          "name": "timestamp",
+          "type": 6
+        }
+      ],
+      "relations": []
     }
   ],
-  "lastEntityId": "3:7601612105610997067",
-  "lastIndexId": "3:2690286472131489868",
+  "lastEntityId": "5:1325907199832929183",
+  "lastIndexId": "6:1453680630834694226",
   "lastRelationId": "0:0",
   "lastSequenceId": "0:0",
   "modelVersion": 5,
   "modelVersionParserMinimum": 5,
   "retiredEntityUids": [],
   "retiredIndexUids": [],
-  "retiredPropertyUids": [
-    1534968030676419828
-  ],
+  "retiredPropertyUids": [],
   "retiredRelationUids": [],
   "version": 1
 }

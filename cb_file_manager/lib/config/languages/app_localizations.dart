@@ -82,6 +82,54 @@ abstract class AppLocalizations {
   String get aboutTagsDescription;
   String get aboutTagsScreenDescription;
   String get deleteTag;
+  String get deleteAlbum;
+
+  // Tag Management Screen
+  String get tagManagementTitle;
+  String get debugTags;
+  String get searchTags;
+  String get searchTagsHint;
+  String get createNewTag;
+  String get newTagTooltip;
+  String get errorLoadingTags;
+  String get noTagsFoundMessage;
+  String get noTagsFoundDescription;
+  String get createNewTagButton;
+  String get noMatchingTagsMessage;
+  String get clearSearch;
+  String get tagManagementHeader;
+  String get tagsCreated;
+  String get tagManagementDescription;
+  String get sortTags;
+  String get sortByAlphabet;
+  String get sortByPopular;
+  String get listViewMode;
+  String get gridViewMode;
+  String get previousPage;
+  String get nextPage;
+  String get page;
+  String get firstPage;
+  String get lastPage;
+  String get clickToViewFiles;
+  String get changeTagColor;
+  String get deleteTagFromAllFiles;
+  String get openInNewTab;
+  String get changeColor;
+  String get noFilesWithTag;
+  String get debugInfo;
+  String get backToAllTags;
+  String get tryAgain;
+  String get filesWithTagCount;
+  String get viewDetails;
+  String get openContainingFolder;
+  String get editTags;
+  String get newTagTitle;
+  String get enterTagName;
+  String get tagAlreadyExists;
+  String get tagCreatedSuccessfully;
+  String get errorCreatingTag;
+  String get openingFolder;
+  String get folderNotFound;
 
   // Sorting
   String get sort;

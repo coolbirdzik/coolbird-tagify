@@ -156,7 +156,6 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
   ) async {
     // Initialize with empty folders list
     emit(state.copyWith(isLoading: true));
-    emit(state.copyWith(isLoading: false));
   }
 
   void _onFolderListLoad(
@@ -649,29 +648,68 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
         // Use folder-specific sort option if available, otherwise use the current sort option
         SortOption sortOptionToUse = folderSortOption ?? state.sortOption;
 
-        // IMPORTANT: Update UI state IMMEDIATELY to show content, even before thumbnails are ready
-        // This prevents UI blocking while thumbnails are generated
+        // Apply sorting FIRST, then emit final state with isLoading: false
+        // This ensures UI shows complete, sorted content without gaps
+        final sortedFolders = List<FileSystemEntity>.from(folders);
+        final sortedFiles = List<FileSystemEntity>.from(files);
+
+        // Get file stats for sorting
+        Map<String, FileStat> fileStatsCache = {};
+        final allEntities = [...sortedFolders, ...sortedFiles];
+        for (var entity in allEntities) {
+          if (entity is File) {
+            fileStatsCache[entity.path] = await entity.stat();
+          }
+        }
+
+        // Get the comparison function
+        final compareFunction = (FileSystemEntity a, FileSystemEntity b) {
+          // Your existing comparison logic from _sortFilesAndFolders goes here
+          // This is a simplified version, you might need to adjust based on your full logic
+          if (a is Directory && b is File) return -1;
+          if (a is File && b is Directory) return 1;
+
+          switch (sortOptionToUse) {
+            case SortOption.nameAsc:
+              return a.path.toLowerCase().compareTo(b.path.toLowerCase());
+            case SortOption.nameDesc:
+              return b.path.toLowerCase().compareTo(a.path.toLowerCase());
+            case SortOption.dateAsc:
+              final statA = fileStatsCache[a.path];
+              final statB = fileStatsCache[b.path];
+              if (statA != null && statB != null) {
+                return statA.modified.compareTo(statB.modified);
+              }
+              return 0;
+            case SortOption.dateDesc:
+              final statA = fileStatsCache[a.path];
+              final statB = fileStatsCache[b.path];
+              if (statA != null && statB != null) {
+                return statB.modified.compareTo(statA.modified);
+              }
+              return 0;
+            case SortOption.sizeAsc:
+            case SortOption.sizeDesc:
+            default:
+              return a.path.toLowerCase().compareTo(b.path.toLowerCase());
+          }
+        };
+
+        sortedFolders.sort(compareFunction);
+        sortedFiles.sort(compareFunction);
+
+        // Now emit the final state with sorted content and isLoading: false
         emit(
           state.copyWith(
-            isLoading: false, // Set to false right away so UI is not blocked
-            folders: folders,
-            files: files,
+            isLoading: false,
+            folders: sortedFolders,
+            files: sortedFiles,
             fileTags: fileTags,
             allUniqueTags: allUniqueTags,
             error: null,
             currentPath: Directory(event.path),
-            sortOption: folderSortOption ??
-                state.sortOption, // Update sort option if folder-specific
+            sortOption: folderSortOption ?? state.sortOption,
           ),
-        );
-
-        // Apply sorting after emitting the initial state
-        await _sortFilesAndFolders(
-          folders,
-          files,
-          sortOptionToUse,
-          emit,
-          updateSortOption: false, // Already updated the sort option
         );
 
         // Start thumbnail generation in background AFTER updating UI

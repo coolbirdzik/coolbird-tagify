@@ -16,10 +16,18 @@ import 'package:cb_file_manager/ui/screens/folder_list/folder_list_bloc.dart';
 import 'package:cb_file_manager/ui/screens/folder_list/folder_list_event.dart';
 import 'package:cb_file_manager/bloc/network_browsing/network_browsing_bloc.dart';
 import 'package:cb_file_manager/services/network_browsing/network_service_registry.dart';
-import 'package:cb_file_manager/ui/screens/trash_bin/trash_bin_screen.dart';
 import 'package:cb_file_manager/ui/screens/home/home_screen.dart';
+import 'package:cb_file_manager/helpers/core/uri_utils.dart';
+import 'package:cb_file_manager/ui/screens/album_management/album_management_screen.dart';
+import 'package:cb_file_manager/ui/screens/album_management/auto_rules_screen.dart';
+import 'package:cb_file_manager/ui/screens/album_management/album_detail_screen.dart';
+import 'package:cb_file_manager/services/album_service.dart';
+import 'package:cb_file_manager/models/objectbox/album.dart';
+import 'package:cb_file_manager/ui/screens/gallery_hub/gallery_hub_screen.dart';
+import 'package:cb_file_manager/ui/screens/video_hub/video_hub_screen.dart';
 import 'package:cb_file_manager/config/translation_helper.dart';
 import '../utils/route.dart';
+import 'trash_bin/trash_bin_screen.dart';
 
 /// A router that handles system screens and special paths
 class SystemScreenRouter {
@@ -65,6 +73,40 @@ class SystemScreenRouter {
     } else if (path == '#tags') {
       // Route to the tag management screen - no caching needed for this screen
       return TagManagementTab(tabId: tabId);
+    } else if (path == '#gallery') {
+      // Route to the gallery hub screen as a tab
+      return const GalleryHubScreen();
+    } else if (path == '#video') {
+      // Route to the video hub screen as a tab
+      return const VideoHubScreen();
+    } else if (path == '#albums') {
+      // Route to the album management screen as a tab
+      return const AlbumManagementScreen();
+    } else if (path == '#auto-rules') {
+      // Route to the auto rules screen as a tab
+      return const AutoRulesScreen();
+    } else if (path == '#trash') {
+      // Route to the Trash Bin screen as a tab
+      return const TrashBinScreen();
+    } else if (path.startsWith('#album/')) {
+      // Route to album detail screen - extract album ID from path
+      final albumIdStr = path.substring('#album/'.length);
+      final albumId = int.tryParse(albumIdStr);
+      if (albumId != null) {
+        return FutureBuilder<Album?>(
+          future: AlbumService.instance.getAlbumById(albumId),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snapshot.hasData && snapshot.data != null) {
+              return AlbumDetailScreen(album: snapshot.data!);
+            }
+            return const Center(child: Text('Album not found'));
+          },
+        );
+      }
+      return const Center(child: Text('Invalid album ID'));
     } else if (path == '#network') {
       // Route to the network connections screen
       // Use the existing BlocProvider from TabMainScreen to ensure shared state
@@ -89,11 +131,35 @@ class SystemScreenRouter {
         path: '',
         recursive: true,
       );
-    } else if (path == '#gallery:videos') {
-      // Route to the video gallery screen
-      return const VideoGalleryScreen(
-        path: '',
-        recursive: true,
+    } else if (path.startsWith('#gallery:videos')) {
+      // Route to the video gallery screen, support optional query params
+      // e.g. #gallery:videos?path=<encodedPath>&recursive=false
+      String galleryPath = '';
+      bool recursive = true;
+      final int qIndex = path.indexOf('?');
+      if (qIndex != -1 && qIndex < path.length - 1) {
+        final String query = path.substring(qIndex + 1);
+        try {
+          final params = Uri.splitQueryString(query);
+          if (params.containsKey('path')) {
+            galleryPath = Uri.decodeComponent(params['path'] ?? '');
+          }
+          if (params.containsKey('recursive')) {
+            final v = (params['recursive'] ?? '').toLowerCase();
+            if (v == 'false' || v == '0' || v == 'no') {
+              recursive = false;
+            } else if (v == 'true' || v == '1' || v == 'yes') {
+              recursive = true;
+            }
+          }
+        } catch (_) {
+          // Fallback to defaults if parsing fails
+        }
+      }
+
+      return VideoGalleryScreen(
+        path: galleryPath,
+        recursive: recursive,
       );
     } else if (path.startsWith('#tag:')) {
       // Check if we already have a cached widget for this tab+path
@@ -161,7 +227,7 @@ class SystemScreenRouter {
       // or it will call SystemScreenRouter again. Instead, parse the tag
       // and drive the screen via searchTag + globalTagSearch.
       final String raw = path.substring('#search?tag='.length);
-      final String tag = Uri.decodeComponent(raw);
+      final String tag = UriUtils.safeDecodeComponent(raw);
 
       final widgetToCache = TabbedFolderListScreen(
         key: ValueKey('tag_search_$cacheKey'),

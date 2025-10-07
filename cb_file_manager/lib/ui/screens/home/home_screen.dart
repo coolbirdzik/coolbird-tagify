@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:remixicon/remixicon.dart' as remix;
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:cb_file_manager/ui/tab_manager/core/tab_manager.dart';
+import 'package:cb_file_manager/ui/tab_manager/core/tab_data.dart';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:cb_file_manager/helpers/core/filesystem_utils.dart';
@@ -346,7 +347,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   context.tr.tagsActionDesc,
                   remix.Remix.price_tag_3_line,
                   [Colors.green, Colors.green.shade300],
-                  () => _navigateToPath('#tags'),
+                  () => _openTagsTab(),
                 ),
               ],
             );
@@ -549,19 +550,25 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   void _openImageGallery() {
-    final tabManager = context.read<TabManagerBloc>();
-    tabManager.add(AddTab(
-      path: '#gallery:images',
-      name: context.tr.imageGalleryTab,
-    ));
+    // Open Gallery Hub as a new tab instead of a separate screen
+    context.read<TabManagerBloc>().add(AddTab(
+          path: '#gallery',
+          name: 'Gallery Hub',
+        ));
   }
 
   void _openVideoGallery() {
     final tabManager = context.read<TabManagerBloc>();
-    tabManager.add(AddTab(
-      path: '#gallery:videos',
-      name: context.tr.videoGalleryTab,
-    ));
+    final activeTab = tabManager.state.activeTab;
+    if (activeTab != null) {
+      TabNavigator.updateTabPath(context, activeTab.id, '#video');
+      tabManager.add(UpdateTabName(activeTab.id, 'Video Hub'));
+    } else {
+      tabManager.add(AddTab(
+        path: '#video',
+        name: 'Video Hub',
+      ));
+    }
   }
 
   void _openNewTab() async {
@@ -649,5 +656,29 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   void _navigateToPath(String path) {
     final tabBloc = context.read<TabManagerBloc>();
     tabBloc.add(UpdateTabPath(widget.tabId, path));
+  }
+
+  void _openTagsTab() {
+    final tabBloc = context.read<TabManagerBloc>();
+
+    // Check if a tags tab already exists
+    final existingTab = tabBloc.state.tabs.firstWhere(
+      (tab) => tab.path == '#tags',
+      orElse: () => TabData(id: '', name: '', path: ''),
+    );
+
+    if (existingTab.id.isNotEmpty) {
+      // If tab exists, switch to it
+      tabBloc.add(SwitchToTab(existingTab.id));
+    } else {
+      // Otherwise, create a new tab
+      tabBloc.add(
+        AddTab(
+          path: '#tags',
+          name: 'Tags',
+          switchToTab: true,
+        ),
+      );
+    }
   }
 }

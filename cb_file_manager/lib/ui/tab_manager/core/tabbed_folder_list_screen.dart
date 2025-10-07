@@ -18,6 +18,7 @@ import 'package:remixicon/remixicon.dart' as remix;
 import 'package:cb_file_manager/helpers/media/video_thumbnail_helper.dart'; // Add import for VideoThumbnailHelper
 import 'package:cb_file_manager/ui/widgets/thumbnail_loader.dart'; // Add import for ThumbnailLoader
 import 'package:cb_file_manager/ui/widgets/loading_skeleton.dart';
+import 'package:cb_file_manager/ui/widgets/app_progress_indicator.dart';
 import 'package:cb_file_manager/ui/utils/file_type_utils.dart';
 import 'tab_manager.dart';
 import 'package:cb_file_manager/ui/utils/fluent_background.dart'; // Import the Fluent Design background
@@ -166,6 +167,9 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
   late int _gridZoomLevel;
   late ColumnVisibility _columnVisibility;
   late bool _showFileTags;
+
+  // Refresh state
+  bool _isRefreshing = false;
 
   // Create the bloc instance at the class level
   late FolderListBloc _folderListBloc;
@@ -626,13 +630,9 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
   }
 
   void _refreshFileList() {
-    // Show loading indicator
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Đang làm mới...'),
-        duration: Duration(seconds: 2),
-      ),
-    );
+    setState(() {
+      _isRefreshing = true;
+    });
 
     // Đặt cờ để đánh dấu đang trong quá trình refresh
     bool isRefreshing = true;
@@ -679,6 +679,9 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
     Future.delayed(const Duration(seconds: 3), () {
       if (mounted && isRefreshing) {
         isRefreshing = false;
+        setState(() {
+          _isRefreshing = false;
+        });
       }
     });
 
@@ -687,13 +690,9 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
       // Đảm bảo không hiển thị thông báo hai lần
       if (mounted && isRefreshing) {
         isRefreshing = false;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-                'Đã hoàn tất làm mới. Một số dữ liệu có thể cần thời gian để cập nhật.'),
-            duration: Duration(seconds: 3),
-          ),
-        );
+        setState(() {
+          _isRefreshing = false;
+        });
       }
     });
   }
@@ -1271,19 +1270,30 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
             state.currentSearchTag == null &&
             state.currentSearchQuery == null);
 
-    if (shouldShowSkeleton) {
-      final Widget skeleton = state.viewMode == ViewMode.grid
-          ? LoadingSkeleton.grid(
-              crossAxisCount: state.gridZoomLevel, itemCount: 12)
-          : LoadingSkeleton.list(itemCount: 12);
+    return Column(
+      children: [
+        // Top progress bar when loading, refreshing, or while initial content is being prepared
+        if (state.isLoading || shouldShowSkeleton || _isRefreshing)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 4.0),
+            child: AppProgressIndicatorBeautiful(),
+          ),
+        Expanded(
+          child: FluentBackground.container(
+            context: context,
+            enableBlur: isDesktopPlatform,
+            child: shouldShowSkeleton
+                ? const SizedBox.shrink() // Show an empty space while loading
+                : _buildMainContent(
+                    context, state, selectionState, isNetworkPath),
+          ),
+        ),
+      ],
+    );
+  }
 
-      return FluentBackground.container(
-        context: context,
-        enableBlur: isDesktopPlatform,
-        child: skeleton,
-      );
-    }
-
+  Widget _buildMainContent(BuildContext context, FolderListState state,
+      SelectionState selectionState, bool isNetworkPath) {
     if (state.error != null) {
       return FluentBackground.container(
         context: context,
@@ -1297,32 +1307,26 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
             _folderListBloc.add(FolderListLoad(_currentPath));
           },
           onGoBack: () {
-            // For network paths, carefully handle navigation
             if (isNetworkPath) {
               final parts = _currentPath.split('/');
               if (parts.length > 3) {
-                // At least #network/protocol/server level, can go back
                 final parentPath = parts.sublist(0, parts.length - 1).join('/');
                 _navigateToPath(parentPath);
               } else {
-                // At root of network share, just close the tab or do nothing
                 final tabBloc =
                     BlocProvider.of<TabManagerBloc>(context, listen: false);
                 tabBloc.add(CloseTab(widget.tabId));
               }
             } else {
-              // Normal local file system navigation
               try {
                 final parentPath = Directory(_currentPath).parent.path;
                 if (parentPath != _currentPath) {
                   _navigateToPath(parentPath);
                 } else {
-                  // If we're at root level, navigate to the drive listing
-                  _navigateToPath(''); // Empty path triggers drive list
+                  _navigateToPath('');
                 }
               } catch (e) {
-                // If all else fails, go to empty path to show drives
-                _navigateToPath('');
+                debugPrint('Error navigating back: $e');
               }
             }
           },
@@ -1330,6 +1334,16 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
       );
     }
 
+    // Show files/folders even while loading (progressive loading)
+    return _buildFolderAndFileListContent(
+        context, state, selectionState, isNetworkPath);
+  }
+
+  Widget _buildFolderAndFileListContent(
+      BuildContext context,
+      FolderListState state,
+      SelectionState selectionState,
+      bool isNetworkPath) {
     // Hiển thị kết quả tìm kiếm (cả theo tag và theo tên tệp)
     if (state.currentSearchTag != null || state.currentSearchQuery != null) {
       if (state.searchResults.isNotEmpty) {
@@ -1503,6 +1517,10 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
           HapticFeedback.lightImpact();
         }
 
+        setState(() {
+          _isRefreshing = true;
+        });
+
         // Create the completer first
         final completer = Completer<void>();
 
@@ -1517,6 +1535,9 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
             if (Platform.isAndroid || Platform.isIOS) {
               HapticFeedback.selectionClick();
             }
+            setState(() {
+              _isRefreshing = false;
+            });
             completer.complete();
             subscription.cancel();
           }

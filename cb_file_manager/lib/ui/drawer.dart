@@ -15,6 +15,7 @@ import 'package:cb_file_manager/ui/tab_manager/core/tab_data.dart'; // Import Ta
 // Add UserPreferences import
 import 'package:cb_file_manager/config/app_theme.dart'; // Import theme configuration
 import 'package:cb_file_manager/config/translation_helper.dart'; // Import translation helper
+import 'package:cb_file_manager/pages/instant_album_demo.dart'; // Import Instant Album Demo
 
 class CBDrawer extends StatefulWidget {
   final BuildContext parentContext;
@@ -461,12 +462,26 @@ class _CBDrawerState extends State<CBDrawer> {
                   if (!widget.isPinned) {
                     RouteUtils.safePopDialog(context);
                   }
-                  // Navigate to the Trash Bin screen
-                  if (context.mounted) {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const TrashBinScreen(),
+
+                  // Open Trash Bin inside a tab via system path '#trash'
+                  final tabBloc = BlocProvider.of<TabManagerBloc>(context);
+
+                  // Check if a trash tab already exists
+                  final existingTab = tabBloc.state.tabs.firstWhere(
+                    (tab) => tab.path == '#trash',
+                    orElse: () => TabData(id: '', name: '', path: ''),
+                  );
+
+                  if (existingTab.id.isNotEmpty) {
+                    // If tab exists, switch to it
+                    tabBloc.add(SwitchToTab(existingTab.id));
+                  } else {
+                    // Otherwise, create a new tab
+                    tabBloc.add(
+                      AddTab(
+                        path: '#trash',
+                        name: 'Trash',
+                        switchToTab: true,
                       ),
                     );
                   }

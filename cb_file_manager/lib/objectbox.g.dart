@@ -15,6 +15,8 @@ import 'package:objectbox/objectbox.dart' as obx;
 import 'package:objectbox_flutter_libs/objectbox_flutter_libs.dart';
 
 import 'models/database/network_credentials.dart';
+import 'models/objectbox/album.dart';
+import 'models/objectbox/album_file.dart';
 import 'models/objectbox/file_tag.dart';
 import 'models/objectbox/user_preference.dart';
 
@@ -22,88 +24,112 @@ export 'package:objectbox/objectbox.dart'; // so that callers only have to impor
 
 final _entities = <obx_int.ModelEntity>[
   obx_int.ModelEntity(
-    id: const obx_int.IdUid(1, 6420280273397156805),
-    name: 'FileTag',
-    lastPropertyId: const obx_int.IdUid(3, 7947662376134884422),
+    id: const obx_int.IdUid(1, 5143898110390256028),
+    name: 'Album',
+    lastPropertyId: const obx_int.IdUid(8, 7104370144707587186),
     flags: 0,
     properties: <obx_int.ModelProperty>[
       obx_int.ModelProperty(
-        id: const obx_int.IdUid(1, 1079964129057126256),
+        id: const obx_int.IdUid(1, 1929943447747413047),
         name: 'id',
         type: 6,
         flags: 1,
       ),
       obx_int.ModelProperty(
-        id: const obx_int.IdUid(2, 3689101270339757553),
-        name: 'filePath',
+        id: const obx_int.IdUid(2, 8242535741771196657),
+        name: 'name',
         type: 9,
         flags: 2048,
-        indexId: const obx_int.IdUid(1, 4627900701356382367),
+        indexId: const obx_int.IdUid(1, 7388045328485041676),
       ),
       obx_int.ModelProperty(
-        id: const obx_int.IdUid(3, 7947662376134884422),
-        name: 'tag',
-        type: 9,
-        flags: 2048,
-        indexId: const obx_int.IdUid(2, 3785247201596081420),
-      ),
-    ],
-    relations: <obx_int.ModelRelation>[],
-    backlinks: <obx_int.ModelBacklink>[],
-  ),
-  obx_int.ModelEntity(
-    id: const obx_int.IdUid(2, 802553438266831037),
-    name: 'UserPreference',
-    lastPropertyId: const obx_int.IdUid(9, 4004233855652818143),
-    flags: 0,
-    properties: <obx_int.ModelProperty>[
-      obx_int.ModelProperty(
-        id: const obx_int.IdUid(1, 8134669715548537491),
-        name: 'id',
-        type: 6,
-        flags: 1,
-      ),
-      obx_int.ModelProperty(
-        id: const obx_int.IdUid(2, 6299629533262048361),
-        name: 'stringValue',
+        id: const obx_int.IdUid(3, 7971044673736803455),
+        name: 'description',
         type: 9,
         flags: 0,
       ),
       obx_int.ModelProperty(
-        id: const obx_int.IdUid(3, 3319213449331022466),
-        name: 'intValue',
-        type: 6,
+        id: const obx_int.IdUid(4, 3951312716219981008),
+        name: 'coverImagePath',
+        type: 9,
         flags: 0,
       ),
       obx_int.ModelProperty(
-        id: const obx_int.IdUid(4, 4191952925163115257),
-        name: 'doubleValue',
-        type: 8,
+        id: const obx_int.IdUid(5, 1087904695384721368),
+        name: 'createdAt',
+        type: 10,
         flags: 0,
       ),
       obx_int.ModelProperty(
-        id: const obx_int.IdUid(5, 1498618922325554597),
-        name: 'boolValue',
+        id: const obx_int.IdUid(6, 5556788609067141943),
+        name: 'modifiedAt',
+        type: 10,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(7, 2780012000551111728),
+        name: 'colorTheme',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(8, 7104370144707587186),
+        name: 'isSystemAlbum',
         type: 1,
         flags: 0,
       ),
+    ],
+    relations: <obx_int.ModelRelation>[],
+    backlinks: <obx_int.ModelBacklink>[],
+  ),
+  obx_int.ModelEntity(
+    id: const obx_int.IdUid(2, 9129152327337653024),
+    name: 'AlbumFile',
+    lastPropertyId: const obx_int.IdUid(7, 1933986167312715564),
+    flags: 0,
+    properties: <obx_int.ModelProperty>[
       obx_int.ModelProperty(
-        id: const obx_int.IdUid(6, 7094931550144377287),
-        name: 'key',
-        type: 9,
-        flags: 2080,
-        indexId: const obx_int.IdUid(3, 2690286472131489868),
+        id: const obx_int.IdUid(1, 8445380510269387539),
+        name: 'id',
+        type: 6,
+        flags: 1,
       ),
       obx_int.ModelProperty(
-        id: const obx_int.IdUid(8, 6079279981932733498),
-        name: 'timestamp',
+        id: const obx_int.IdUid(2, 4794139252072615300),
+        name: 'albumId',
+        type: 6,
+        flags: 8,
+        indexId: const obx_int.IdUid(2, 8910574062951500387),
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(3, 3626758200920050589),
+        name: 'filePath',
+        type: 9,
+        flags: 2048,
+        indexId: const obx_int.IdUid(3, 2910510691877524821),
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(4, 6119208815174450843),
+        name: 'orderIndex',
         type: 6,
         flags: 0,
       ),
       obx_int.ModelProperty(
-        id: const obx_int.IdUid(9, 4004233855652818143),
-        name: 'typeValue',
-        type: 5,
+        id: const obx_int.IdUid(5, 3972177555062226749),
+        name: 'addedAt',
+        type: 10,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(6, 2991473314200879026),
+        name: 'caption',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(7, 1933986167312715564),
+        name: 'isCover',
+        type: 1,
         flags: 0,
       ),
     ],
@@ -111,63 +137,152 @@ final _entities = <obx_int.ModelEntity>[
     backlinks: <obx_int.ModelBacklink>[],
   ),
   obx_int.ModelEntity(
-    id: const obx_int.IdUid(3, 7601612105610997067),
-    name: 'NetworkCredentials',
-    lastPropertyId: const obx_int.IdUid(9, 3066354330843171996),
+    id: const obx_int.IdUid(3, 8336324679431031106),
+    name: 'FileTag',
+    lastPropertyId: const obx_int.IdUid(3, 1165792884101459074),
     flags: 0,
     properties: <obx_int.ModelProperty>[
       obx_int.ModelProperty(
-        id: const obx_int.IdUid(1, 3583246625690998622),
+        id: const obx_int.IdUid(1, 5113321196187212683),
         name: 'id',
         type: 6,
         flags: 1,
       ),
       obx_int.ModelProperty(
-        id: const obx_int.IdUid(2, 5534440979501677115),
+        id: const obx_int.IdUid(2, 8183118758118872870),
+        name: 'filePath',
+        type: 9,
+        flags: 2048,
+        indexId: const obx_int.IdUid(4, 5461401798872689695),
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(3, 1165792884101459074),
+        name: 'tag',
+        type: 9,
+        flags: 2048,
+        indexId: const obx_int.IdUid(5, 7936667415471607556),
+      ),
+    ],
+    relations: <obx_int.ModelRelation>[],
+    backlinks: <obx_int.ModelBacklink>[],
+  ),
+  obx_int.ModelEntity(
+    id: const obx_int.IdUid(4, 5943290169100748402),
+    name: 'NetworkCredentials',
+    lastPropertyId: const obx_int.IdUid(9, 5874694679331112670),
+    flags: 0,
+    properties: <obx_int.ModelProperty>[
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(1, 7895101648917096223),
+        name: 'id',
+        type: 6,
+        flags: 1,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(2, 6339263640462601610),
         name: 'serviceType',
         type: 9,
         flags: 0,
       ),
       obx_int.ModelProperty(
-        id: const obx_int.IdUid(3, 4894066231335562941),
+        id: const obx_int.IdUid(3, 1690596764556311930),
         name: 'host',
         type: 9,
         flags: 0,
       ),
       obx_int.ModelProperty(
-        id: const obx_int.IdUid(4, 1512355342509337407),
+        id: const obx_int.IdUid(4, 8479007645482200673),
         name: 'username',
         type: 9,
         flags: 0,
       ),
       obx_int.ModelProperty(
-        id: const obx_int.IdUid(5, 6181782070738729868),
+        id: const obx_int.IdUid(5, 7168465125157893157),
         name: 'password',
         type: 9,
         flags: 0,
       ),
       obx_int.ModelProperty(
-        id: const obx_int.IdUid(6, 4510501619612566042),
+        id: const obx_int.IdUid(6, 6928731021884167758),
         name: 'port',
         type: 6,
         flags: 0,
       ),
       obx_int.ModelProperty(
-        id: const obx_int.IdUid(7, 2596249702761254653),
+        id: const obx_int.IdUid(7, 7922582909552015213),
         name: 'domain',
         type: 9,
         flags: 0,
       ),
       obx_int.ModelProperty(
-        id: const obx_int.IdUid(8, 5410606016458189550),
+        id: const obx_int.IdUid(8, 7400665885988518880),
         name: 'additionalOptions',
         type: 9,
         flags: 0,
       ),
       obx_int.ModelProperty(
-        id: const obx_int.IdUid(9, 3066354330843171996),
+        id: const obx_int.IdUid(9, 5874694679331112670),
         name: 'lastConnected',
         type: 10,
+        flags: 0,
+      ),
+    ],
+    relations: <obx_int.ModelRelation>[],
+    backlinks: <obx_int.ModelBacklink>[],
+  ),
+  obx_int.ModelEntity(
+    id: const obx_int.IdUid(5, 1325907199832929183),
+    name: 'UserPreference',
+    lastPropertyId: const obx_int.IdUid(8, 2141535480574122672),
+    flags: 0,
+    properties: <obx_int.ModelProperty>[
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(1, 656663352622602341),
+        name: 'id',
+        type: 6,
+        flags: 1,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(2, 8639318240102994986),
+        name: 'key',
+        type: 9,
+        flags: 2080,
+        indexId: const obx_int.IdUid(6, 1453680630834694226),
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(3, 2125129317340269927),
+        name: 'stringValue',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(4, 3961414552172590357),
+        name: 'intValue',
+        type: 6,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(5, 7123151727405562764),
+        name: 'doubleValue',
+        type: 8,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(6, 5206864587505014452),
+        name: 'boolValue',
+        type: 1,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(7, 2517845582945166902),
+        name: 'typeValue',
+        type: 5,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(8, 2141535480574122672),
+        name: 'timestamp',
+        type: 6,
         flags: 0,
       ),
     ],
@@ -214,13 +329,13 @@ Future<obx.Store> openStore({
 obx_int.ModelDefinition getObjectBoxModel() {
   final model = obx_int.ModelInfo(
     entities: _entities,
-    lastEntityId: const obx_int.IdUid(3, 7601612105610997067),
-    lastIndexId: const obx_int.IdUid(3, 2690286472131489868),
+    lastEntityId: const obx_int.IdUid(5, 1325907199832929183),
+    lastIndexId: const obx_int.IdUid(6, 1453680630834694226),
     lastRelationId: const obx_int.IdUid(0, 0),
     lastSequenceId: const obx_int.IdUid(0, 0),
     retiredEntityUids: const [],
     retiredIndexUids: const [],
-    retiredPropertyUids: const [1534968030676419828],
+    retiredPropertyUids: const [],
     retiredRelationUids: const [],
     modelVersion: 5,
     modelVersionParserMinimum: 5,
@@ -228,8 +343,145 @@ obx_int.ModelDefinition getObjectBoxModel() {
   );
 
   final bindings = <Type, obx_int.EntityDefinition>{
-    FileTag: obx_int.EntityDefinition<FileTag>(
+    Album: obx_int.EntityDefinition<Album>(
       model: _entities[0],
+      toOneRelations: (Album object) => [],
+      toManyRelations: (Album object) => {},
+      getId: (Album object) => object.id,
+      setId: (Album object, int id) {
+        object.id = id;
+      },
+      objectToFB: (Album object, fb.Builder fbb) {
+        final nameOffset = fbb.writeString(object.name);
+        final descriptionOffset = object.description == null
+            ? null
+            : fbb.writeString(object.description!);
+        final coverImagePathOffset = object.coverImagePath == null
+            ? null
+            : fbb.writeString(object.coverImagePath!);
+        final colorThemeOffset = object.colorTheme == null
+            ? null
+            : fbb.writeString(object.colorTheme!);
+        fbb.startTable(9);
+        fbb.addInt64(0, object.id);
+        fbb.addOffset(1, nameOffset);
+        fbb.addOffset(2, descriptionOffset);
+        fbb.addOffset(3, coverImagePathOffset);
+        fbb.addInt64(4, object.createdAt.millisecondsSinceEpoch);
+        fbb.addInt64(5, object.modifiedAt.millisecondsSinceEpoch);
+        fbb.addOffset(6, colorThemeOffset);
+        fbb.addBool(7, object.isSystemAlbum);
+        fbb.finish(fbb.endTable());
+        return object.id;
+      },
+      objectFromFB: (obx.Store store, ByteData fbData) {
+        final buffer = fb.BufferContext(fbData);
+        final rootOffset = buffer.derefObject(0);
+        final nameParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 6, '');
+        final descriptionParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGetNullable(buffer, rootOffset, 8);
+        final coverImagePathParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGetNullable(buffer, rootOffset, 10);
+        final createdAtParam = DateTime.fromMillisecondsSinceEpoch(
+          const fb.Int64Reader().vTableGet(buffer, rootOffset, 12, 0),
+        );
+        final modifiedAtParam = DateTime.fromMillisecondsSinceEpoch(
+          const fb.Int64Reader().vTableGet(buffer, rootOffset, 14, 0),
+        );
+        final colorThemeParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGetNullable(buffer, rootOffset, 16);
+        final isSystemAlbumParam = const fb.BoolReader().vTableGet(
+          buffer,
+          rootOffset,
+          18,
+          false,
+        );
+        final object = Album(
+          name: nameParam,
+          description: descriptionParam,
+          coverImagePath: coverImagePathParam,
+          createdAt: createdAtParam,
+          modifiedAt: modifiedAtParam,
+          colorTheme: colorThemeParam,
+          isSystemAlbum: isSystemAlbumParam,
+        )..id = const fb.Int64Reader().vTableGet(buffer, rootOffset, 4, 0);
+
+        return object;
+      },
+    ),
+    AlbumFile: obx_int.EntityDefinition<AlbumFile>(
+      model: _entities[1],
+      toOneRelations: (AlbumFile object) => [],
+      toManyRelations: (AlbumFile object) => {},
+      getId: (AlbumFile object) => object.id,
+      setId: (AlbumFile object, int id) {
+        object.id = id;
+      },
+      objectToFB: (AlbumFile object, fb.Builder fbb) {
+        final filePathOffset = fbb.writeString(object.filePath);
+        final captionOffset = object.caption == null
+            ? null
+            : fbb.writeString(object.caption!);
+        fbb.startTable(8);
+        fbb.addInt64(0, object.id);
+        fbb.addInt64(1, object.albumId);
+        fbb.addOffset(2, filePathOffset);
+        fbb.addInt64(3, object.orderIndex);
+        fbb.addInt64(4, object.addedAt.millisecondsSinceEpoch);
+        fbb.addOffset(5, captionOffset);
+        fbb.addBool(6, object.isCover);
+        fbb.finish(fbb.endTable());
+        return object.id;
+      },
+      objectFromFB: (obx.Store store, ByteData fbData) {
+        final buffer = fb.BufferContext(fbData);
+        final rootOffset = buffer.derefObject(0);
+        final albumIdParam = const fb.Int64Reader().vTableGet(
+          buffer,
+          rootOffset,
+          6,
+          0,
+        );
+        final filePathParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 8, '');
+        final orderIndexParam = const fb.Int64Reader().vTableGet(
+          buffer,
+          rootOffset,
+          10,
+          0,
+        );
+        final addedAtParam = DateTime.fromMillisecondsSinceEpoch(
+          const fb.Int64Reader().vTableGet(buffer, rootOffset, 12, 0),
+        );
+        final captionParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGetNullable(buffer, rootOffset, 14);
+        final isCoverParam = const fb.BoolReader().vTableGet(
+          buffer,
+          rootOffset,
+          16,
+          false,
+        );
+        final object = AlbumFile(
+          albumId: albumIdParam,
+          filePath: filePathParam,
+          orderIndex: orderIndexParam,
+          addedAt: addedAtParam,
+          caption: captionParam,
+          isCover: isCoverParam,
+        )..id = const fb.Int64Reader().vTableGet(buffer, rootOffset, 4, 0);
+
+        return object;
+      },
+    ),
+    FileTag: obx_int.EntityDefinition<FileTag>(
+      model: _entities[2],
       toOneRelations: (FileTag object) => [],
       toManyRelations: (FileTag object) => {},
       getId: (FileTag object) => object.id,
@@ -261,89 +513,8 @@ obx_int.ModelDefinition getObjectBoxModel() {
         return object;
       },
     ),
-    UserPreference: obx_int.EntityDefinition<UserPreference>(
-      model: _entities[1],
-      toOneRelations: (UserPreference object) => [],
-      toManyRelations: (UserPreference object) => {},
-      getId: (UserPreference object) => object.id,
-      setId: (UserPreference object, int id) {
-        object.id = id;
-      },
-      objectToFB: (UserPreference object, fb.Builder fbb) {
-        final stringValueOffset = object.stringValue == null
-            ? null
-            : fbb.writeString(object.stringValue!);
-        final keyOffset = fbb.writeString(object.key);
-        fbb.startTable(10);
-        fbb.addInt64(0, object.id);
-        fbb.addOffset(1, stringValueOffset);
-        fbb.addInt64(2, object.intValue);
-        fbb.addFloat64(3, object.doubleValue);
-        fbb.addBool(4, object.boolValue);
-        fbb.addOffset(5, keyOffset);
-        fbb.addInt64(7, object.timestamp);
-        fbb.addInt32(8, object.typeValue);
-        fbb.finish(fbb.endTable());
-        return object.id;
-      },
-      objectFromFB: (obx.Store store, ByteData fbData) {
-        final buffer = fb.BufferContext(fbData);
-        final rootOffset = buffer.derefObject(0);
-        final idParam = const fb.Int64Reader().vTableGet(
-          buffer,
-          rootOffset,
-          4,
-          0,
-        );
-        final keyParam = const fb.StringReader(
-          asciiOptimization: true,
-        ).vTableGet(buffer, rootOffset, 14, '');
-        final stringValueParam = const fb.StringReader(
-          asciiOptimization: true,
-        ).vTableGetNullable(buffer, rootOffset, 6);
-        final intValueParam = const fb.Int64Reader().vTableGetNullable(
-          buffer,
-          rootOffset,
-          8,
-        );
-        final doubleValueParam = const fb.Float64Reader().vTableGetNullable(
-          buffer,
-          rootOffset,
-          10,
-        );
-        final boolValueParam = const fb.BoolReader().vTableGetNullable(
-          buffer,
-          rootOffset,
-          12,
-        );
-        final typeValueParam = const fb.Int32Reader().vTableGet(
-          buffer,
-          rootOffset,
-          20,
-          0,
-        );
-        final timestampParam = const fb.Int64Reader().vTableGet(
-          buffer,
-          rootOffset,
-          18,
-          0,
-        );
-        final object = UserPreference(
-          id: idParam,
-          key: keyParam,
-          stringValue: stringValueParam,
-          intValue: intValueParam,
-          doubleValue: doubleValueParam,
-          boolValue: boolValueParam,
-          typeValue: typeValueParam,
-          timestamp: timestampParam,
-        );
-
-        return object;
-      },
-    ),
     NetworkCredentials: obx_int.EntityDefinition<NetworkCredentials>(
-      model: _entities[2],
+      model: _entities[3],
       toOneRelations: (NetworkCredentials object) => [],
       toManyRelations: (NetworkCredentials object) => {},
       getId: (NetworkCredentials object) => object.id,
@@ -417,69 +588,186 @@ obx_int.ModelDefinition getObjectBoxModel() {
         return object;
       },
     ),
+    UserPreference: obx_int.EntityDefinition<UserPreference>(
+      model: _entities[4],
+      toOneRelations: (UserPreference object) => [],
+      toManyRelations: (UserPreference object) => {},
+      getId: (UserPreference object) => object.id,
+      setId: (UserPreference object, int id) {
+        object.id = id;
+      },
+      objectToFB: (UserPreference object, fb.Builder fbb) {
+        final keyOffset = fbb.writeString(object.key);
+        final stringValueOffset = object.stringValue == null
+            ? null
+            : fbb.writeString(object.stringValue!);
+        fbb.startTable(9);
+        fbb.addInt64(0, object.id);
+        fbb.addOffset(1, keyOffset);
+        fbb.addOffset(2, stringValueOffset);
+        fbb.addInt64(3, object.intValue);
+        fbb.addFloat64(4, object.doubleValue);
+        fbb.addBool(5, object.boolValue);
+        fbb.addInt32(6, object.typeValue);
+        fbb.addInt64(7, object.timestamp);
+        fbb.finish(fbb.endTable());
+        return object.id;
+      },
+      objectFromFB: (obx.Store store, ByteData fbData) {
+        final buffer = fb.BufferContext(fbData);
+        final rootOffset = buffer.derefObject(0);
+        final idParam = const fb.Int64Reader().vTableGet(
+          buffer,
+          rootOffset,
+          4,
+          0,
+        );
+        final keyParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 6, '');
+        final stringValueParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGetNullable(buffer, rootOffset, 8);
+        final intValueParam = const fb.Int64Reader().vTableGetNullable(
+          buffer,
+          rootOffset,
+          10,
+        );
+        final doubleValueParam = const fb.Float64Reader().vTableGetNullable(
+          buffer,
+          rootOffset,
+          12,
+        );
+        final boolValueParam = const fb.BoolReader().vTableGetNullable(
+          buffer,
+          rootOffset,
+          14,
+        );
+        final typeValueParam = const fb.Int32Reader().vTableGet(
+          buffer,
+          rootOffset,
+          16,
+          0,
+        );
+        final timestampParam = const fb.Int64Reader().vTableGet(
+          buffer,
+          rootOffset,
+          18,
+          0,
+        );
+        final object = UserPreference(
+          id: idParam,
+          key: keyParam,
+          stringValue: stringValueParam,
+          intValue: intValueParam,
+          doubleValue: doubleValueParam,
+          boolValue: boolValueParam,
+          typeValue: typeValueParam,
+          timestamp: timestampParam,
+        );
+
+        return object;
+      },
+    ),
   };
 
   return obx_int.ModelDefinition(model, bindings);
+}
+
+/// [Album] entity fields to define ObjectBox queries.
+class Album_ {
+  /// See [Album.id].
+  static final id = obx.QueryIntegerProperty<Album>(_entities[0].properties[0]);
+
+  /// See [Album.name].
+  static final name = obx.QueryStringProperty<Album>(
+    _entities[0].properties[1],
+  );
+
+  /// See [Album.description].
+  static final description = obx.QueryStringProperty<Album>(
+    _entities[0].properties[2],
+  );
+
+  /// See [Album.coverImagePath].
+  static final coverImagePath = obx.QueryStringProperty<Album>(
+    _entities[0].properties[3],
+  );
+
+  /// See [Album.createdAt].
+  static final createdAt = obx.QueryDateProperty<Album>(
+    _entities[0].properties[4],
+  );
+
+  /// See [Album.modifiedAt].
+  static final modifiedAt = obx.QueryDateProperty<Album>(
+    _entities[0].properties[5],
+  );
+
+  /// See [Album.colorTheme].
+  static final colorTheme = obx.QueryStringProperty<Album>(
+    _entities[0].properties[6],
+  );
+
+  /// See [Album.isSystemAlbum].
+  static final isSystemAlbum = obx.QueryBooleanProperty<Album>(
+    _entities[0].properties[7],
+  );
+}
+
+/// [AlbumFile] entity fields to define ObjectBox queries.
+class AlbumFile_ {
+  /// See [AlbumFile.id].
+  static final id = obx.QueryIntegerProperty<AlbumFile>(
+    _entities[1].properties[0],
+  );
+
+  /// See [AlbumFile.albumId].
+  static final albumId = obx.QueryIntegerProperty<AlbumFile>(
+    _entities[1].properties[1],
+  );
+
+  /// See [AlbumFile.filePath].
+  static final filePath = obx.QueryStringProperty<AlbumFile>(
+    _entities[1].properties[2],
+  );
+
+  /// See [AlbumFile.orderIndex].
+  static final orderIndex = obx.QueryIntegerProperty<AlbumFile>(
+    _entities[1].properties[3],
+  );
+
+  /// See [AlbumFile.addedAt].
+  static final addedAt = obx.QueryDateProperty<AlbumFile>(
+    _entities[1].properties[4],
+  );
+
+  /// See [AlbumFile.caption].
+  static final caption = obx.QueryStringProperty<AlbumFile>(
+    _entities[1].properties[5],
+  );
+
+  /// See [AlbumFile.isCover].
+  static final isCover = obx.QueryBooleanProperty<AlbumFile>(
+    _entities[1].properties[6],
+  );
 }
 
 /// [FileTag] entity fields to define ObjectBox queries.
 class FileTag_ {
   /// See [FileTag.id].
   static final id = obx.QueryIntegerProperty<FileTag>(
-    _entities[0].properties[0],
+    _entities[2].properties[0],
   );
 
   /// See [FileTag.filePath].
   static final filePath = obx.QueryStringProperty<FileTag>(
-    _entities[0].properties[1],
+    _entities[2].properties[1],
   );
 
   /// See [FileTag.tag].
   static final tag = obx.QueryStringProperty<FileTag>(
-    _entities[0].properties[2],
-  );
-}
-
-/// [UserPreference] entity fields to define ObjectBox queries.
-class UserPreference_ {
-  /// See [UserPreference.id].
-  static final id = obx.QueryIntegerProperty<UserPreference>(
-    _entities[1].properties[0],
-  );
-
-  /// See [UserPreference.stringValue].
-  static final stringValue = obx.QueryStringProperty<UserPreference>(
-    _entities[1].properties[1],
-  );
-
-  /// See [UserPreference.intValue].
-  static final intValue = obx.QueryIntegerProperty<UserPreference>(
-    _entities[1].properties[2],
-  );
-
-  /// See [UserPreference.doubleValue].
-  static final doubleValue = obx.QueryDoubleProperty<UserPreference>(
-    _entities[1].properties[3],
-  );
-
-  /// See [UserPreference.boolValue].
-  static final boolValue = obx.QueryBooleanProperty<UserPreference>(
-    _entities[1].properties[4],
-  );
-
-  /// See [UserPreference.key].
-  static final key = obx.QueryStringProperty<UserPreference>(
-    _entities[1].properties[5],
-  );
-
-  /// See [UserPreference.timestamp].
-  static final timestamp = obx.QueryIntegerProperty<UserPreference>(
-    _entities[1].properties[6],
-  );
-
-  /// See [UserPreference.typeValue].
-  static final typeValue = obx.QueryIntegerProperty<UserPreference>(
-    _entities[1].properties[7],
+    _entities[2].properties[2],
   );
 }
 
@@ -487,46 +775,89 @@ class UserPreference_ {
 class NetworkCredentials_ {
   /// See [NetworkCredentials.id].
   static final id = obx.QueryIntegerProperty<NetworkCredentials>(
-    _entities[2].properties[0],
+    _entities[3].properties[0],
   );
 
   /// See [NetworkCredentials.serviceType].
   static final serviceType = obx.QueryStringProperty<NetworkCredentials>(
-    _entities[2].properties[1],
+    _entities[3].properties[1],
   );
 
   /// See [NetworkCredentials.host].
   static final host = obx.QueryStringProperty<NetworkCredentials>(
-    _entities[2].properties[2],
+    _entities[3].properties[2],
   );
 
   /// See [NetworkCredentials.username].
   static final username = obx.QueryStringProperty<NetworkCredentials>(
-    _entities[2].properties[3],
+    _entities[3].properties[3],
   );
 
   /// See [NetworkCredentials.password].
   static final password = obx.QueryStringProperty<NetworkCredentials>(
-    _entities[2].properties[4],
+    _entities[3].properties[4],
   );
 
   /// See [NetworkCredentials.port].
   static final port = obx.QueryIntegerProperty<NetworkCredentials>(
-    _entities[2].properties[5],
+    _entities[3].properties[5],
   );
 
   /// See [NetworkCredentials.domain].
   static final domain = obx.QueryStringProperty<NetworkCredentials>(
-    _entities[2].properties[6],
+    _entities[3].properties[6],
   );
 
   /// See [NetworkCredentials.additionalOptions].
   static final additionalOptions = obx.QueryStringProperty<NetworkCredentials>(
-    _entities[2].properties[7],
+    _entities[3].properties[7],
   );
 
   /// See [NetworkCredentials.lastConnected].
   static final lastConnected = obx.QueryDateProperty<NetworkCredentials>(
-    _entities[2].properties[8],
+    _entities[3].properties[8],
+  );
+}
+
+/// [UserPreference] entity fields to define ObjectBox queries.
+class UserPreference_ {
+  /// See [UserPreference.id].
+  static final id = obx.QueryIntegerProperty<UserPreference>(
+    _entities[4].properties[0],
+  );
+
+  /// See [UserPreference.key].
+  static final key = obx.QueryStringProperty<UserPreference>(
+    _entities[4].properties[1],
+  );
+
+  /// See [UserPreference.stringValue].
+  static final stringValue = obx.QueryStringProperty<UserPreference>(
+    _entities[4].properties[2],
+  );
+
+  /// See [UserPreference.intValue].
+  static final intValue = obx.QueryIntegerProperty<UserPreference>(
+    _entities[4].properties[3],
+  );
+
+  /// See [UserPreference.doubleValue].
+  static final doubleValue = obx.QueryDoubleProperty<UserPreference>(
+    _entities[4].properties[4],
+  );
+
+  /// See [UserPreference.boolValue].
+  static final boolValue = obx.QueryBooleanProperty<UserPreference>(
+    _entities[4].properties[5],
+  );
+
+  /// See [UserPreference.typeValue].
+  static final typeValue = obx.QueryIntegerProperty<UserPreference>(
+    _entities[4].properties[6],
+  );
+
+  /// See [UserPreference.timestamp].
+  static final timestamp = obx.QueryIntegerProperty<UserPreference>(
+    _entities[4].properties[7],
   );
 }

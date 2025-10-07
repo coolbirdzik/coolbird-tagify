@@ -53,6 +53,12 @@ class SearchResultsView extends StatelessWidget {
       },
       child: Column(
         children: [
+          // Top progress bar when searching
+          if (state.isLoading)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16.0),
+              child: LinearProgressIndicator(),
+            ),
           // Search results header with clear search button
           Container(
             padding:
