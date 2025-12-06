@@ -205,13 +205,11 @@ class FolderThumbnailService {
 
     try {
       final List<FileSystemEntity> entities = await directory.list().toList();
-      debugPrint('Found ${entities.length} items in directory $folderPath');
 
       // First look for images
       for (final entity in entities) {
         if (entity is File) {
           if (FileTypeUtils.isImageFile(entity.path)) {
-            debugPrint('Found image file: ${entity.path}');
             return entity.path;
           }
         }
@@ -240,7 +238,6 @@ class FolderThumbnailService {
         }
       }
 
-      debugPrint('No media files found in folder: $folderPath');
     } catch (e) {
       debugPrint('Error scanning folder: $e');
     }

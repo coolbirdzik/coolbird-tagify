@@ -4,7 +4,7 @@ import 'package:cb_file_manager/ui/screens/folder_list/folder_list_state.dart';
 import 'package:remixicon/remixicon.dart' as remix;
 import 'package:flutter/services.dart';
 import '../../../components/common/shared_file_context_menu.dart';
-import 'package:cb_file_manager/helpers/files/file_type_helper.dart';
+import 'package:cb_file_manager/helpers/files/file_type_registry.dart';
 import 'package:cb_file_manager/ui/utils/file_type_utils.dart';
 import 'package:path/path.dart' as path;
 import '../../../components/common/optimized_interaction_handler.dart';
@@ -95,8 +95,9 @@ class _FileDetailsItemState extends State<FileDetailsItem> {
 
   void _checkFileType() {
     final String extension = path.extension(widget.file.path).toLowerCase();
-    isImage = FileTypeHelper.isImage(extension);
-    isVideo = FileTypeHelper.isVideo(extension);
+    final category = FileTypeRegistry.getCategory(extension);
+    isImage = category == FileCategory.image;
+    isVideo = category == FileCategory.video;
   }
 
   void _handleFileSelection() {
@@ -131,7 +132,7 @@ class _FileDetailsItemState extends State<FileDetailsItem> {
     );
   }
 
-  void _showFileContextMenu(BuildContext context) {
+  void _showFileContextMenu(BuildContext context, Offset globalPosition) {
     showFileContextMenu(
       context: context,
       file: widget.file,
@@ -139,6 +140,7 @@ class _FileDetailsItemState extends State<FileDetailsItem> {
       isVideo: isVideo,
       isImage: isImage,
       showAddTagToFileDialog: widget.showAddTagToFileDialog,
+      globalPosition: globalPosition,
     );
   }
 
@@ -161,12 +163,12 @@ class _FileDetailsItemState extends State<FileDetailsItem> {
 
     // Get the file extension and icon
     final String fileExtension = path.extension(widget.file.path).toLowerCase();
-    final FileType fileType = FileTypeHelper.getFileType(fileExtension);
-    final IconData fileIcon = FileTypeHelper.getIconForFileType(fileType);
-    final Color iconColor = FileTypeHelper.getColorForFileType(fileType);
+    final IconData fileIcon = FileTypeRegistry.getIcon(fileExtension);
+    final Color iconColor = FileTypeRegistry.getColor(fileExtension);
 
     return GestureDetector(
-      onSecondaryTap: () => _showFileContextMenu(context),
+      onSecondaryTapUp: (details) =>
+          _showFileContextMenu(context, details.globalPosition),
       child: MouseRegion(
         onEnter: (_) => setState(() => _isHovering = true),
         onExit: (_) => setState(() => _isHovering = false),
@@ -344,7 +346,8 @@ class _FileDetailsItemState extends State<FileDetailsItem> {
             ),
             // Add optimized interaction layer on top
             Positioned.fill(
-              child: OptimizedInteractionLayer(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
                 onTap: () {
                   if (widget.isDesktopMode) {
                     _handleFileSelection();
@@ -362,6 +365,8 @@ class _FileDetailsItemState extends State<FileDetailsItem> {
                     _handleFileSelection();
                   }
                 },
+                onSecondaryTapUp: (details) =>
+                    _showFileContextMenu(context, details.globalPosition),
               ),
             ),
           ],
@@ -371,7 +376,7 @@ class _FileDetailsItemState extends State<FileDetailsItem> {
   }
 
   String _getFileTypeLabel(String extension) {
-    return FileTypeUtils.getFileTypeLabel(extension);
+    return FileTypeUtils.getFileTypeLabel(context, extension);
   }
 
   String _formatFileSize(int size) {

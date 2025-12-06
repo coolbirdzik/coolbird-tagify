@@ -360,7 +360,7 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
     final bool result = await showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(localizations.deleteTagConfirmation.replaceAll('%s', tag)),
+        title: Text(localizations.deleteTagConfirmation(tag)),
         content: Text(
           localizations.tagDeleteConfirmationText,
         ),
@@ -398,8 +398,7 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text(localizations.tagDeleted.replaceAll('%s', tag))),
+          SnackBar(content: Text(localizations.tagDeleted(tag))),
         );
       }
 
@@ -430,7 +429,7 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: Text(localizations.chooseTagColor.replaceAll('%s', tag)),
+          title: Text(localizations.chooseTagColor(tag)),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -478,8 +477,7 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
                   // Thông báo thành công
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: Text(
-                          localizations.tagColorUpdated.replaceAll('%s', tag)),
+                      content: Text(localizations.tagColorUpdated(tag)),
                       duration: const Duration(seconds: 2),
                     ),
                   );
@@ -677,8 +675,7 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
             const SizedBox(height: 24),
             Text(
               AppLocalizations.of(context)!
-                  .noMatchingTagsMessage
-                  .replaceAll('\${searchTags}', _searchController.text),
+                  .noMatchingTagsMessage(_searchController.text),
               style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w500),
               textAlign: TextAlign.center,
             ),
@@ -1389,9 +1386,7 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
             ),
             const SizedBox(height: 16),
             Text(
-              AppLocalizations.of(context)!
-                  .debugInfo
-                  .replaceAll('\${tag}', _selectedTag ?? 'none'),
+              AppLocalizations.of(context)!.debugInfo(_selectedTag ?? 'none'),
               style: const TextStyle(fontSize: 14, color: Colors.grey),
             ),
             const SizedBox(height: 24),
@@ -1785,9 +1780,8 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
       if (_allTags.contains(tagName)) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(AppLocalizations.of(context)!
-                .tagAlreadyExists
-                .replaceAll('\${tagName}', tagName)),
+            content:
+                Text(AppLocalizations.of(context)!.tagAlreadyExists(tagName)),
             backgroundColor: Colors.orange,
           ),
         );
@@ -1812,9 +1806,8 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(AppLocalizations.of(context)!
-                .tagCreatedSuccessfully
-                .replaceAll('\${tagName}', tagName)),
+            content: Text(
+                AppLocalizations.of(context)!.tagCreatedSuccessfully(tagName)),
             backgroundColor: Colors.green,
           ),
         );

@@ -86,7 +86,7 @@ class _FolderGridItemState extends State<FolderGridItem> {
     // Flat on mobile (no elevation/border). Keep card/elevation on desktop only.
     if (!widget.isDesktopMode) {
       return GestureDetector(
-        onSecondaryTap: () => _showFolderContextMenu(context),
+        onSecondaryTapDown: (details) => _showFolderContextMenu(context, details.globalPosition),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(8.0),
           child: Stack(
@@ -134,7 +134,7 @@ class _FolderGridItemState extends State<FolderGridItem> {
                     }
                     widget.onNavigate(widget.folder.path);
                   },
-                  onLongPress: () => _showFolderContextMenu(context),
+                  onLongPress: () => _showFolderContextMenu(context, null),
                 ),
               ),
 
@@ -173,7 +173,7 @@ class _FolderGridItemState extends State<FolderGridItem> {
             : 1;
 
     return GestureDetector(
-      onSecondaryTap: () => _showFolderContextMenu(context),
+      onSecondaryTapDown: (details) => _showFolderContextMenu(context, details.globalPosition),
       child: MouseRegion(
         onEnter: (_) => setState(() => _isHovering = true),
         onExit: (_) => setState(() => _isHovering = false),
@@ -237,7 +237,7 @@ class _FolderGridItemState extends State<FolderGridItem> {
                     }
                     widget.onNavigate(widget.folder.path);
                   },
-                  onLongPress: () => _showFolderContextMenu(context),
+                  onLongPress: () => _showFolderContextMenu(context, null),
                 ),
               ),
             ],
@@ -247,13 +247,14 @@ class _FolderGridItemState extends State<FolderGridItem> {
     );
   }
 
-  void _showFolderContextMenu(BuildContext context) {
+  void _showFolderContextMenu(BuildContext context, Offset? globalPosition) {
     // Use the shared folder context menu
     showFolderContextMenu(
       context: context,
       folder: widget.folder,
       onNavigate: widget.onNavigate,
       folderTags: [], // Pass empty tags or fetch from database in real implementation
+      globalPosition: globalPosition, // Pass position for desktop popup menu
     );
   }
 }

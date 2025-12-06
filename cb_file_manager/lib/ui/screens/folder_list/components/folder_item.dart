@@ -101,13 +101,14 @@ class _FolderItemState extends State<FolderItem> {
         shiftSelect: isShiftPressed, ctrlSelect: shouldCtrlSelect);
   }
 
-  void _showFolderContextMenu(BuildContext context) {
+  void _showFolderContextMenu(BuildContext context, Offset? globalPosition) {
     // Use the shared folder context menu
     showFolderContextMenu(
       context: context,
       folder: widget.folder,
       onNavigate: widget.onTap,
       folderTags: [], // Pass empty tags or fetch from database in real implementation
+      globalPosition: globalPosition, // Pass position for desktop popup menu
     );
   }
 
@@ -123,7 +124,7 @@ class _FolderItemState extends State<FolderItem> {
                 : Colors.transparent;
 
         return GestureDetector(
-          onSecondaryTap: () => _showFolderContextMenu(context),
+          onSecondaryTapDown: (details) => _showFolderContextMenu(context, details.globalPosition),
           child: MouseRegion(
             onEnter: (_) => _isHovering.value = true,
             onExit: (_) => _isHovering.value = false,

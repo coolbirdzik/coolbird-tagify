@@ -38,7 +38,7 @@ import 'package:path/path.dart' as p;
 import 'package:cb_file_manager/helpers/network/network_thumbnail_helper.dart';
 import 'package:cb_file_manager/ui/widgets/thumbnail_loader.dart';
 import 'package:cb_file_manager/ui/utils/file_type_utils.dart';
-import 'package:cb_file_manager/ui/widgets/loading_skeleton.dart';
+import 'package:cb_file_manager/ui/components/common/skeleton_helper.dart';
 import 'package:cb_file_manager/helpers/network/streaming_helper.dart';
 import 'package:cb_file_manager/ui/utils/route.dart';
 import 'package:cb_file_manager/services/network_browsing/webdav_service.dart';
@@ -721,8 +721,8 @@ class _NetworkBrowserScreenState extends State<NetworkBrowserScreen>
       return FluentBackground.container(
         context: context,
         child: _viewMode == ViewMode.grid
-            ? LoadingSkeleton.grid(crossAxisCount: crossAxis, itemCount: 12)
-            : LoadingSkeleton.list(itemCount: 12),
+            ? SkeletonHelper.fileGrid(crossAxisCount: crossAxis, itemCount: 12)
+            : SkeletonHelper.fileList(itemCount: 12),
       );
     }
 

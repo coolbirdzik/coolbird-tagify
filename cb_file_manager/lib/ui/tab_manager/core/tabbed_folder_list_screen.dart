@@ -191,6 +191,11 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
   final ValueNotifier<Offset?> _dragCurrentPositionNotifier =
       ValueNotifier<Offset?>(null);
 
+  // Keyboard navigation state (desktop)
+  final FocusNode _keyboardFocusNode =
+      FocusNode(debugLabel: 'folder-list-keyboard');
+  String? _focusedPath;
+
   // Flag to track if there are background thumbnail tasks
   bool _hasPendingThumbnails = false;
   bool _hasAnyContentLoaded =
@@ -384,6 +389,7 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
     _isDraggingNotifier.dispose();
     _dragStartPositionNotifier.dispose();
     _dragCurrentPositionNotifier.dispose();
+    _keyboardFocusNode.dispose();
 
     // Restore default settings
     WidgetsBinding.instance.renderView.automaticSystemUiAdjustment = true;
@@ -677,6 +683,7 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
   void _clearSelection() {
     // Use the SelectionBloc
     _selectionBloc.add(ClearSelection());
+    _focusedPath = null;
   }
 
   void _toggleViewMode() {
@@ -872,6 +879,7 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
     setState(() {
       _currentPath = path;
       _pathController.text = path;
+      _focusedPath = null;
     });
 
     // Clear any search or filter state when navigating
@@ -1205,69 +1213,78 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
         }
       },
       // Wrap with Listener to detect mouse button events
-      child: Listener(
-        onPointerDown: (PointerDownEvent event) {
-          // Mouse button 4 is usually the back button (button value is 8)
-          if (event.buttons == 8) {
-            _handleMouseBackButton();
-          }
-          // Mouse button 5 is usually the forward button (button value is 16)
-          else if (event.buttons == 16) {
-            _handleMouseForwardButton();
-          }
-        },
-        child: BlocProvider<FolderListBloc>.value(
-          value: _folderListBloc,
-          child: BlocListener<FolderListBloc, FolderListState>(
-            listener: (context, folderState) {
-              // Check if there are any video/image files in the current directory
-              final hasVideoOrImageFiles = _hasVideoOrImageFiles(folderState);
+      child: Focus(
+        autofocus: isDesktopPlatform,
+        focusNode: _keyboardFocusNode,
+        onKeyEvent: _handleKeyEvent,
+        child: Listener(
+          onPointerDown: (PointerDownEvent event) {
+            if (isDesktopPlatform) {
+              _keyboardFocusNode.requestFocus();
+            }
+            // Mouse button 4 is usually the back button (button value is 8)
+            if (event.buttons == 8) {
+              _handleMouseBackButton();
+            }
+            // Mouse button 5 is usually the forward button (button value is 16)
+            else if (event.buttons == 16) {
+              _handleMouseForwardButton();
+            }
+          },
+          child: BlocProvider<FolderListBloc>.value(
+            value: _folderListBloc,
+            child: BlocListener<FolderListBloc, FolderListState>(
+              listener: (context, folderState) {
+                // Check if there are any video/image files in the current directory
+                final hasVideoOrImageFiles = _hasVideoOrImageFiles(folderState);
 
-              // If no video/image files and we have pending thumbnails, reset the count
-              if (!hasVideoOrImageFiles && _hasPendingThumbnails) {
-                debugPrint(
-                    "TabbedFolderListScreen: No video/image files found, resetting pending thumbnail count");
-                ThumbnailLoader.resetPendingCount();
-                _hasPendingThumbnails = false;
-              }
-
-              // Only show tab loading when there are actual thumbnail tasks
-              // Folder loading should not show in tab loading indicator
-              final isLoading = _hasPendingThumbnails;
-
-              context.read<TabManagerBloc>().add(
-                    UpdateTabLoading(widget.tabId, isLoading),
-                  );
-            },
-            child: BlocBuilder<FolderListBloc, FolderListState>(
-              builder: (context, state) {
-                _currentSearchTag = state.currentSearchTag;
-                _currentFilter = state.currentFilter;
-
-                // Debug: Log filter state
-                if (_currentFilter != null) {
-                  debugPrint('DEBUG: Filter is active: $_currentFilter');
-                  debugPrint('DEBUG: Total files: ${state.files.length}');
+                // If no video/image files and we have pending thumbnails, reset the count
+                if (!hasVideoOrImageFiles && _hasPendingThumbnails) {
                   debugPrint(
-                      'DEBUG: Filtered files: ${state.filteredFiles.length}');
+                      "TabbedFolderListScreen: No video/image files found, resetting pending thumbnail count");
+                  ThumbnailLoader.resetPendingCount();
+                  _hasPendingThumbnails = false;
                 }
 
-                // Debug: Log all files in state
-                debugPrint('DEBUG: All files in state:');
-                for (int i = 0; i < state.files.length; i++) {
-                  debugPrint('DEBUG: File $i: ${state.files[i].path}');
-                }
+                // Only show tab loading when there are actual thumbnail tasks
+                // Folder loading should not show in tab loading indicator
+                final isLoading = _hasPendingThumbnails;
 
-                // Debug: Log search state
-                debugPrint(
-                    'DEBUG: currentSearchTag: ${state.currentSearchTag}');
-                debugPrint(
-                    'DEBUG: searchResults.length: ${state.searchResults.length}');
-                debugPrint('DEBUG: isGlobalSearch: $isGlobalSearch');
-                debugPrint('DEBUG: _currentSearchTag: $_currentSearchTag');
-
-                return _buildWithSelectionState(context, state, isNetworkPath);
+                context.read<TabManagerBloc>().add(
+                      UpdateTabLoading(widget.tabId, isLoading),
+                    );
               },
+              child: BlocBuilder<FolderListBloc, FolderListState>(
+                builder: (context, state) {
+                  _currentSearchTag = state.currentSearchTag;
+                  _currentFilter = state.currentFilter;
+
+                  // Debug: Log filter state
+                  if (_currentFilter != null) {
+                    debugPrint('DEBUG: Filter is active: $_currentFilter');
+                    debugPrint('DEBUG: Total files: ${state.files.length}');
+                    debugPrint(
+                        'DEBUG: Filtered files: ${state.filteredFiles.length}');
+                  }
+
+                  // Debug: Log all files in state
+                  debugPrint('DEBUG: All files in state:');
+                  for (int i = 0; i < state.files.length; i++) {
+                    debugPrint('DEBUG: File $i: ${state.files[i].path}');
+                  }
+
+                  // Debug: Log search state
+                  debugPrint(
+                      'DEBUG: currentSearchTag: ${state.currentSearchTag}');
+                  debugPrint(
+                      'DEBUG: searchResults.length: ${state.searchResults.length}');
+                  debugPrint('DEBUG: isGlobalSearch: $isGlobalSearch');
+                  debugPrint('DEBUG: _currentSearchTag: $_currentSearchTag');
+
+                  return _buildWithSelectionState(
+                      context, state, isNetworkPath);
+                },
+              ),
             ),
           ),
         ),
@@ -1354,6 +1371,7 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
         showManageAllTagsDialog: (context) => _showManageAllTagsDialog(context),
         showDeleteConfirmationDialog: (context) =>
             _showDeleteConfirmationDialog(context),
+        isDesktop: isDesktopPlatform,
         selectionModeFloatingActionButton: isNetworkPath
             ? null
             : FloatingActionButton(
@@ -1394,6 +1412,10 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
       SelectionState selectionState, bool isNetworkPath) {
     // Apply frame timing optimization before heavy UI operations
     FrameTimingOptimizer().optimizeBeforeHeavyOperation();
+
+    if (isDesktopPlatform) {
+      _syncFocusedPath(selectionState);
+    }
 
     // Decide whether to show skeletons
     final bool shouldShowSkeleton = state.isLoading ||
@@ -2635,9 +2657,9 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
     // Force reload tags by triggering a refresh
     // This will be handled by the TagManagementScreen
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Đang làm mới danh sách thẻ...'),
-        duration: Duration(seconds: 1),
+      SnackBar(
+        content: Text(AppLocalizations.of(context)!.tagListRefreshing),
+        duration: const Duration(seconds: 1),
       ),
     );
   }
@@ -2839,6 +2861,115 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
       isCtrlPressed: isCtrlPressed,
       isShiftPressed: isShiftPressed,
     ));
+  }
+
+  void _syncFocusedPath(SelectionState selectionState) {
+    final String? lastPath = selectionState.lastSelectedPath;
+    if (lastPath != null && lastPath != _focusedPath) {
+      _focusedPath = lastPath;
+    } else if (lastPath == null &&
+        selectionState.selectedFilePaths.isEmpty &&
+        selectionState.selectedFolderPaths.isEmpty) {
+      _focusedPath = null;
+    }
+  }
+
+  List<FileSystemEntity> _getNavigableItems(FolderListState state) {
+    if (state.currentSearchTag != null || state.currentSearchQuery != null) {
+      return List<FileSystemEntity>.from(state.searchResults);
+    }
+
+    if (_currentFilter != null && _currentFilter!.isNotEmpty) {
+      return List<FileSystemEntity>.from(state.filteredFiles);
+    }
+
+    return [
+      ...state.folders.whereType<FileSystemEntity>(),
+      ...state.files.whereType<FileSystemEntity>(),
+    ];
+  }
+
+  void _focusItemAtIndex(List<FileSystemEntity> items, int index) {
+    if (index < 0 || index >= items.length) return;
+
+    final FileSystemEntity target = items[index];
+    _focusedPath = target.path;
+
+    if (target is Directory) {
+      _toggleFolderSelection(target.path,
+          shiftSelect: false, ctrlSelect: false);
+    } else if (target is File) {
+      _toggleFileSelection(target.path, shiftSelect: false, ctrlSelect: false);
+    }
+  }
+
+  void _activateItem(FileSystemEntity entity) {
+    if (entity is Directory) {
+      _navigateToPath(entity.path);
+    } else if (entity is File) {
+      _onFileTap(entity, FileTypeUtils.isVideoFile(entity.path));
+    }
+  }
+
+  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
+    if (!isDesktopPlatform) return KeyEventResult.ignored;
+
+    final bool isKeyPress = event is KeyDownEvent || event is KeyRepeatEvent;
+    if (!isKeyPress) return KeyEventResult.ignored;
+
+    final FolderListState state = _folderListBloc.state;
+    final List<FileSystemEntity> items = _getNavigableItems(state);
+    if (items.isEmpty) return KeyEventResult.ignored;
+
+    final bool isGridLayout = state.viewMode == ViewMode.grid;
+    final int crossAxisCount = isGridLayout ? max(1, state.gridZoomLevel) : 1;
+    final SelectionState selectionState = _selectionBloc.state;
+
+    int currentIndex = -1;
+    if (_focusedPath != null) {
+      currentIndex = items
+          .indexWhere((FileSystemEntity item) => item.path == _focusedPath);
+    }
+    if (currentIndex == -1 && selectionState.lastSelectedPath != null) {
+      currentIndex = items.indexWhere((FileSystemEntity item) =>
+          item.path == selectionState.lastSelectedPath);
+    }
+    if (currentIndex == -1) {
+      currentIndex = 0;
+    }
+
+    final bool hasExistingFocus =
+        _focusedPath != null || selectionState.lastSelectedPath != null;
+    final LogicalKeyboardKey key = event.logicalKey;
+    int? targetIndex;
+
+    if (key == LogicalKeyboardKey.arrowDown) {
+      targetIndex = currentIndex + (isGridLayout ? crossAxisCount : 1);
+    } else if (key == LogicalKeyboardKey.arrowUp) {
+      targetIndex = currentIndex - (isGridLayout ? crossAxisCount : 1);
+    } else if (key == LogicalKeyboardKey.arrowRight) {
+      targetIndex = currentIndex + 1;
+    } else if (key == LogicalKeyboardKey.arrowLeft) {
+      targetIndex = currentIndex - 1;
+    } else if (key == LogicalKeyboardKey.enter ||
+        key == LogicalKeyboardKey.numpadEnter) {
+      if (!hasExistingFocus) {
+        _focusItemAtIndex(items, currentIndex);
+        return KeyEventResult.handled;
+      }
+      _activateItem(items[currentIndex]);
+      return KeyEventResult.handled;
+    } else {
+      return KeyEventResult.ignored;
+    }
+
+    if (targetIndex != null) {
+      final int newIndex = targetIndex.clamp(0, items.length - 1).toInt();
+      _focusItemAtIndex(items, newIndex);
+      return KeyEventResult.handled;
+    }
+
+    return KeyEventResult.ignored;
   }
 }
 

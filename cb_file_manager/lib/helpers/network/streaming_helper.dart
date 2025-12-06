@@ -6,9 +6,9 @@ import '../../services/network_browsing/network_service_base.dart';
 import '../../services/network_browsing/mobile_smb_service.dart';
 import '../../services/network_browsing/i_smb_service.dart';
 import '../../ui/components/video/video_player/video_player.dart';
-import '../../ui/utils/file_type_utils.dart';
 import 'package:path/path.dart' as p;
-import '../files/file_type_helper.dart';
+import '../files/file_type_registry.dart';
+import '../../ui/utils/file_type_utils.dart';
 import 'network_file_cache_service.dart';
 import 'vlc_direct_smb_helper.dart';
 // import '../helpers/libsmb2_streaming_helper.dart';
@@ -25,7 +25,7 @@ class FileOpenResult {
   final String? streamingUrl;
 
   final String? localPath;
-  final FileType? fileType;
+  final FileCategory? fileType;
   final bool requiresUserChoice;
   final bool viewerLaunched;
 
@@ -157,7 +157,7 @@ class StreamingHelper {
 
       // Check immediately if this is an unsupported file type and return early
       // to avoid lag on mobile
-      if (fileType == FileType.unknown ||
+      if (fileType == FileCategory.unknown ||
           (!canStreamFile(remotePath) && !isDocumentFile(remotePath))) {
         debugPrint(
             'StreamingHelper: Unsupported file type detected, showing options dialog immediately');
@@ -286,7 +286,7 @@ class StreamingHelper {
 
       // Priority 4: For WebDAV, prefer readFileData over openFileStream for better reliability
       if (service.serviceName == 'WebDAV' &&
-          (fileType != FileType.video && fileType != FileType.audio)) {
+          (fileType != FileCategory.video && fileType != FileCategory.audio)) {
         debugPrint(
             'StreamingHelper: Using readFileData for WebDAV non-media file');
         debugPrint('StreamingHelper: remotePath for readFileData: $remotePath');
@@ -326,7 +326,7 @@ class StreamingHelper {
             'StreamingHelper: Stream creation time: ${DateTime.now().difference(streamStartTime).inMilliseconds}ms');
 
         // For media files (video/audio), use caching to improve performance
-        if (fileType == FileType.video || fileType == FileType.audio) {
+        if (fileType == FileCategory.video || fileType == FileCategory.audio) {
           debugPrint('StreamingHelper: Applying caching for media file');
 
           // Create a controller for the cached stream
@@ -354,8 +354,8 @@ class StreamingHelper {
       }
 
       // Fallback: Try readFileData only for small non-media files (excluding WebDAV which was already handled)
-      if (service is MobileSMBService &&
-          (fileType != FileType.video && fileType != FileType.audio)) {
+       if (service is MobileSMBService &&
+           (fileType != FileCategory.video && fileType != FileCategory.audio)) {
         debugPrint(
             'StreamingHelper: openFileStream failed, trying readFileData fallback for non-media file');
 
@@ -468,8 +468,8 @@ class StreamingHelper {
   }
 
   /// Xác định loại file dựa trên extension
-  FileType _getFileType(String extension) {
-    return FileTypeHelper.getFileType(extension);
+  FileCategory _getFileType(String extension) {
+    return FileTypeRegistry.getCategory(extension);
   }
 
   /// Xử lý khi mở file thành công
@@ -536,7 +536,7 @@ class StreamingHelper {
       return;
     }
 
-    if (result.fileType == FileType.image) {
+    if (result.fileType == FileCategory.image) {
       // Mở image viewer
       await Navigator.of(context).push(
         MaterialPageRoute(
@@ -555,8 +555,8 @@ class StreamingHelper {
                     ),
         ),
       );
-    } else if (result.fileType == FileType.video ||
-        result.fileType == FileType.audio) {
+    } else if (result.fileType == FileCategory.video ||
+        result.fileType == FileCategory.audio) {
       // Debug thông tin trước khi kiểm tra VLC Direct SMB
       debugPrint('StreamingHelper: Processing video/audio file');
       debugPrint(

@@ -29,6 +29,8 @@ class VietnameseLocalizations implements AppLocalizations {
   @override
   String get copy => 'Sao chép';
   @override
+  String get cut => 'Cắt';
+  @override
   String get move => 'Di chuyển';
   @override
   String get rename => 'Đổi tên';
@@ -38,6 +40,165 @@ class VietnameseLocalizations implements AppLocalizations {
   String get properties => 'Thuộc tính';
   @override
   String get openWith => 'Mở bằng';
+  @override
+  String get openFolder => 'Mở thư mục';
+  @override
+  String get openFile => 'Mở tệp';
+  @override
+  String get viewImage => 'Xem hình';
+  @override
+  String get open => 'Mở';
+  @override
+  String get pasteHere => 'Dán vào đây';
+  @override
+  String get manageTags => 'Quản lý thẻ';
+  @override
+  String get moveToTrash => 'Chuyển vào thùng rác';
+
+  @override
+  String get errorAccessingDirectory => 'Lỗi truy cập thư mục: ';
+
+  // Action bar tooltips
+  @override
+  String get searchTooltip => 'Tìm kiếm';
+
+  @override
+  String get sortByTooltip => 'Sắp xếp theo';
+
+  @override
+  String get refreshTooltip => 'Làm mới';
+
+  @override
+  String get moreOptionsTooltip => 'Thêm tùy chọn';
+
+  @override
+  String get adjustGridSizeTooltip => 'Điều chỉnh kích thước lưới';
+
+  @override
+  String get columnSettingsTooltip => 'Thiết lập hiển thị cột';
+
+  @override
+  String get viewModeTooltip => 'Chế độ xem';
+
+  // Dialog titles
+  @override
+  String get adjustGridSizeTitle => 'Điều chỉnh kích thước lưới';
+
+  @override
+  String get columnVisibilityTitle => 'Tùy chỉnh hiển thị cột';
+
+  // Button labels
+  @override
+  String get apply => 'ÁP DỤNG';
+
+  // Sort options
+  @override
+  String get sortNameAsc => 'Tên (A → Z)';
+
+  @override
+  String get sortNameDesc => 'Tên (Z → A)';
+
+  @override
+  String get sortDateModifiedOldest => 'Ngày sửa (Cũ nhất trước)';
+
+  @override
+  String get sortDateModifiedNewest => 'Ngày sửa (Mới nhất trước)';
+
+  @override
+  String get sortDateCreatedOldest => 'Ngày tạo (Cũ nhất trước)';
+
+  @override
+  String get sortDateCreatedNewest => 'Ngày tạo (Mới nhất trước)';
+
+  @override
+  String get sortSizeSmallest => 'Kích thước (Nhỏ nhất trước)';
+
+  @override
+  String get sortSizeLargest => 'Kích thước (Lớn nhất trước)';
+
+  @override
+  String get sortTypeAsc => 'Loại tệp (A → Z)';
+
+  @override
+  String get sortTypeDesc => 'Loại tệp (Z → A)';
+
+  @override
+  String get sortExtensionAsc => 'Đuôi tệp (A → Z)';
+
+  @override
+  String get sortExtensionDesc => 'Đuôi tệp (Z → A)';
+
+  @override
+  String get sortAttributesAsc => 'Thuộc tính (A → Z)';
+
+  @override
+  String get sortAttributesDesc => 'Thuộc tính (Z → A)';
+
+  // View modes
+  @override
+  String get viewModeList => 'Danh sách';
+
+  @override
+  String get viewModeGrid => 'Lưới';
+
+  @override
+  String get viewModeDetails => 'Chi tiết';
+
+  // Column names
+  @override
+  String get columnSize => 'Kích thước';
+
+  @override
+  String get columnType => 'Loại';
+
+  @override
+  String get columnDateModified => 'Ngày sửa đổi';
+
+  @override
+  String get columnDateCreated => 'Ngày tạo';
+
+  @override
+  String get columnAttributes => 'Thuộc tính';
+
+  // Column descriptions
+  @override
+  String get columnSizeDescription => 'Hiển thị kích thước của file';
+
+  @override
+  String get columnTypeDescription => 'Hiển thị loại tệp tin (PDF, Word, v.v.)';
+
+  @override
+  String get columnDateModifiedDescription => 'Hiển thị ngày giờ tệp được sửa đổi';
+
+  @override
+  String get columnDateCreatedDescription => 'Hiển thị ngày giờ tệp được tạo ra';
+
+  @override
+  String get columnAttributesDescription => 'Hiển thị thuộc tính tệp (quyền đọc/ghi)';
+
+  // Column visibility dialog
+  @override
+  String get columnVisibilityInstructions =>
+      'Chọn các cột bạn muốn hiển thị trong chế độ xem chi tiết. '
+      'Cột "Tên" luôn được hiển thị và không thể tắt.';
+
+  // Grid size dialog
+  @override
+  String gridSizeLabel(int count) => '$count ô trên mỗi hàng';
+
+  @override
+  String get gridSizeInstructions =>
+      'Di chuyển thanh trượt để chọn số lượng ô hiển thị trên mỗi hàng';
+
+  // More options menu
+  @override
+  String get selectMultipleFiles => 'Chọn nhiều file';
+
+  @override
+  String get viewImageGallery => 'Xem thư viện ảnh';
+
+  @override
+  String get viewVideoGallery => 'Xem thư viện video';
 
   // Navigation
   @override
@@ -64,6 +225,66 @@ class VietnameseLocalizations implements AppLocalizations {
   String get folder => 'Thư mục';
   @override
   String get file => 'Tệp tin';
+
+  // File type labels
+  @override
+  String get fileTypeGeneric => 'Tệp tin';
+  @override
+  String get fileTypeJpeg => 'Ảnh JPEG';
+  @override
+  String get fileTypePng => 'Ảnh PNG';
+  @override
+  String get fileTypeGif => 'Ảnh GIF';
+  @override
+  String get fileTypeBmp => 'Ảnh BMP';
+  @override
+  String get fileTypeTiff => 'Ảnh TIFF';
+  @override
+  String get fileTypeWebp => 'Ảnh WebP';
+  @override
+  String get fileTypeSvg => 'Ảnh SVG';
+  @override
+  String get fileTypeMp4 => 'Video MP4';
+  @override
+  String get fileTypeAvi => 'Video AVI';
+  @override
+  String get fileTypeMov => 'Video MOV';
+  @override
+  String get fileTypeWmv => 'Video WMV';
+  @override
+  String get fileTypeFlv => 'Video FLV';
+  @override
+  String get fileTypeMkv => 'Video MKV';
+  @override
+  String get fileTypeMp3 => 'Âm thanh MP3';
+  @override
+  String get fileTypeWav => 'Âm thanh WAV';
+  @override
+  String get fileTypeAac => 'Âm thanh AAC';
+  @override
+  String get fileTypeFlac => 'Âm thanh FLAC';
+  @override
+  String get fileTypeOgg => 'Âm thanh OGG';
+  @override
+  String get fileTypePdf => 'Tài liệu PDF';
+  @override
+  String get fileTypeWord => 'Tài liệu Word';
+  @override
+  String get fileTypeExcel => 'Bảng tính Excel';
+  @override
+  String get fileTypePowerPoint => 'Bài thuyết trình PowerPoint';
+  @override
+  String get fileTypeTxt => 'Tệp văn bản';
+  @override
+  String get fileTypeRtf => 'Tài liệu RTF';
+  @override
+  String get fileTypeZip => 'Tệp nén ZIP';
+  @override
+  String get fileTypeRar => 'Tệp nén RAR';
+  @override
+  String get fileType7z => 'Tệp nén 7Z';
+  @override
+  String fileTypeWithExtension(String extension) => 'Tệp $extension';
 
   // Settings
   @override
@@ -116,20 +337,22 @@ class VietnameseLocalizations implements AppLocalizations {
   @override
   String get removeTag => 'Xóa thẻ';
   @override
+  String get tagListRefreshing => 'Đang làm mới danh sách thẻ...';
+  @override
   String get tagManagement => 'Quản lý thẻ đánh dấu';
   @override
-  String get deleteTagConfirmation => 'Xóa thẻ "%s"?';
+  String deleteTagConfirmation(String tag) => 'Xóa thẻ "${tag}"?';
   @override
   String get tagDeleteConfirmationText =>
       'Thao tác này sẽ xóa thẻ khỏi tất cả các tệp. Hành động này không thể hoàn tác.';
   @override
-  String get tagDeleted => 'Thẻ "%s" đã được xóa thành công';
+  String tagDeleted(String tag) => 'Thẻ "${tag}" đã được xóa thành công';
   @override
-  String get errorDeletingTag => 'Lỗi khi xóa thẻ: %s';
+  String errorDeletingTag(String error) => 'Lỗi khi xóa thẻ: ${error}';
   @override
-  String get chooseTagColor => 'Chọn màu cho thẻ "%s"';
+  String chooseTagColor(String tag) => 'Chọn màu cho thẻ "${tag}"';
   @override
-  String get tagColorUpdated => 'Màu cho thẻ "%s" đã được cập nhật';
+  String tagColorUpdated(String tag) => 'Màu cho thẻ "${tag}" đã được cập nhật';
   @override
   String get allTags => 'Tất cả thẻ';
   @override
@@ -176,8 +399,8 @@ class VietnameseLocalizations implements AppLocalizations {
   @override
   String get createNewTagButton => 'Tạo thẻ mới';
   @override
-  String get noMatchingTagsMessage =>
-      'Không có thẻ nào phù hợp với "\${searchTags}"';
+  String noMatchingTagsMessage(String searchTags) =>
+      'Không có thẻ nào phù hợp với "${searchTags}"';
   @override
   String get clearSearch => 'Xóa tìm kiếm';
   @override
@@ -220,7 +443,7 @@ class VietnameseLocalizations implements AppLocalizations {
   @override
   String get noFilesWithTag => 'Không tìm thấy tệp nào có thẻ này';
   @override
-  String get debugInfo => 'Thông tin gỡ lỗi: đang tìm thẻ "\${tag}"';
+  String debugInfo(String tag) => 'Thông tin gỡ lỗi: đang tìm thẻ "${tag}"';
   @override
   String get backToAllTags => 'Quay về tất cả thẻ';
   @override
@@ -238,11 +461,16 @@ class VietnameseLocalizations implements AppLocalizations {
   @override
   String get enterTagName => 'Nhập tên thẻ...';
   @override
-  String get tagAlreadyExists => 'Thẻ "\${tagName}" đã tồn tại';
+  String tagAlreadyExists(String tagName) => 'Thẻ "${tagName}" đã tồn tại';
   @override
-  String get tagCreatedSuccessfully => 'Đã tạo thẻ "\${tagName}" thành công';
+  String tagCreatedSuccessfully(String tagName) =>
+      'Đã tạo thẻ "${tagName}" thành công';
   @override
   String get errorCreatingTag => 'Lỗi khi tạo thẻ: ';
+  @override
+  String get tagsSavedSuccessfully => 'Đã lưu thay đổi thẻ thành công';
+  @override
+  String get selectTagToRemove => 'Vui lòng chọn thẻ để xóa:';
   @override
   String get openingFolder => 'Opening folder: ';
   @override
@@ -345,6 +573,8 @@ class VietnameseLocalizations implements AppLocalizations {
   String get importDatabase => 'Nhập cơ sở dữ liệu';
   @override
   String get importSettings => 'Nhập cài đặt';
+  @override
+  String get resetSettings => 'Đặt lại cài đặt';
   @override
   String get exportDescription => 'Lưu thẻ của bạn vào một tệp tin';
   @override
@@ -459,6 +689,8 @@ class VietnameseLocalizations implements AppLocalizations {
   @override
   String get fileLastModified => 'Lần cuối sửa';
   @override
+  String get fileAccessed => 'Truy cập lúc';
+  @override
   String get loadingVideo => 'Đang tải video...';
   @override
   String get errorLoadingImage => 'Lỗi khi tải hình ảnh';
@@ -466,7 +698,7 @@ class VietnameseLocalizations implements AppLocalizations {
   String get createCopy => 'Tạo bản sao';
   @override
   String get deleteFile => 'Xóa tệp';
-  
+
   // Video actions
   @override
   String get share => 'Chia sẻ';
@@ -481,7 +713,8 @@ class VietnameseLocalizations implements AppLocalizations {
   @override
   String get deleteVideosConfirm => 'Xóa video?';
   @override
-  String get deleteConfirmationMessage => 'Bạn có chắc chắn muốn xóa các video đã chọn? Hành động này không thể hoàn tác.';
+  String get deleteConfirmationMessage =>
+      'Bạn có chắc chắn muốn xóa các video đã chọn? Hành động này không thể hoàn tác.';
   @override
   String videosSelected(int count) => '$count video đã chọn';
   @override
@@ -494,7 +727,7 @@ class VietnameseLocalizations implements AppLocalizations {
   String get searchVideos => 'Tìm kiếm video';
   @override
   String get enterVideoName => 'Nhập tên video...';
-  
+
   // Selection and grid
   @override
   String? get selectMultiple => 'Chọn nhiều file';
@@ -615,9 +848,12 @@ class VietnameseLocalizations implements AppLocalizations {
 
   @override
   String get searchByNameOrTag => 'Tìm theo tên hoặc #tag';
-  
+
   @override
   String get searchInSubfolders => 'Tìm trong thư mục con';
+
+  @override
+  String get featureNotImplemented => 'Tính năng sẽ được thêm sau';
 
   @override
   String get searchInAllFolders => 'Tìm trong tất cả thư mục';
@@ -881,6 +1117,89 @@ class VietnameseLocalizations implements AppLocalizations {
 
   @override
   String get errorClearingCache => 'Lỗi: ';
+
+  // Clipboard actions
+  @override
+  String copiedToClipboard(String name) => 'Đã sao chép "$name" vào clipboard';
+  @override
+  String cutToClipboard(String name) => 'Đã cắt "$name" vào clipboard';
+  @override
+  String get pasting => 'Đang dán...';
+
+  // Rename dialogs
+  @override
+  String get renameFileTitle => 'Đổi tên tệp';
+  @override
+  String get renameFolderTitle => 'Đổi tên thư mục';
+  @override
+  String currentNameLabel(String name) => 'Tên hiện tại: $name';
+  @override
+  String get newNameLabel => 'Tên mới';
+  @override
+  String renamedFileTo(String newName) => 'Đã đổi tên tệp thành "$newName"';
+  @override
+  String renamedFolderTo(String newName) =>
+      'Đã đổi tên thư mục thành "$newName"';
+
+  // Downloads
+  @override
+  String downloadedTo(String location) => 'Đã tải xuống: $location';
+  @override
+  String downloadFailed(String error) => 'Tải xuống thất bại: $error';
+
+  // Folder / Trash
+  @override
+  String movedToTrash(String name) => '$name đã được chuyển vào thùng rác';
+  @override
+  String moveItemsToTrashConfirmation(int count, String itemType) =>
+      'Chuyển $count $itemType vào thùng rác?';
+  @override
+  String get clearFilter => 'Xóa bộ lọc';
+  @override
+  String filteredBy(String filter) => 'Lọc theo: $filter';
+  @override
+  String noFilesMatchFilter(String filter) =>
+      'Không có tệp phù hợp với bộ lọc "$filter"';
+
+  // Misc helper labels
+  @override
+  String get networkFile => 'Tệp mạng';
+  @override
+  String tagCount(int count) => '$count thẻ';
+
+  // Generic errors
+  @override
+  String errorGettingFolderProperties(String error) =>
+      'Lỗi lấy thuộc tính thư mục: $error';
+  @override
+  String errorSavingTags(String error) => 'Lỗi khi lưu thẻ: $error';
+  @override
+  String errorCreatingFolder(String error) => 'Lỗi khi tạo thư mục: $error';
+
+  // UI labels
+  @override
+  String get noStorageLocationsFound => 'Không tìm thấy vị trí lưu trữ nào';
+  @override
+  String get menuPinningOnlyLargeScreens =>
+      'Ghim menu chỉ có trên màn hình lớn hơn';
+  @override
+  String get exitApplicationTitle => 'Thoát ứng dụng?';
+  @override
+  String moveToTrashConfirmMessage(String name) =>
+      'Bạn có chắc chắn muốn chuyển "$name" vào thùng rác?';
+  @override
+  String get exitApplicationConfirm =>
+      'Bạn có chắc chắn muốn thoát ứng dụng không?';
+  @override
+  String itemsSelected(int count) => '$count đã được chọn';
+  @override
+  String get noActiveTab => 'Không có tab hoạt động';
+  @override
+  String get masonryLayoutName => 'Bố cục Masonry (Pinterest)';
+  @override
+  String get undo => 'Hoàn tác';
+  @override
+  String errorWithMessage(String message) => 'Lỗi: $message';
 
   @override
   String get processing => 'Đang xử lý...';
@@ -1232,7 +1551,8 @@ class VietnameseLocalizations implements AppLocalizations {
   String get noFeaturedAlbums => 'Không có Album nổi bật';
 
   @override
-  String get createSomeAlbumsToSeeThemFeaturedHere => 'Tạo một số album để xem chúng xuất hiện ở đây';
+  String get createSomeAlbumsToSeeThemFeaturedHere =>
+      'Tạo một số album để xem chúng xuất hiện ở đây';
 
   @override
   String get removeFromFeatured => 'Xóa khỏi nổi bật';
@@ -1275,7 +1595,8 @@ class VietnameseLocalizations implements AppLocalizations {
   String get screenshotFailed => 'Không thể lưu ảnh chụp màn hình';
 
   @override
-  String get screenshotSavedToFolder => 'Đã lưu ảnh chụp màn hình vào thư mục Screenshots';
+  String get screenshotSavedToFolder =>
+      'Đã lưu ảnh chụp màn hình vào thư mục Screenshots';
 
   @override
   String get openScreenshotFolder => 'Mở thư mục';
@@ -1294,7 +1615,8 @@ class VietnameseLocalizations implements AppLocalizations {
   String get screenshotFileNotFound => 'Không tìm thấy file ảnh';
 
   @override
-  String get screenshotCannotOpenTab => 'Không thể mở tab thư mục trong ngữ cảnh này';
+  String get screenshotCannotOpenTab =>
+      'Không thể mở tab thư mục trong ngữ cảnh này';
 
   @override
   String get screenshotErrorOpeningFolder => 'Lỗi mở thư mục';

@@ -21,11 +21,83 @@ abstract class AppLocalizations {
 
   // File operations
   String get copy;
+  String get cut;
   String get move;
   String get rename;
   String get newFolder;
   String get properties;
   String get openWith;
+  String get openFolder;
+  String get openFile;
+  String get viewImage;
+  String get open;
+  String get pasteHere;
+  String get manageTags;
+  String get moveToTrash;
+  String get errorAccessingDirectory;
+
+  // Action bar tooltips
+  String get searchTooltip;
+  String get sortByTooltip;
+  String get refreshTooltip;
+  String get moreOptionsTooltip;
+  String get adjustGridSizeTooltip;
+  String get columnSettingsTooltip;
+  String get viewModeTooltip;
+
+  // Dialog titles
+  String get adjustGridSizeTitle;
+  String get columnVisibilityTitle;
+
+  // Button labels
+  String get apply;
+
+  // Sort options
+  String get sortNameAsc;
+  String get sortNameDesc;
+  String get sortDateModifiedOldest;
+  String get sortDateModifiedNewest;
+  String get sortDateCreatedOldest;
+  String get sortDateCreatedNewest;
+  String get sortSizeSmallest;
+  String get sortSizeLargest;
+  String get sortTypeAsc;
+  String get sortTypeDesc;
+  String get sortExtensionAsc;
+  String get sortExtensionDesc;
+  String get sortAttributesAsc;
+  String get sortAttributesDesc;
+
+  // View modes
+  String get viewModeList;
+  String get viewModeGrid;
+  String get viewModeDetails;
+
+  // Column names
+  String get columnSize;
+  String get columnType;
+  String get columnDateModified;
+  String get columnDateCreated;
+  String get columnAttributes;
+
+  // Column descriptions
+  String get columnSizeDescription;
+  String get columnTypeDescription;
+  String get columnDateModifiedDescription;
+  String get columnDateCreatedDescription;
+  String get columnAttributesDescription;
+
+  // Column visibility dialog
+  String get columnVisibilityInstructions;
+
+  // Grid size dialog
+  String gridSizeLabel(int count);
+  String get gridSizeInstructions;
+
+  // More options menu
+  String get selectMultipleFiles;
+  String get viewImageGallery;
+  String get viewVideoGallery;
 
   // Navigation
   String get home;
@@ -58,6 +130,37 @@ abstract class AppLocalizations {
   String get folder;
   String get file;
 
+  // File type labels
+  String get fileTypeGeneric;
+  String get fileTypeJpeg;
+  String get fileTypePng;
+  String get fileTypeGif;
+  String get fileTypeBmp;
+  String get fileTypeTiff;
+  String get fileTypeWebp;
+  String get fileTypeSvg;
+  String get fileTypeMp4;
+  String get fileTypeAvi;
+  String get fileTypeMov;
+  String get fileTypeWmv;
+  String get fileTypeFlv;
+  String get fileTypeMkv;
+  String get fileTypeMp3;
+  String get fileTypeWav;
+  String get fileTypeAac;
+  String get fileTypeFlac;
+  String get fileTypeOgg;
+  String get fileTypePdf;
+  String get fileTypeWord;
+  String get fileTypeExcel;
+  String get fileTypePowerPoint;
+  String get fileTypeTxt;
+  String get fileTypeRtf;
+  String get fileTypeZip;
+  String get fileTypeRar;
+  String get fileType7z;
+  String fileTypeWithExtension(String extension);
+
   // Settings
   String get language;
   String get theme;
@@ -85,12 +188,12 @@ abstract class AppLocalizations {
   String get addTag;
   String get removeTag;
   String get tagManagement;
-  String get deleteTagConfirmation;
+  String deleteTagConfirmation(String tag);
   String get tagDeleteConfirmationText;
-  String get tagDeleted;
-  String get errorDeletingTag;
-  String get chooseTagColor;
-  String get tagColorUpdated;
+  String tagDeleted(String tag);
+  String errorDeletingTag(String error);
+  String chooseTagColor(String tag);
+  String tagColorUpdated(String tag);
   String get allTags;
   String get filesWithTag;
   String get tagsInDirectory;
@@ -112,7 +215,7 @@ abstract class AppLocalizations {
   String get noTagsFoundMessage;
   String get noTagsFoundDescription;
   String get createNewTagButton;
-  String get noMatchingTagsMessage;
+  String noMatchingTagsMessage(String searchTags);
   String get clearSearch;
   String get tagManagementHeader;
   String get tagsCreated;
@@ -133,7 +236,7 @@ abstract class AppLocalizations {
   String get openInNewTab;
   String get changeColor;
   String get noFilesWithTag;
-  String get debugInfo;
+  String debugInfo(String tag);
   String get backToAllTags;
   String get tryAgain;
   String get filesWithTagCount;
@@ -142,9 +245,11 @@ abstract class AppLocalizations {
   String get editTags;
   String get newTagTitle;
   String get enterTagName;
-  String get tagAlreadyExists;
-  String get tagCreatedSuccessfully;
+  String tagAlreadyExists(String tagName);
+  String tagCreatedSuccessfully(String tagName);
   String get errorCreatingTag;
+  String get tagsSavedSuccessfully;
+  String get selectTagToRemove;
   String get openingFolder;
   String get folderNotFound;
 
@@ -244,6 +349,8 @@ abstract class AppLocalizations {
   String get exportAllData;
   String get importAllData;
 
+  String get resetSettings;
+
   // Export/Import messages
   String get exportSuccess;
   String get exportFailed;
@@ -289,11 +396,12 @@ abstract class AppLocalizations {
   String get filePath;
   String get fileType;
   String get fileLastModified;
+  String get fileAccessed;
   String get loadingVideo;
   String get errorLoadingImage;
   String get createCopy;
   String get deleteFile;
-  
+
   // Video actions
   String get share;
   String get playVideo;
@@ -308,10 +416,55 @@ abstract class AppLocalizations {
   String get errorDisplayingVideoInfo;
   String get searchVideos; // "Tìm kiếm video"
   String get enterVideoName; // "Nhập tên video..."
-  
+
   // Selection and grid
   String? get selectMultiple; // "Chọn nhiều file"
   String? get gridSize; // "Kích thước lưới"
+
+  // Clipboard actions
+  String copiedToClipboard(String name);
+  String cutToClipboard(String name);
+  String get pasting;
+
+  // Rename dialogs
+  String get renameFileTitle;
+  String get renameFolderTitle;
+  String currentNameLabel(String name);
+  String get newNameLabel;
+  String renamedFileTo(String newName);
+  String renamedFolderTo(String newName);
+
+  // Downloads
+  String downloadedTo(String location);
+  String downloadFailed(String error);
+
+  // Folder / Trash
+  String movedToTrash(String name);
+  String moveItemsToTrashConfirmation(int count, String itemType);
+  String moveToTrashConfirmMessage(String name);
+  String get clearFilter;
+  String filteredBy(String filter);
+  String noFilesMatchFilter(String filter);
+
+  // Misc helper labels
+  String get networkFile;
+  String tagCount(int count);
+
+  // Generic errors
+  String errorGettingFolderProperties(String error);
+  String errorSavingTags(String error);
+  String errorCreatingFolder(String error);
+
+  // UI labels
+  String get noStorageLocationsFound;
+  String get menuPinningOnlyLargeScreens;
+  String get exitApplicationTitle;
+  String get exitApplicationConfirm;
+  String itemsSelected(int count);
+  String get noActiveTab;
+  String get masonryLayoutName;
+  String get undo;
+  String errorWithMessage(String message);
 
   // File picker dialogs
   String get chooseBackupLocation;
@@ -348,6 +501,9 @@ abstract class AppLocalizations {
   String searchingTags(Map<String, String> args);
   String searchingTagsGlobal(Map<String, String> args);
 
+  // Tag list state
+  String get tagListRefreshing;
+
   // Search UI
   String get searchTips;
   String get searchTipsTitle;
@@ -362,6 +518,7 @@ abstract class AppLocalizations {
   String get globalSearch;
   String get searchByNameOrTag;
   String get searchInSubfolders;
+  String get featureNotImplemented;
   String get searchInAllFolders;
   String get searchInCurrentFolder;
   String get searchShortcuts;

@@ -73,6 +73,11 @@ class _LazyVideoThumbnailState extends State<LazyVideoThumbnail>
   int _cachePollAttempts = 0;
   static const int _maxCachePollAttempts = 10; // ~5s if 500ms interval
 
+  // PERFORMANCE: Debouncing timer for visibility changes
+  Timer? _visibilityDebounceTimer;
+  static const Duration _visibilityDebounceDuration =
+      Duration(milliseconds: 300);
+
   // Stream subscription to cache clear events
   StreamSubscription? _cacheChangedSubscription;
   // Subscription to per-file thumbnail ready notifications
@@ -128,6 +133,7 @@ class _LazyVideoThumbnailState extends State<LazyVideoThumbnail>
     _progressNotifier.dispose();
     _progressTimer?.cancel();
     _cachePollTimer?.cancel();
+    _visibilityDebounceTimer?.cancel();
     _cacheChangedSubscription?.cancel();
     _thumbReadySubscription?.cancel();
     super.dispose();
@@ -310,22 +316,16 @@ class _LazyVideoThumbnailState extends State<LazyVideoThumbnail>
   }
 
   /// Simulate progress updates for better UX while thumbnail is generating
+  /// PERFORMANCE: Removed periodic timer to eliminate timer storm during scrolling
   void _simulateProgressUpdates() {
     _progressTimer?.cancel();
     _progressNotifier.value = 0.0;
 
-    _progressTimer = Timer.periodic(const Duration(milliseconds: 200), (timer) {
-      if (!mounted || _thumbnailPathNotifier.value != null) {
-        timer.cancel();
-        return;
-      }
-
-      double currentValue = _progressNotifier.value;
-      // Simulate progress with diminishing returns curve
-      if (currentValue < 0.95) {
-        // Increment faster at the beginning, slower as we get closer to 95%
-        double increment = (1.0 - currentValue) * 0.035;
-        _progressNotifier.value = currentValue + increment;
+    // Use a single delayed update instead of periodic timer
+    // This eliminates the timer storm issue while still providing visual feedback
+    _progressTimer = Timer(const Duration(milliseconds: 500), () {
+      if (mounted && _thumbnailPathNotifier.value == null) {
+        _progressNotifier.value = 0.5;
       }
     });
   }
@@ -350,6 +350,7 @@ class _LazyVideoThumbnailState extends State<LazyVideoThumbnail>
   }
 
   /// Visibility change handler that triggers thumbnail loading when widget becomes visible
+  /// PERFORMANCE: Added debouncing to prevent excessive operations during scrolling
   void _onVisibilityChanged(VisibilityInfo info) {
     if (!mounted) return;
 
@@ -359,39 +360,34 @@ class _LazyVideoThumbnailState extends State<LazyVideoThumbnail>
     // Only process if visibility actually changed to reduce unnecessary operations
     if (isNowVisible == wasVisible) return;
 
-    if (isNowVisible) {
-      _visibilityNotifier.value = true;
+    // Cancel any pending debounced visibility change
+    _visibilityDebounceTimer?.cancel();
 
-      // Load thumbnail if needed when widget becomes visible
-      if (_thumbnailPathNotifier.value == null &&
-          !_isLoading &&
-          !widget.placeholderOnly &&
-          !_isThumbnailGenerated) {
-        // Add small delay to avoid loading during fast scrolling
-        Future.delayed(const Duration(milliseconds: 100), () {
-          if (mounted &&
-              _visibilityNotifier.value &&
-              _thumbnailPathNotifier.value == null) {
-            _loadThumbnail(isPriority: true);
-            _startCachePolling();
-          }
-        });
-      } else if (_wasAttempted &&
-          _thumbnailPathNotifier.value == null &&
-          !_isLoading &&
-          !widget.placeholderOnly &&
-          !_isThumbnailGenerated) {
-        // Add delay for retry attempts too
-        Future.delayed(const Duration(milliseconds: 150), () {
-          if (mounted &&
-              _visibilityNotifier.value &&
-              _thumbnailPathNotifier.value == null) {
-            _loadThumbnail(forceRegenerate: true, isPriority: true);
-            _startCachePolling();
-          }
-        });
-      }
+    if (isNowVisible) {
+      // Debounce visibility becoming true to avoid loading during fast scrolling
+      _visibilityDebounceTimer = Timer(_visibilityDebounceDuration, () {
+        if (!mounted || !_visibilityNotifier.value) return;
+
+        _visibilityNotifier.value = true;
+
+        // Load thumbnail if needed when widget becomes visible
+        if (_thumbnailPathNotifier.value == null &&
+            !_isLoading &&
+            !widget.placeholderOnly &&
+            !_isThumbnailGenerated) {
+          _loadThumbnail(isPriority: true);
+          _startCachePolling();
+        } else if (_wasAttempted &&
+            _thumbnailPathNotifier.value == null &&
+            !_isLoading &&
+            !widget.placeholderOnly &&
+            !_isThumbnailGenerated) {
+          _loadThumbnail(forceRegenerate: true, isPriority: true);
+          _startCachePolling();
+        }
+      });
     } else {
+      // Immediately handle becoming invisible (no debounce needed)
       _visibilityNotifier.value = false;
       _cachePollTimer?.cancel();
       _cachePollAttempts = 0;
@@ -431,42 +427,34 @@ class _LazyVideoThumbnailState extends State<LazyVideoThumbnail>
     );
   }
 
-  // Poll the cache briefly while visible to recover cases when background
-  // generation completed but this widget missed an event to repaint.
+  // PERFORMANCE: Replaced periodic polling with event-driven approach
+  // The cache polling timer was causing performance issues during scrolling
+  // Now we rely on the thumbnail ready stream subscription instead
   void _startCachePolling() {
     _cachePollTimer?.cancel();
     _cachePollAttempts = 0;
 
-    _cachePollTimer =
-        Timer.periodic(const Duration(milliseconds: 1000), (t) async {
-      // Increased from 500ms to reduce polling frequency
+    // Single delayed check instead of periodic polling
+    // This dramatically reduces timer overhead during scrolling
+    _cachePollTimer = Timer(const Duration(milliseconds: 2000), () async {
       if (!mounted || !_visibilityNotifier.value) {
-        t.cancel();
         return;
       }
 
       if (_thumbnailPathNotifier.value != null || _isLoading) {
-        t.cancel();
         return;
       }
 
-      _cachePollAttempts++;
       try {
         final cached =
             await VideoThumbnailHelper.getFromCache(widget.videoPath);
-        if (cached != null) {
+        if (cached != null && mounted) {
           _thumbnailPathNotifier.value = cached;
           _isThumbnailGenerated = true;
           _shouldRegenerateThumbnail = false;
           _onThumbnailGenerated(cached);
-          t.cancel();
-          return;
         }
       } catch (_) {}
-
-      if (_cachePollAttempts >= _maxCachePollAttempts) {
-        t.cancel();
-      }
     });
   }
 

@@ -175,7 +175,7 @@ class _SkeletonListItem extends StatelessWidget {
         ),
         child: Row(
           children: [
-            _ShimmerBox(
+            ShimmerBox(
               width: 56, // Always use album size for consistency
               height: 56,
               borderRadius: BorderRadius.circular(16),
@@ -187,7 +187,7 @@ class _SkeletonListItem extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _ShimmerBox(
+                  ShimmerBox(
                     width: double.infinity,
                     height: 18, // Always use album size
                     borderRadius: BorderRadius.circular(8),
@@ -196,7 +196,7 @@ class _SkeletonListItem extends StatelessWidget {
                         Duration(milliseconds: (index * 80 + 40).clamp(0, 840)),
                   ),
                   const SizedBox(height: 12),
-                  _ShimmerBox(
+                  ShimmerBox(
                     width: MediaQuery.of(context).size.width * 0.6,
                     height: 16, // Always use album size
                     borderRadius: BorderRadius.circular(8),
@@ -205,7 +205,7 @@ class _SkeletonListItem extends StatelessWidget {
                         Duration(milliseconds: (index * 80 + 80).clamp(0, 880)),
                   ),
                   const SizedBox(height: 8),
-                  _ShimmerBox(
+                  ShimmerBox(
                     width: 120,
                     height: 12,
                     borderRadius: BorderRadius.circular(6),
@@ -257,7 +257,7 @@ class _SkeletonGridItem extends StatelessWidget {
               child: ClipRRect(
                 borderRadius:
                     BorderRadius.circular(12), // Always use album style
-                child: _ShimmerBox(
+                child: ShimmerBox(
                   width: double.infinity,
                   height: double.infinity,
                   controller: controller,
@@ -266,7 +266,7 @@ class _SkeletonGridItem extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
-            _ShimmerBox(
+            ShimmerBox(
               width: double.infinity,
               height: 16, // Always use album size
               borderRadius: BorderRadius.circular(8),
@@ -274,7 +274,7 @@ class _SkeletonGridItem extends StatelessWidget {
               delay: Duration(milliseconds: (index * 60 + 30).clamp(0, 630)),
             ),
             const SizedBox(height: 8),
-            _ShimmerBox(
+            ShimmerBox(
               width: 100, // Always use album size
               height: 14, // Always use album size
               borderRadius: BorderRadius.circular(8),
@@ -288,32 +288,46 @@ class _SkeletonGridItem extends StatelessWidget {
   }
 }
 
-/// Shimmer effect box with animation
-class _ShimmerBox extends StatefulWidget {
+/// Shimmer effect box with animation - Public for reuse in other components
+class ShimmerBox extends StatefulWidget {
   final double width;
   final double height;
   final BorderRadius? borderRadius;
   final Duration delay;
-  final AnimationController controller;
+  final AnimationController? controller;
 
-  const _ShimmerBox({
+  const ShimmerBox({
+    Key? key,
     required this.width,
     required this.height,
     this.borderRadius,
     this.delay = Duration.zero,
-    required this.controller,
-  });
+    this.controller,
+  }) : super(key: key);
 
   @override
-  State<_ShimmerBox> createState() => _ShimmerBoxState();
+  State<ShimmerBox> createState() => _ShimmerBoxState();
 }
 
-class _ShimmerBoxState extends State<_ShimmerBox> {
+class _ShimmerBoxState extends State<ShimmerBox>
+    with SingleTickerProviderStateMixin {
   bool _isDelayComplete = false;
+  AnimationController? _internalController;
+
+  AnimationController get _effectiveController =>
+      widget.controller ?? _internalController!;
 
   @override
   void initState() {
     super.initState();
+    // Create internal controller if none provided
+    if (widget.controller == null) {
+      _internalController = AnimationController(
+        vsync: this,
+        duration: const Duration(milliseconds: 1600),
+      )..repeat();
+    }
+
     Future.delayed(widget.delay, () {
       if (mounted) {
         setState(() {
@@ -321,6 +335,12 @@ class _ShimmerBoxState extends State<_ShimmerBox> {
         });
       }
     });
+  }
+
+  @override
+  void dispose() {
+    _internalController?.dispose();
+    super.dispose();
   }
 
   @override
@@ -343,9 +363,9 @@ class _ShimmerBoxState extends State<_ShimmerBox> {
     }
 
     return AnimatedBuilder(
-      animation: widget.controller,
+      animation: _effectiveController,
       builder: (context, child) {
-        final double value = widget.controller.value;
+        final double value = _effectiveController.value;
         return Container(
           width: widget.width,
           height: widget.height,

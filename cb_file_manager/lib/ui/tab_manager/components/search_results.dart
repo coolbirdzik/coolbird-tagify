@@ -39,6 +39,8 @@ class SearchResultsView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bool isDesktop =
+        Platform.isWindows || Platform.isMacOS || Platform.isLinux;
     // Wrap the entire widget with a Listener to detect mouse button events
     return Listener(
       onPointerDown: (PointerDownEvent event) {
@@ -86,8 +88,8 @@ class SearchResultsView extends StatelessWidget {
           // Results list
           Expanded(
             child: state.viewMode == ViewMode.grid
-                ? _buildGridView()
-                : _buildListView(),
+                ? _buildGridView(isDesktop)
+                : _buildListView(isDesktop),
           ),
         ],
       ),
@@ -175,7 +177,7 @@ class SearchResultsView extends StatelessWidget {
     return 'Kết quả tìm kiếm$countText';
   }
 
-  Widget _buildListView() {
+  Widget _buildListView(bool isDesktop) {
     return ListView.builder(
       itemCount: state.searchResults.length,
       itemBuilder: (context, index) {
@@ -190,6 +192,7 @@ class SearchResultsView extends StatelessWidget {
             showDeleteTagDialog: showDeleteTagDialog,
             showAddTagToFileDialog: showAddTagToFileDialog,
             onFileTap: onFileTap, // Truyền callback cho file
+            isDesktopMode: isDesktop,
           );
         } else if (entity is Directory) {
           // Hiển thị thư mục trong kết quả tìm kiếm
@@ -213,7 +216,7 @@ class SearchResultsView extends StatelessWidget {
     );
   }
 
-  Widget _buildGridView() {
+  Widget _buildGridView(bool isDesktop) {
     return GridView.builder(
       padding: const EdgeInsets.all(8.0),
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
@@ -233,6 +236,7 @@ class SearchResultsView extends StatelessWidget {
             toggleFileSelection: toggleFileSelection,
             toggleSelectionMode: toggleSelectionMode,
             onFileTap: onFileTap, // Truyền callback cho file
+            isDesktopMode: isDesktop,
           );
         } else if (entity is Directory) {
           // Xử lý thư mục trong chế độ xem lưới

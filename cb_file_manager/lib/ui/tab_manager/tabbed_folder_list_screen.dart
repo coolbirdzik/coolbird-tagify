@@ -706,20 +706,21 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
           showDialog(
             context: context,
             builder: (context) => AlertDialog(
-              title: const Text('Mẹo tìm kiếm'),
-              content: const Column(
+              title: Text(AppLocalizations.of(context)!.searchTipsTitle),
+              content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   ListTile(
                     leading: Icon(remix.Remix.search_line),
-                    title: Text('Tìm kiếm theo tên'),
-                    subtitle: Text('Gõ từ khóa để tìm tệp theo tên'),
+                    title: Text(AppLocalizations.of(context)!.searchByFilename),
+                    subtitle:
+                        Text(AppLocalizations.of(context)!.searchByNameOrTag),
                   ),
                   Divider(),
                   ListTile(
                     leading: Icon(remix.Remix.shopping_bag_3_line),
-                    title: Text('Tìm kiếm theo tag'),
-                    subtitle: Text('Gõ # và tên tag (ví dụ: #important)'),
+                    title: Text(AppLocalizations.of(context)!.searchByTags),
+                    subtitle: Text(AppLocalizations.of(context)!.searchByTags),
                   ),
                 ],
               ),
@@ -731,7 +732,7 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
                       _showSearchBar = true;
                     });
                   },
-                  child: const Text('OK'),
+                  child: Text(AppLocalizations.of(context)!.ok),
                 ),
               ],
             ),
@@ -2514,9 +2515,9 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen> {
     // Force reload tags by triggering a refresh
     // This will be handled by the TagManagementScreen
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Đang làm mới danh sách thẻ...'),
-        duration: Duration(seconds: 1),
+      SnackBar(
+        content: Text(AppLocalizations.of(context)!.tagListRefreshing),
+        duration: const Duration(seconds: 1),
       ),
     );
   }

@@ -12,28 +12,55 @@ import 'package:cb_file_manager/helpers/files/folder_sort_manager.dart';
 import 'package:cb_file_manager/models/database/database_manager.dart';
 import 'package:cb_file_manager/ui/utils/file_type_utils.dart';
 import 'package:cb_file_manager/services/permission_state_service.dart';
+import 'package:cb_file_manager/helpers/core/filesystem_sorter.dart';
+import 'package:cb_file_manager/config/languages/app_localizations.dart';
 
 import 'folder_list_event.dart';
 import 'folder_list_state.dart';
 
-// Error message constants
+import 'package:cb_file_manager/config/languages/english_localizations.dart';
+
+// Error message helper class using localization
+// Usage: Get the localized message from UI layer using AppLocalizations.of(context)
+// and pass the appropriate parameters
 class SearchErrorMessages {
-  static String noFilesFoundTag(String tag) =>
-      'Không tìm thấy tệp nào có tag "$tag"';
-  static String noFilesFoundTagGlobal(String tag) =>
-      'Không tìm thấy tệp nào có tag "$tag" trên toàn hệ thống';
-  static String noFilesFoundTags(String tags) =>
-      'Không tìm thấy tệp nào có các tag $tags';
-  static String noFilesFoundTagsGlobal(String tags) =>
-      'Không tìm thấy tệp nào có các tag $tags trên toàn hệ thống';
-  static String errorSearchTag(String error) =>
-      'Lỗi khi tìm kiếm theo tag: $error';
-  static String errorSearchTagGlobal(String error) =>
-      'Lỗi khi tìm kiếm theo tag trên toàn hệ thống: $error';
-  static String errorSearchTags(String error) =>
-      'Lỗi khi tìm kiếm với nhiều tag: $error';
-  static String errorSearchTagsGlobal(String error) =>
-      'Lỗi khi tìm kiếm với nhiều tag trên toàn hệ thống: $error';
+  // Helper methods to get localized messages
+  // Currently defaults to English as BLoC doesn't have context
+  static final _defaultLocalizations = EnglishLocalizations();
+  
+  static String noFilesFoundTag(String tag) {
+    return _defaultLocalizations.noFilesFoundTag({'tag': tag});
+  }
+
+  static String noFilesFoundTagGlobal(String tag) {
+    return _defaultLocalizations.noFilesFoundTagGlobal({'tag': tag});
+  }
+
+  static String noFilesFoundTags(String tags) {
+    return _defaultLocalizations.noFilesFoundTags({'tags': tags});
+  }
+
+  static String noFilesFoundTagsGlobal(String tags) {
+    return _defaultLocalizations.noFilesFoundTagsGlobal({'tags': tags});
+  }
+
+  static String errorSearchTag(String error) {
+    return _defaultLocalizations.errorSearchTag({'error': error});
+  }
+
+  static String errorSearchTagGlobal(String error) {
+    return _defaultLocalizations.errorSearchTagGlobal({'error': error});
+  }
+
+  static String errorSearchTags(String error) {
+    return _defaultLocalizations.errorSearchTags({'error': error});
+  }
+
+  static String errorSearchTagsGlobal(String error) {
+    return _defaultLocalizations.errorSearchTagsGlobal({'error': error});
+  }
+
+
 }
 
 class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
@@ -384,172 +411,34 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
       Emitter<FolderListState> emit,
       {bool updateSortOption = false}) async {
     try {
-      // Get file stats for sorting
-      Map<String, FileStat> fileStatsCache = {};
+      // Use FileSystemSorter to sort folders and files
+      final sortedFolders = await FileSystemSorter.sortDirectories(
+        folders.cast<Directory>(),
+        sortOption,
+      );
+      
+      final sortedFiles = await FileSystemSorter.sortFiles(
+        files.cast<File>(),
+        sortOption,
+      );
 
-      // Cache file stats for better performance
-      Future<void> cacheFileStats(List<FileSystemEntity> entities) async {
-        for (var entity in entities) {
-          if (!fileStatsCache.containsKey(entity.path)) {
-            fileStatsCache[entity.path] = await entity.stat();
-          }
+      // Build file stats cache for the sorted entities
+      Map<String, FileStat> fileStatsCache = {};
+      final allEntities = [...sortedFolders, ...sortedFiles];
+      for (var entity in allEntities) {
+        try {
+          fileStatsCache[entity.path] = await entity.stat();
+        } catch (e) {
+          // Skip entities that can't be stat'd
+          continue;
         }
       }
 
-      // Wait for all file stats to be loaded
-      await Future.wait([
-        cacheFileStats(folders),
-        cacheFileStats(files),
-      ]);
-
-      // Define the sorting function based on the selected sort option
-      int Function(FileSystemEntity, FileSystemEntity) compareFunction;
-
-      switch (sortOption) {
-        case SortOption.nameAsc:
-          compareFunction = (a, b) => pathlib
-              .basename(a.path)
-              .toLowerCase()
-              .compareTo(pathlib.basename(b.path).toLowerCase());
-          break;
-        case SortOption.nameDesc:
-          compareFunction = (a, b) => pathlib
-              .basename(b.path)
-              .toLowerCase()
-              .compareTo(pathlib.basename(a.path).toLowerCase());
-          break;
-        case SortOption.dateAsc:
-          compareFunction = (a, b) {
-            final aStats = fileStatsCache[a.path]!;
-            final bStats = fileStatsCache[b.path]!;
-            return aStats.modified.compareTo(bStats.modified);
-          };
-          break;
-        case SortOption.dateDesc:
-          compareFunction = (a, b) {
-            final aStats = fileStatsCache[a.path]!;
-            final bStats = fileStatsCache[b.path]!;
-            return bStats.modified.compareTo(aStats.modified);
-          };
-          break;
-        case SortOption.sizeAsc:
-          compareFunction = (a, b) {
-            final aStats = fileStatsCache[a.path]!;
-            final bStats = fileStatsCache[b.path]!;
-            return aStats.size.compareTo(bStats.size);
-          };
-          break;
-        case SortOption.sizeDesc:
-          compareFunction = (a, b) {
-            final aStats = fileStatsCache[a.path]!;
-            final bStats = fileStatsCache[b.path]!;
-            return bStats.size.compareTo(aStats.size);
-          };
-          break;
-        case SortOption.typeAsc:
-          compareFunction = (a, b) {
-            final aExt = pathlib.extension(a.path).toLowerCase();
-            final bExt = pathlib.extension(b.path).toLowerCase();
-            return aExt.compareTo(bExt);
-          };
-          break;
-        case SortOption.typeDesc:
-          compareFunction = (a, b) {
-            final aExt = pathlib.extension(a.path).toLowerCase();
-            final bExt = pathlib.extension(b.path).toLowerCase();
-            return bExt.compareTo(aExt);
-          };
-          break;
-        case SortOption.dateCreatedAsc:
-          compareFunction = (a, b) {
-            // On Windows, we can get creation time
-            if (Platform.isWindows) {
-              try {
-                final aStats = fileStatsCache[a.path]!;
-                final bStats = fileStatsCache[b.path]!;
-                return aStats.changed.compareTo(bStats.changed);
-              } catch (e) {
-                // Fallback to modified date if any error
-                final aStats = fileStatsCache[a.path]!;
-                final bStats = fileStatsCache[b.path]!;
-                return aStats.modified.compareTo(bStats.modified);
-              }
-            } else {
-              // On other platforms, use modified as a fallback
-              final aStats = fileStatsCache[a.path]!;
-              final bStats = fileStatsCache[b.path]!;
-              return aStats.modified.compareTo(bStats.modified);
-            }
-          };
-          break;
-        case SortOption.dateCreatedDesc:
-          compareFunction = (a, b) {
-            // On Windows, we can get creation time
-            if (Platform.isWindows) {
-              try {
-                final aStats = fileStatsCache[a.path]!;
-                final bStats = fileStatsCache[b.path]!;
-                return bStats.changed.compareTo(aStats.changed);
-              } catch (e) {
-                // Fallback to modified date if any error
-                final aStats = fileStatsCache[a.path]!;
-                final bStats = fileStatsCache[b.path]!;
-                return bStats.modified.compareTo(aStats.modified);
-              }
-            } else {
-              // On other platforms, use modified as a fallback
-              final aStats = fileStatsCache[a.path]!;
-              final bStats = fileStatsCache[b.path]!;
-              return bStats.modified.compareTo(aStats.modified);
-            }
-          };
-          break;
-        case SortOption.extensionAsc:
-          compareFunction = (a, b) {
-            final aExt = pathlib.extension(a.path).toLowerCase();
-            final bExt = pathlib.extension(b.path).toLowerCase();
-            return aExt.compareTo(bExt);
-          };
-          break;
-        case SortOption.extensionDesc:
-          compareFunction = (a, b) {
-            final aExt = pathlib.extension(a.path).toLowerCase();
-            final bExt = pathlib.extension(b.path).toLowerCase();
-            return bExt.compareTo(aExt);
-          };
-          break;
-        case SortOption.attributesAsc:
-          compareFunction = (a, b) {
-            final aStats = fileStatsCache[a.path]!;
-            final bStats = fileStatsCache[b.path]!;
-            // Create a string representation of attributes for comparison
-            final aAttrs = '${aStats.mode},${aStats.type}';
-            final bAttrs = '${bStats.mode},${bStats.type}';
-            return aAttrs.compareTo(bAttrs);
-          };
-          break;
-        case SortOption.attributesDesc:
-          compareFunction = (a, b) {
-            final aStats = fileStatsCache[a.path]!;
-            final bStats = fileStatsCache[b.path]!;
-            // Create a string representation of attributes for comparison
-            final aAttrs = '${aStats.mode},${aStats.type}';
-            final bAttrs = '${bStats.mode},${bStats.type}';
-            return bAttrs.compareTo(aAttrs);
-          };
-          break;
-        default:
-          compareFunction = (a, b) => pathlib
-              .basename(a.path)
-              .toLowerCase()
-              .compareTo(pathlib.basename(b.path).toLowerCase());
-      }
-
-      // Folders always come first, then apply the sort function within each group
-
-      // Sort folders and files with the folder-first comparison
-      folders.sort(compareFunction);
-      files.sort(compareFunction);
+      // Update the lists in place
+      folders.clear();
+      folders.addAll(sortedFolders);
+      files.clear();
+      files.addAll(sortedFiles);
 
       // Only update the sort option in state if requested
       if (updateSortOption) {
@@ -651,53 +540,29 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
 
         // Apply sorting FIRST, then emit final state with isLoading: false
         // This ensures UI shows complete, sorted content without gaps
-        final sortedFolders = List<FileSystemEntity>.from(folders);
-        final sortedFiles = List<FileSystemEntity>.from(files);
+        
+        // Use FileSystemSorter to sort folders and files
+        final sortedFolders = await FileSystemSorter.sortDirectories(
+          folders.cast<Directory>(),
+          sortOptionToUse,
+        );
+        
+        final sortedFiles = await FileSystemSorter.sortFiles(
+          files.cast<File>(),
+          sortOptionToUse,
+        );
 
-        // Get file stats for sorting
+        // Build file stats cache for the sorted entities
         Map<String, FileStat> fileStatsCache = {};
         final allEntities = [...sortedFolders, ...sortedFiles];
         for (var entity in allEntities) {
-          if (entity is File) {
+          try {
             fileStatsCache[entity.path] = await entity.stat();
+          } catch (e) {
+            // Skip entities that can't be stat'd
+            continue;
           }
         }
-
-        // Get the comparison function
-        final compareFunction = (FileSystemEntity a, FileSystemEntity b) {
-          // Your existing comparison logic from _sortFilesAndFolders goes here
-          // This is a simplified version, you might need to adjust based on your full logic
-          if (a is Directory && b is File) return -1;
-          if (a is File && b is Directory) return 1;
-
-          switch (sortOptionToUse) {
-            case SortOption.nameAsc:
-              return a.path.toLowerCase().compareTo(b.path.toLowerCase());
-            case SortOption.nameDesc:
-              return b.path.toLowerCase().compareTo(a.path.toLowerCase());
-            case SortOption.dateAsc:
-              final statA = fileStatsCache[a.path];
-              final statB = fileStatsCache[b.path];
-              if (statA != null && statB != null) {
-                return statA.modified.compareTo(statB.modified);
-              }
-              return 0;
-            case SortOption.dateDesc:
-              final statA = fileStatsCache[a.path];
-              final statB = fileStatsCache[b.path];
-              if (statA != null && statB != null) {
-                return statB.modified.compareTo(statA.modified);
-              }
-              return 0;
-            case SortOption.sizeAsc:
-            case SortOption.sizeDesc:
-            default:
-              return a.path.toLowerCase().compareTo(b.path.toLowerCase());
-          }
-        };
-
-        sortedFolders.sort(compareFunction);
-        sortedFiles.sort(compareFunction);
 
         // Now emit the final state with sorted content and isLoading: false
         emit(

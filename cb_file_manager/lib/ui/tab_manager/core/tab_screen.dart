@@ -14,6 +14,7 @@ import '../../screens/settings/settings_screen.dart';
 import 'package:flutter/gestures.dart'; // Import for mouse scrolling
 import '../desktop/scrollable_tab_bar.dart'; // Import our custom ScrollableTabBar
 import '../mobile/mobile_tab_view.dart'; // Import giao diện mobile kiểu Chrome
+import 'package:cb_file_manager/config/languages/app_localizations.dart'; // Import AppLocalizations
 import 'package:cb_file_manager/config/translation_helper.dart'; // Import translation helper
 import 'package:cb_file_manager/ui/screens/system_screen_router.dart'; // Import system screen router
 // import 'package:cb_file_manager/widgets/test_native_streaming.dart'; // Test widget removed
@@ -191,10 +192,12 @@ class _TabScreenState extends State<TabScreen> with TickerProviderStateMixin {
 
         // Show a message explaining why pinning isn't available
         WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          final l10n = AppLocalizations.of(context)!;
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Menu pinning is only available on larger screens'),
-              duration: Duration(seconds: 2),
+            SnackBar(
+              content: Text(l10n.menuPinningOnlyLargeScreens),
+              duration: const Duration(seconds: 2),
             ),
           );
         });
@@ -353,14 +356,14 @@ class _TabScreenState extends State<TabScreen> with TickerProviderStateMixin {
               child: Builder(
                 builder: (popContext) {
                   return PopScope(
-                    canPop: false,  // Always intercept back button
+                    canPop: false, // Always intercept back button
                     onPopInvokedWithResult: (didPop, result) async {
                       if (!didPop) {
                         try {
                           // First, check if there are any screens pushed on the active tab's navigator
                           // (like video player, image viewer, etc.)
                           final activeTab = state.activeTab;
-                          
+
                           if (activeTab != null) {
                             final tabNavigatorState =
                                 activeTab.navigatorKey.currentState;
@@ -378,196 +381,199 @@ class _TabScreenState extends State<TabScreen> with TickerProviderStateMixin {
                             return;
                           }
 
-                      // Handle tab navigation history
-                      if (activeTab != null) {
-                        // Check if the active tab can navigate back
-                        if (activeTab.navigationHistory.length > 1) {
-                          // Use the proper backNavigationToPath method
-                          final tabManagerBloc = context.read<TabManagerBloc>();
-                          tabManagerBloc.backNavigationToPath(activeTab.id);
-                          return;
+                          // Handle tab navigation history
+                          if (activeTab != null) {
+                            // Check if the active tab can navigate back
+                            if (activeTab.navigationHistory.length > 1) {
+                              // Use the proper backNavigationToPath method
+                              final tabManagerBloc =
+                                  context.read<TabManagerBloc>();
+                              tabManagerBloc.backNavigationToPath(activeTab.id);
+                              return;
+                            }
+                          }
+
+                          // If we're at the root (no history), exit app
+                          SystemNavigator.pop();
+                        } catch (e) {
+                          debugPrint('Error in TabScreen PopScope: $e');
                         }
                       }
-
-                      // If we're at the root (no history), exit app
-                      SystemNavigator.pop();
-                    } catch (e) {
-                      debugPrint('Error in TabScreen PopScope: $e');
-                    }
-                  }
-                },
-                child: Scaffold(
-                  key: _scaffoldKey,
-                  // Modern AppBar, always present on tablet/desktop for custom title bar
-                  appBar: isTablet
-                      ? AppBar(
-                          elevation: 0,
-                          backgroundColor: theme.scaffoldBackgroundColor,
-                          // Always show ScrollableTabBar in the title for Windows (isTablet)
-                          // It handles its own content (tabs or add button) and window controls.
-                          title: ScrollConfiguration(
-                            behavior: TabBarMouseScrollBehavior(),
-                            child: ScrollableTabBar(
-                              controller:
-                                  _tabController, // Ensure this controller has the correct length
-                              onTap: (index) {
-                                // Only handle tab switching for valid tabs
-                                if (index < state.tabs.length) {
-                                  // Dispatch event to change active tab
-                                  context
-                                      .read<TabManagerBloc>()
-                                      .add(SwitchToTab(state.tabs[index].id));
-                                }
-                              },
-                              // Add tab close callback
-                              onTabClose: (index) {
-                                if (index < state.tabs.length) {
-                                  context
-                                      .read<TabManagerBloc>()
-                                      .add(CloseTab(state.tabs[index].id));
-                                }
-                              },
-                              // Keep the add tab button functionality
-                              onAddTabPressed: _handleAddNewTab,
-                              tabs: [
-                                // Generate modern-style tabs from state.tabs
-                                ...state.tabs.map((tab) {
-                                  return Tab(
-                                    height: 38,
-                                    child: Padding(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 4),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          if (tab.isLoading) ...[
-                                            SizedBox(
-                                              width: 14,
-                                              height: 14,
-                                              child: CircularProgressIndicator(
-                                                strokeWidth: 2,
+                    },
+                    child: Scaffold(
+                      key: _scaffoldKey,
+                      // Modern AppBar, always present on tablet/desktop for custom title bar
+                      appBar: isTablet
+                          ? AppBar(
+                              elevation: 0,
+                              backgroundColor: theme.scaffoldBackgroundColor,
+                              // Always show ScrollableTabBar in the title for Windows (isTablet)
+                              // It handles its own content (tabs or add button) and window controls.
+                              title: ScrollConfiguration(
+                                behavior: TabBarMouseScrollBehavior(),
+                                child: ScrollableTabBar(
+                                  controller:
+                                      _tabController, // Ensure this controller has the correct length
+                                  onTap: (index) {
+                                    // Only handle tab switching for valid tabs
+                                    if (index < state.tabs.length) {
+                                      // Dispatch event to change active tab
+                                      context.read<TabManagerBloc>().add(
+                                          SwitchToTab(state.tabs[index].id));
+                                    }
+                                  },
+                                  // Add tab close callback
+                                  onTabClose: (index) {
+                                    if (index < state.tabs.length) {
+                                      context
+                                          .read<TabManagerBloc>()
+                                          .add(CloseTab(state.tabs[index].id));
+                                    }
+                                  },
+                                  // Keep the add tab button functionality
+                                  onAddTabPressed: _handleAddNewTab,
+                                  tabs: [
+                                    // Generate modern-style tabs from state.tabs
+                                    ...state.tabs.map((tab) {
+                                      return Tab(
+                                        height: 38,
+                                        child: Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 4),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              if (tab.isLoading) ...[
+                                                SizedBox(
+                                                  width: 14,
+                                                  height: 14,
+                                                  child:
+                                                      CircularProgressIndicator(
+                                                    strokeWidth: 2,
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 6),
+                                              ],
+                                              Icon(
+                                                tab.isPinned
+                                                    ? remix.Remix.pushpin_fill
+                                                    : tab.icon ??
+                                                        remix.Remix
+                                                            .folder_3_line,
+                                                size: 16,
                                               ),
-                                            ),
-                                            const SizedBox(width: 6),
-                                          ],
-                                          Icon(
-                                            tab.isPinned
-                                                ? remix.Remix.pushpin_fill
-                                                : tab.icon ??
-                                                    remix.Remix.folder_3_line,
-                                            size: 16,
+                                              const SizedBox(width: 8),
+                                              Flexible(
+                                                child: Text(
+                                                  tab.name,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                ),
+                                              ),
+                                            ],
                                           ),
-                                          const SizedBox(width: 8),
-                                          Flexible(
-                                            child: Text(
-                                              tab.name,
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
+                                        ),
+                                      );
+                                    }).toList(),
+                                  ],
+                                ),
+                              ),
+                              actions: [
+                                // Modern menu button
+                                Padding(
+                                  padding: const EdgeInsets.only(right: 8.0),
+                                  child: IconButton(
+                                    icon: Icon(
+                                      remix.Remix.more_2_line,
+                                      color: isDarkMode
+                                          ? Colors.white.withOpacity(0.8)
+                                          : theme.colorScheme.primary,
+                                      size: 22,
                                     ),
-                                  );
-                                }).toList(),
-                              ],
-                            ),
-                          ),
-                          actions: [
-                            // Modern menu button
-                            Padding(
-                              padding: const EdgeInsets.only(right: 8.0),
-                              child: IconButton(
-                                icon: Icon(
-                                  remix.Remix.more_2_line,
-                                  color: isDarkMode
-                                      ? Colors.white.withOpacity(0.8)
-                                      : theme.colorScheme.primary,
-                                  size: 22,
-                                ),
-                                style: IconButton.styleFrom(
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(10),
+                                    style: IconButton.styleFrom(
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                      backgroundColor: isDarkMode
+                                          ? Colors.white.withOpacity(0.03)
+                                          : theme.colorScheme.primary
+                                              .withOpacity(0.05),
+                                    ),
+                                    onPressed: () => _showTabOptions(context),
                                   ),
-                                  backgroundColor: isDarkMode
-                                      ? Colors.white.withOpacity(0.03)
-                                      : theme.colorScheme.primary
-                                          .withOpacity(0.05),
                                 ),
-                                onPressed: () => _showTabOptions(context),
+                              ],
+                            )
+                          : null, // No AppBar for mobile interface
+                      drawer: !_isDrawerPinned
+                          ? CBDrawer(
+                              context,
+                              isPinned: _isDrawerPinned,
+                              onPinStateChanged: (isPinned) {
+                                _toggleDrawerPin();
+                              },
+                            )
+                          : null,
+                      body: Row(
+                        children: [
+                          // Pinned drawer (if enabled)
+                          if (_isDrawerPinned)
+                            SizedBox(
+                              width: 280,
+                              child: CBDrawer(
+                                context,
+                                isPinned: _isDrawerPinned,
+                                onPinStateChanged: (isPinned) {
+                                  _toggleDrawerPin();
+                                },
                               ),
                             ),
-                          ],
-                        )
-                      : null, // No AppBar for mobile interface
-                  drawer: !_isDrawerPinned
-                      ? CBDrawer(
-                          context,
-                          isPinned: _isDrawerPinned,
-                          onPinStateChanged: (isPinned) {
-                            _toggleDrawerPin();
-                          },
-                        )
-                      : null,
-                  body: Row(
-                    children: [
-                      // Pinned drawer (if enabled)
-                      if (_isDrawerPinned)
-                        SizedBox(
-                          width: 280,
-                          child: CBDrawer(
-                            context,
-                            isPinned: _isDrawerPinned,
-                            onPinStateChanged: (isPinned) {
-                              _toggleDrawerPin();
-                            },
-                          ),
-                        ),
-                      // Main content area with subtle container styling
-                      Expanded(
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: theme.scaffoldBackgroundColor,
-                            borderRadius: const BorderRadius.only(
-                              topLeft: Radius.circular(16),
-                              bottomLeft: Radius.circular(16),
+                          // Main content area with subtle container styling
+                          Expanded(
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: theme.scaffoldBackgroundColor,
+                                borderRadius: const BorderRadius.only(
+                                  topLeft: Radius.circular(16),
+                                  bottomLeft: Radius.circular(16),
+                                ),
+                              ),
+                              child: ClipRRect(
+                                borderRadius: const BorderRadius.only(
+                                  topLeft: Radius.circular(16),
+                                  bottomLeft: Radius.circular(16),
+                                ),
+                                child: _buildContent(context, state, isTablet),
+                              ),
                             ),
                           ),
-                          child: ClipRRect(
-                            borderRadius: const BorderRadius.only(
-                              topLeft: Radius.circular(16),
-                              bottomLeft: Radius.circular(16),
-                            ),
-                            child: _buildContent(context, state, isTablet),
-                          ),
-                        ),
+                        ],
                       ),
-                    ],
-                  ),
-                  floatingActionButton: state.tabs.isEmpty
-                      ? FloatingActionButton(
-                          onPressed: _handleAddNewTab,
-                          tooltip: context.tr.newFolder,
-                          elevation: 2,
-                          backgroundColor: theme.colorScheme.primary,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: const Icon(
-                            remix.Remix.add_line,
-                            size: 24,
-                          ),
-                        )
-                      : null,
-                ),  // Scaffold
-              );  // PopScope
-            },  // builder function
-          ),  // Builder
-        ),  // FocusScope
-      ),  // Actions
-    );  // Shortcuts
-  },  // BlocBuilder builder function
-);  // BlocBuilder
-}
+                      floatingActionButton: state.tabs.isEmpty
+                          ? FloatingActionButton(
+                              onPressed: _handleAddNewTab,
+                              tooltip: context.tr.newFolder,
+                              elevation: 2,
+                              backgroundColor: theme.colorScheme.primary,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: const Icon(
+                                remix.Remix.add_line,
+                                size: 24,
+                              ),
+                            )
+                          : null,
+                    ), // Scaffold
+                  ); // PopScope
+                }, // builder function
+              ), // Builder
+            ), // FocusScope
+          ), // Actions
+        ); // Shortcuts
+      }, // BlocBuilder builder function
+    ); // BlocBuilder
+  }
 
   // Phương thức mới để xây dựng nội dung dựa trên loại thiết bị
   Widget _buildContent(
@@ -588,10 +594,10 @@ class _TabScreenState extends State<TabScreen> with TickerProviderStateMixin {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
             context.read<TabManagerBloc>().add(AddTab(
-              path: '#home',
-              name: 'Home',
-              switchToTab: true,
-            ));
+                  path: '#home',
+                  name: 'Home',
+                  switchToTab: true,
+                ));
           }
         });
       }

@@ -29,6 +29,8 @@ class EnglishLocalizations implements AppLocalizations {
   @override
   String get copy => 'Copy';
   @override
+  String get cut => 'Cut';
+  @override
   String get move => 'Move';
   @override
   String get rename => 'Rename';
@@ -38,6 +40,165 @@ class EnglishLocalizations implements AppLocalizations {
   String get properties => 'Properties';
   @override
   String get openWith => 'Open with';
+  @override
+  String get openFolder => 'Open Folder';
+  @override
+  String get openFile => 'Open File';
+  @override
+  String get viewImage => 'View Image';
+  @override
+  String get open => 'Open';
+  @override
+  String get pasteHere => 'Paste Here';
+  @override
+  String get manageTags => 'Manage Tags';
+  @override
+  String get moveToTrash => 'Move to Trash';
+
+  @override
+  String get errorAccessingDirectory => 'Error accessing directory: ';
+
+  // Action bar tooltips
+  @override
+  String get searchTooltip => 'Search';
+
+  @override
+  String get sortByTooltip => 'Sort by';
+
+  @override
+  String get refreshTooltip => 'Refresh';
+
+  @override
+  String get moreOptionsTooltip => 'More options';
+
+  @override
+  String get adjustGridSizeTooltip => 'Adjust grid size';
+
+  @override
+  String get columnSettingsTooltip => 'Column settings';
+
+  @override
+  String get viewModeTooltip => 'View mode';
+
+  // Dialog titles
+  @override
+  String get adjustGridSizeTitle => 'Adjust Grid Size';
+
+  @override
+  String get columnVisibilityTitle => 'Customize Column Display';
+
+  // Button labels
+  @override
+  String get apply => 'APPLY';
+
+  // Sort options
+  @override
+  String get sortNameAsc => 'Name (A → Z)';
+
+  @override
+  String get sortNameDesc => 'Name (Z → A)';
+
+  @override
+  String get sortDateModifiedOldest => 'Date Modified (Oldest First)';
+
+  @override
+  String get sortDateModifiedNewest => 'Date Modified (Newest First)';
+
+  @override
+  String get sortDateCreatedOldest => 'Date Created (Oldest First)';
+
+  @override
+  String get sortDateCreatedNewest => 'Date Created (Newest First)';
+
+  @override
+  String get sortSizeSmallest => 'Size (Smallest First)';
+
+  @override
+  String get sortSizeLargest => 'Size (Largest First)';
+
+  @override
+  String get sortTypeAsc => 'File Type (A → Z)';
+
+  @override
+  String get sortTypeDesc => 'File Type (Z → A)';
+
+  @override
+  String get sortExtensionAsc => 'Extension (A → Z)';
+
+  @override
+  String get sortExtensionDesc => 'Extension (Z → A)';
+
+  @override
+  String get sortAttributesAsc => 'Attributes (A → Z)';
+
+  @override
+  String get sortAttributesDesc => 'Attributes (Z → A)';
+
+  // View modes
+  @override
+  String get viewModeList => 'List';
+
+  @override
+  String get viewModeGrid => 'Grid';
+
+  @override
+  String get viewModeDetails => 'Details';
+
+  // Column names
+  @override
+  String get columnSize => 'Size';
+
+  @override
+  String get columnType => 'Type';
+
+  @override
+  String get columnDateModified => 'Date Modified';
+
+  @override
+  String get columnDateCreated => 'Date Created';
+
+  @override
+  String get columnAttributes => 'Attributes';
+
+  // Column descriptions
+  @override
+  String get columnSizeDescription => 'Display file size';
+
+  @override
+  String get columnTypeDescription => 'Display file type (PDF, Word, etc.)';
+
+  @override
+  String get columnDateModifiedDescription => 'Display date and time file was modified';
+
+  @override
+  String get columnDateCreatedDescription => 'Display date and time file was created';
+
+  @override
+  String get columnAttributesDescription => 'Display file attributes (read/write permissions)';
+
+  // Column visibility dialog
+  @override
+  String get columnVisibilityInstructions =>
+      'Select the columns you want to display in details view. '
+      'The "Name" column is always displayed and cannot be disabled.';
+
+  // Grid size dialog
+  @override
+  String gridSizeLabel(int count) => '$count cells per row';
+
+  @override
+  String get gridSizeInstructions =>
+      'Move the slider to select the number of cells to display per row';
+
+  // More options menu
+  @override
+  String get selectMultipleFiles => 'Select multiple files';
+
+  @override
+  String get viewImageGallery => 'View image gallery';
+
+  @override
+  String get viewVideoGallery => 'View video gallery';
 
   // Navigation
   @override
@@ -68,6 +229,66 @@ class EnglishLocalizations implements AppLocalizations {
   String get folder => 'Folder';
   @override
   String get file => 'File';
+
+  // File type labels
+  @override
+  String get fileTypeGeneric => 'File';
+  @override
+  String get fileTypeJpeg => 'JPEG Image';
+  @override
+  String get fileTypePng => 'PNG Image';
+  @override
+  String get fileTypeGif => 'GIF Image';
+  @override
+  String get fileTypeBmp => 'BMP Image';
+  @override
+  String get fileTypeTiff => 'TIFF Image';
+  @override
+  String get fileTypeWebp => 'WebP Image';
+  @override
+  String get fileTypeSvg => 'SVG Image';
+  @override
+  String get fileTypeMp4 => 'MP4 Video';
+  @override
+  String get fileTypeAvi => 'AVI Video';
+  @override
+  String get fileTypeMov => 'MOV Video';
+  @override
+  String get fileTypeWmv => 'WMV Video';
+  @override
+  String get fileTypeFlv => 'FLV Video';
+  @override
+  String get fileTypeMkv => 'MKV Video';
+  @override
+  String get fileTypeMp3 => 'MP3 Audio';
+  @override
+  String get fileTypeWav => 'WAV Audio';
+  @override
+  String get fileTypeAac => 'AAC Audio';
+  @override
+  String get fileTypeFlac => 'FLAC Audio';
+  @override
+  String get fileTypeOgg => 'OGG Audio';
+  @override
+  String get fileTypePdf => 'PDF Document';
+  @override
+  String get fileTypeWord => 'Word Document';
+  @override
+  String get fileTypeExcel => 'Excel Spreadsheet';
+  @override
+  String get fileTypePowerPoint => 'PowerPoint Presentation';
+  @override
+  String get fileTypeTxt => 'Text File';
+  @override
+  String get fileTypeRtf => 'RTF Document';
+  @override
+  String get fileTypeZip => 'ZIP Archive';
+  @override
+  String get fileTypeRar => 'RAR Archive';
+  @override
+  String get fileType7z => '7Z Archive';
+  @override
+  String fileTypeWithExtension(String extension) => '$extension File';
 
   // Settings
   @override
@@ -120,20 +341,23 @@ class EnglishLocalizations implements AppLocalizations {
   @override
   String get removeTag => 'Remove Tag';
   @override
+  String get tagListRefreshing => 'Refreshing tag list...';
+  @override
   String get tagManagement => 'Tag Management';
   @override
-  String get deleteTagConfirmation => 'Delete tag "%s"?';
+  String deleteTagConfirmation(String tag) => 'Delete tag "${tag}"?';
   @override
   String get tagDeleteConfirmationText =>
       'This will remove the tag from all files. This action cannot be undone.';
   @override
-  String get tagDeleted => 'Tag "%s" deleted successfully';
+  String tagDeleted(String tag) => 'Tag "${tag}" deleted successfully';
   @override
-  String get errorDeletingTag => 'Error deleting tag: %s';
+  String errorDeletingTag(String error) => 'Error deleting tag: ${error}';
   @override
-  String get chooseTagColor => 'Choose Color for "%s"';
+  String chooseTagColor(String tag) => 'Choose Color for "${tag}"';
   @override
-  String get tagColorUpdated => 'Color for tag "%s" has been updated';
+  String tagColorUpdated(String tag) =>
+      'Color for tag "${tag}" has been updated';
   @override
   String get allTags => 'All Tags';
   @override
@@ -180,7 +404,8 @@ class EnglishLocalizations implements AppLocalizations {
   @override
   String get createNewTagButton => 'Create New Tag';
   @override
-  String get noMatchingTagsMessage => 'No tags match "\${searchTags}"';
+  String noMatchingTagsMessage(String searchTags) =>
+      'No tags match "${searchTags}"';
   @override
   String get clearSearch => 'Clear Search';
   @override
@@ -223,7 +448,7 @@ class EnglishLocalizations implements AppLocalizations {
   @override
   String get noFilesWithTag => 'No files found with this tag';
   @override
-  String get debugInfo => 'Debug info: searching for tag "\${tag}"';
+  String debugInfo(String tag) => 'Debug info: searching for tag "${tag}"';
   @override
   String get backToAllTags => 'Back to All Tags';
   @override
@@ -241,11 +466,16 @@ class EnglishLocalizations implements AppLocalizations {
   @override
   String get enterTagName => 'Enter tag name...';
   @override
-  String get tagAlreadyExists => 'Tag "\${tagName}" already exists';
+  String tagAlreadyExists(String tagName) => 'Tag "${tagName}" already exists';
   @override
-  String get tagCreatedSuccessfully => 'Tag "\${tagName}" created successfully';
+  String tagCreatedSuccessfully(String tagName) =>
+      'Tag "${tagName}" created successfully';
   @override
   String get errorCreatingTag => 'Error creating tag: ';
+  @override
+  String get tagsSavedSuccessfully => 'Tags saved successfully';
+  @override
+  String get selectTagToRemove => 'Select a tag to remove:';
   @override
   String get openingFolder => 'Opening folder: ';
   @override
@@ -321,6 +551,8 @@ class EnglishLocalizations implements AppLocalizations {
   String get importDatabase => 'Import Database';
   @override
   String get importSettings => 'Import Settings';
+  @override
+  String get resetSettings => 'Reset Settings';
   @override
   String get exportDescription => 'Save your tags to a file';
   @override
@@ -447,6 +679,8 @@ class EnglishLocalizations implements AppLocalizations {
   @override
   String get fileLastModified => 'Last modified';
   @override
+  String get fileAccessed => 'Accessed';
+  @override
   String get loadingVideo => 'Loading video...';
   @override
   String get errorLoadingImage => 'Error loading image';
@@ -469,11 +703,14 @@ class EnglishLocalizations implements AppLocalizations {
   @override
   String get deleteVideosConfirm => 'Delete videos?';
   @override
-  String get deleteConfirmationMessage => 'Are you sure you want to delete the selected videos? This action cannot be undone.';
+  String get deleteConfirmationMessage =>
+      'Are you sure you want to delete the selected videos? This action cannot be undone.';
   @override
-  String videosSelected(int count) => '$count video${count == 1 ? '' : 's'} selected';
+  String videosSelected(int count) =>
+      '$count video${count == 1 ? '' : 's'} selected';
   @override
-  String videosDeleted(int count) => 'Deleted $count video${count == 1 ? '' : 's'}';
+  String videosDeleted(int count) =>
+      'Deleted $count video${count == 1 ? '' : 's'}';
   @override
   String searchingFor(String query) => 'Searching for: "$query"';
   @override
@@ -482,7 +719,7 @@ class EnglishLocalizations implements AppLocalizations {
   String get searchVideos => 'Search videos';
   @override
   String get enterVideoName => 'Enter video name...';
-  
+
   // Selection and grid
   @override
   String? get selectMultiple => 'Select multiple files';
@@ -589,9 +826,12 @@ class EnglishLocalizations implements AppLocalizations {
 
   @override
   String get searchByNameOrTag => 'Search by name or #tag';
-  
+
   @override
   String get searchInSubfolders => 'Search in subfolders';
+
+  @override
+  String get featureNotImplemented => 'This feature will be added soon';
 
   @override
   String get searchInAllFolders => 'Search in all folders';
@@ -878,6 +1118,88 @@ class EnglishLocalizations implements AppLocalizations {
 
   @override
   String get errorClearingCache => 'Error: ';
+
+  // Clipboard actions
+  @override
+  String copiedToClipboard(String name) => 'Copied "$name" to clipboard';
+  @override
+  String cutToClipboard(String name) => 'Cut "$name" to clipboard';
+  @override
+  String get pasting => 'Pasting...';
+
+  // Rename dialogs
+  @override
+  String get renameFileTitle => 'Rename File';
+  @override
+  String get renameFolderTitle => 'Rename Folder';
+  @override
+  String currentNameLabel(String name) => 'Current name: $name';
+  @override
+  String get newNameLabel => 'New name';
+  @override
+  String renamedFileTo(String newName) => 'Renamed file to "$newName"';
+  @override
+  String renamedFolderTo(String newName) => 'Renamed folder to "$newName"';
+
+  // Downloads
+  @override
+  String downloadedTo(String location) => 'Downloaded to $location';
+  @override
+  String downloadFailed(String error) => 'Download failed: $error';
+
+  // Folder / Trash
+  @override
+  String movedToTrash(String name) => '$name moved to trash';
+  @override
+  String moveItemsToTrashConfirmation(int count, String itemType) =>
+      'Move $count $itemType to trash?';
+  @override
+  String get clearFilter => 'Clear Filter';
+  @override
+  String filteredBy(String filter) => 'Filtered by: $filter';
+  @override
+  String noFilesMatchFilter(String filter) =>
+      'No files match the filter "$filter"';
+
+  // Misc helper labels
+  @override
+  String get networkFile => 'Network file';
+  @override
+  String tagCount(int count) => '$count tags';
+
+  // Generic errors
+  @override
+  String errorGettingFolderProperties(String error) =>
+      'Error getting folder properties: $error';
+  @override
+  String errorSavingTags(String error) => 'Error saving tags: $error';
+  @override
+  String errorCreatingFolder(String error) => 'Error creating folder: $error';
+
+  // UI labels
+  @override
+  String get noStorageLocationsFound => 'No storage locations found';
+  @override
+  String get menuPinningOnlyLargeScreens =>
+      'Menu pinning is only available on larger screens';
+  @override
+  String get exitApplicationTitle => 'Exit Application?';
+  @override
+  String moveToTrashConfirmMessage(String name) =>
+      'Are you sure you want to move "$name" to trash?';
+  @override
+  String get exitApplicationConfirm =>
+      'Are you sure you want to exit the application?';
+  @override
+  String itemsSelected(int count) => '$count selected';
+  @override
+  String get noActiveTab => 'No active tab';
+  @override
+  String get masonryLayoutName => 'Masonry layout (Pinterest)';
+  @override
+  String get undo => 'Undo';
+  @override
+  String errorWithMessage(String message) => 'Error: $message';
 
   @override
   String get processing => 'Processing...';
@@ -1230,7 +1552,8 @@ class EnglishLocalizations implements AppLocalizations {
   String get noFeaturedAlbums => 'No Featured Albums';
 
   @override
-  String get createSomeAlbumsToSeeThemFeaturedHere => 'Create some albums to see them featured here';
+  String get createSomeAlbumsToSeeThemFeaturedHere =>
+      'Create some albums to see them featured here';
 
   @override
   String get removeFromFeatured => 'Remove from Featured';
@@ -1273,7 +1596,8 @@ class EnglishLocalizations implements AppLocalizations {
   String get screenshotFailed => 'Failed to save screenshot';
 
   @override
-  String get screenshotSavedToFolder => 'Screenshot saved to Screenshots folder';
+  String get screenshotSavedToFolder =>
+      'Screenshot saved to Screenshots folder';
 
   @override
   String get openScreenshotFolder => 'Open folder';
@@ -1292,11 +1616,14 @@ class EnglishLocalizations implements AppLocalizations {
   String get screenshotFileNotFound => 'Image file not found';
 
   @override
-  String get screenshotCannotOpenTab => 'Cannot open folder tab in this context';
+  String get screenshotCannotOpenTab =>
+      'Cannot open folder tab in this context';
 
   @override
   String get screenshotErrorOpeningFolder => 'Error opening folder';
 
   @override
   String get closeAction => 'Close';
+
+  // Search errors
 }

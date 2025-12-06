@@ -6,7 +6,6 @@ import 'package:cb_file_manager/ui/screens/folder_list/folder_list_state.dart';
 import 'package:remixicon/remixicon.dart' as remix;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:cb_file_manager/ui/widgets/thumbnail_loader.dart';
 import 'package:cb_file_manager/ui/utils/file_type_utils.dart';
 import 'thumbnail_only.dart';
 
@@ -45,7 +44,7 @@ class FileGridItem extends StatelessWidget {
     this.showFileTags = true, // Default to showing tags
   }) : super(key: key);
 
-  void _showContextMenu(BuildContext context) {
+  void _showContextMenu(BuildContext context, Offset globalPosition) {
     final bool isVideo = FileTypeUtils.isVideoFile(file.path);
     final bool isImage = FileTypeUtils.isImageFile(file.path);
 
@@ -59,6 +58,7 @@ class FileGridItem extends StatelessWidget {
       isVideo: isVideo,
       isImage: isImage,
       showAddTagToFileDialog: showAddTagToFileDialog,
+      globalPosition: globalPosition,
     );
   }
 
@@ -90,47 +90,58 @@ class FileGridItem extends StatelessWidget {
                       child: InkWell(
                         borderRadius: BorderRadius.circular(8.0),
                         onTap: () {
-                        final isShiftPressed = HardwareKeyboard
-                                .instance.logicalKeysPressed
-                                .contains(
-                              LogicalKeyboardKey.shiftLeft,
-                            ) ||
-                            HardwareKeyboard.instance.logicalKeysPressed
-                                .contains(
-                              LogicalKeyboardKey.shiftRight,
-                            );
-                        final isCtrlPressed = HardwareKeyboard
-                                .instance.logicalKeysPressed
-                                .contains(
-                              LogicalKeyboardKey.controlLeft,
-                            ) ||
-                            HardwareKeyboard.instance.logicalKeysPressed
-                                .contains(
-                              LogicalKeyboardKey.controlRight,
-                            );
+                          final bool isShiftPressed = HardwareKeyboard
+                                  .instance.logicalKeysPressed
+                                  .contains(
+                                LogicalKeyboardKey.shiftLeft,
+                              ) ||
+                              HardwareKeyboard.instance.logicalKeysPressed
+                                  .contains(
+                                LogicalKeyboardKey.shiftRight,
+                              );
+                          final bool isCtrlPressed = HardwareKeyboard
+                                  .instance.logicalKeysPressed
+                                  .contains(
+                                LogicalKeyboardKey.controlLeft,
+                              ) ||
+                              HardwareKeyboard.instance.logicalKeysPressed
+                                  .contains(
+                                LogicalKeyboardKey.controlRight,
+                              );
+                          final bool isVideo =
+                              FileTypeUtils.isVideoFile(file.path);
 
-                        // If in selection mode or modifier keys pressed, handle selection
-                        if (isSelectionMode ||
-                            isShiftPressed ||
-                            isCtrlPressed) {
-                          toggleFileSelection(
-                            file.path,
-                            shiftSelect: isShiftPressed,
-                            ctrlSelect: isCtrlPressed,
-                          );
-                        } else {
-                          // Single tap opens file when not in selection mode
-                          onFileTap?.call(file as File, false);
-                        }
-                      },
-                      onLongPress: () {
-                        HapticFeedback.mediumImpact();
-                        toggleFileSelection(file.path);
-                        if (!isSelectionMode) {
-                          toggleSelectionMode();
-                        }
-                      },
-                        onSecondaryTap: () => _showContextMenu(context),
+                          // If in selection mode or modifier keys pressed, handle selection
+                          if (isSelectionMode ||
+                              isShiftPressed ||
+                              isCtrlPressed) {
+                            toggleFileSelection(
+                              file.path,
+                              shiftSelect: isShiftPressed,
+                              ctrlSelect: isCtrlPressed,
+                            );
+                          } else if (isDesktopMode && isVideo) {
+                            toggleFileSelection(file.path,
+                                shiftSelect: false, ctrlSelect: false);
+                          } else {
+                            // Single tap opens file when not in selection mode
+                            onFileTap?.call(file as File, isVideo);
+                          }
+                        },
+                        onDoubleTap: () {
+                          onFileTap?.call(file as File,
+                              FileTypeUtils.isVideoFile(file.path));
+                        },
+                        onSecondaryTapDown: (details) {
+                          _showContextMenu(context, details.globalPosition);
+                        },
+                        onLongPress: () {
+                          HapticFeedback.mediumImpact();
+                          toggleFileSelection(file.path);
+                          if (!isSelectionMode) {
+                            toggleSelectionMode();
+                          }
+                        },
                       ),
                     ),
                   ),
@@ -144,17 +155,19 @@ class FileGridItem extends StatelessWidget {
                             .primaryColor
                             .withValues(alpha: 0.2),
                       ),
-                      child: Align(
-                        alignment: Alignment.topRight,
-                        child: Padding(
-                          padding: const EdgeInsets.all(4.0),
-                          child: Icon(
-                            remix.Remix.checkbox_circle_line,
-                            color: Theme.of(context).primaryColor,
-                            size: 24,
-                          ),
-                        ),
-                      ),
+                      child: isDesktopMode
+                          ? null
+                          : Align(
+                              alignment: Alignment.topRight,
+                              child: Padding(
+                                padding: const EdgeInsets.all(4.0),
+                                child: Icon(
+                                  remix.Remix.checkbox_circle_line,
+                                  color: Theme.of(context).primaryColor,
+                                  size: 24,
+                                ),
+                              ),
+                            ),
                     ),
                 ],
               ),

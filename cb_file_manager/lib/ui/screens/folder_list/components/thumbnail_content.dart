@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:io'; // Import dart:io for FileSystemEntity
 import 'package:cb_file_manager/ui/widgets/thumbnail_loader.dart';
-import 'package:cb_file_manager/helpers/files/file_type_helper.dart'; // Import the helper
+import 'package:cb_file_manager/helpers/files/file_type_registry.dart';
 import 'package:path/path.dart' as p;
 
 /// A widget that displays the core content of a file item (thumbnail and name).
@@ -18,11 +18,11 @@ class ThumbnailContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final extension = p.extension(file.path);
-    final isVideo = FileTypeHelper.isVideo(extension);
-    final isImage = FileTypeHelper.isImage(extension);
-    final fileType = FileTypeHelper.getFileType(extension);
-    final icon = FileTypeHelper.getIconForFileType(fileType);
+    final extension = p.extension(file.path).toLowerCase();
+    final category = FileTypeRegistry.getCategory(extension);
+    final isVideo = category == FileCategory.video;
+    final isImage = category == FileCategory.image;
+    final icon = FileTypeRegistry.getIcon(extension);
 
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,

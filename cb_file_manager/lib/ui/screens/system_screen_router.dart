@@ -65,211 +65,59 @@ class SystemScreenRouter {
   }
 
   /// Handles system paths that start with #
+  /// Handles system paths that start with #
   static Widget? _handleSystemPaths(
       BuildContext context, String path, String tabId) {
     // Create a cache key from the tab ID and path
     final String cacheKey = '$tabId:$path';
 
-    if (path == '#home') {
-      // Route to the home screen
-      return HomeScreen(tabId: tabId);
-    } else if (path == '#tags') {
-      // Route to the tag management screen - no caching needed for this screen
-      return TagManagementTab(tabId: tabId);
-    } else if (path == '#gallery') {
-      // Route to the gallery hub screen as a tab
-      return const GalleryHubScreen();
-    } else if (path == '#video') {
-      // Route to the video hub screen as a tab
-      return const VideoHubScreen();
-    } else if (path == '#albums') {
-      // Route to the album management screen as a tab
-      return const AlbumManagementScreen();
-    } else if (path == '#auto-rules') {
-      // Route to the auto rules screen as a tab
-      return const AutoRulesScreen();
-    } else if (path == '#trash') {
-      // Route to the Trash Bin screen as a tab
-      return const TrashBinScreen();
-    } else if (path.startsWith('#album/')) {
-      // Route to album detail screen - extract album ID from path
-      final albumIdStr = path.substring('#album/'.length);
-      final albumId = int.tryParse(albumIdStr);
-      if (albumId != null) {
-        return FutureBuilder<Album?>(
-          future: AlbumService.instance.getAlbumById(albumId),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            if (snapshot.hasData && snapshot.data != null) {
-              return AlbumDetailScreen(album: snapshot.data!);
-            }
-            return const Center(child: Text('Album not found'));
-          },
+    // 1. Handle static paths
+    switch (path) {
+      case '#home':
+        return HomeScreen(tabId: tabId);
+      case '#tags':
+        return TagManagementTab(tabId: tabId);
+      case '#gallery':
+        return const GalleryHubScreen();
+      case '#video':
+        return const VideoHubScreen();
+      case '#albums':
+        return const AlbumManagementScreen();
+      case '#auto-rules':
+        return const AutoRulesScreen();
+      case '#trash':
+        return const TrashBinScreen();
+      case '#network':
+        return const NetworkConnectionScreen();
+      case '#smb':
+        return BlocProvider<NetworkBrowsingBloc>(
+          create: (_) => NetworkBrowsingBloc(),
+          child: SMBBrowserScreen(tabId: tabId),
         );
-      }
-      return const Center(child: Text('Invalid album ID'));
-    } else if (path == '#network') {
-      // Route to the network connections screen
-      // Use the existing BlocProvider from TabMainScreen to ensure shared state
-      return const NetworkConnectionScreen();
-    } else if (path == '#smb') {
-      // Route to the SMB browser screen
-      // Create with its own bloc to ensure we can scan the network
-      return BlocProvider<NetworkBrowsingBloc>(
-        create: (_) => NetworkBrowsingBloc(),
-        child: SMBBrowserScreen(tabId: tabId),
-      );
-    } else if (path == '#ftp') {
-      // Route to the FTP browser screen
-      // Use the existing BlocProvider from TabMainScreen instead of creating a new one
-      return FTPBrowserScreen(tabId: tabId);
-    } else if (path == '#webdav') {
-      // Route to the WebDAV browser screen
-      return WebDAVBrowserScreen(tabId: tabId);
-    } else if (path == '#gallery:images') {
-      // Route to the image gallery screen - show all images from entire device
-      return const ImageGalleryScreen(
-        path: '',
-        recursive: true,
-        showAllImages: true,
-      );
-    } else if (path.startsWith('#gallery:videos')) {
-      // Route to the video gallery screen, support optional query params
-      // e.g. #gallery:videos?path=<encodedPath>&recursive=false
-      String galleryPath = '';
-      bool recursive = true;
-      final int qIndex = path.indexOf('?');
-      if (qIndex != -1 && qIndex < path.length - 1) {
-        final String query = path.substring(qIndex + 1);
-        try {
-          final params = Uri.splitQueryString(query);
-          if (params.containsKey('path')) {
-            galleryPath = Uri.decodeComponent(params['path'] ?? '');
-          }
-          if (params.containsKey('recursive')) {
-            final v = (params['recursive'] ?? '').toLowerCase();
-            if (v == 'false' || v == '0' || v == 'no') {
-              recursive = false;
-            } else if (v == 'true' || v == '1' || v == 'yes') {
-              recursive = true;
-            }
-          }
-        } catch (_) {
-          // Fallback to defaults if parsing fails
-        }
-      }
-
-      return VideoGalleryScreen(
-        path: galleryPath,
-        recursive: recursive,
-      );
-    } else if (path.startsWith('#image?')) {
-      // Open single image viewer in a new tab: #image?path=<encodedPath>
-      String filePath = '';
-      final int qIndexImage = path.indexOf('?');
-      if (qIndexImage != -1 && qIndexImage < path.length - 1) {
-        final String query = path.substring(qIndexImage + 1);
-        try {
-          final params = Uri.splitQueryString(query);
-          if (params.containsKey('path')) {
-            filePath = UriUtils.safeDecodeComponent(params['path'] ?? '');
-          }
-        } catch (_) {
-          // Ignore parsing errors; will show error widget below
-        }
-      }
-      if (filePath.isEmpty) {
-        return _buildErrorWidget(context, 'Invalid image path', cacheKey: cacheKey);
-      }
-      // Update tab name to image file name
-      final tabBloc = BlocProvider.of<TabManagerBloc>(context);
-      tabBloc.add(UpdateTabName(tabId, pathlib.basename(filePath)));
-      return ImageViewerScreen(file: File(filePath));
-    } else if (path.startsWith('#tag:')) {
-      // Check if we already have a cached widget for this tab+path
-      if (_cachedWidgets.containsKey(cacheKey)) {
-        // Only log once to avoid spamming
-        if (!_loggedKeys.contains(cacheKey)) {
-          _loggedKeys.add(cacheKey);
-        }
-        return _cachedWidgets[cacheKey]!;
-      }
-
-      // This is a tag search, extract the tag name
-      final tag = path.substring(5); // Remove "#tag:" prefix
-
-      // Create the widget
-      Widget tagSearchWidget = Builder(builder: (context) {
-        // Update the tab name to show the tag being searched
-        final tabBloc = BlocProvider.of<TabManagerBloc>(context);
-        tabBloc.add(UpdateTabName(tabId, '${context.tr.tagPrefix}: $tag'));
-
-        // Clear TagManager cache once (not on every rebuild)
-        TagManager.clearCache();
-
-        // Log once for initialization
-        _loggedKeys.add(cacheKey);
-
-        // Create a unique bloc for this search with timeout protection
-        return BlocProvider(
-          // Use create with lazy=false to ensure the bloc is created only once
-          create: (_) {
-            final bloc = FolderListBloc();
-            // Add timeout protection to prevent infinite loops
-            Future.delayed(const Duration(milliseconds: 500), () {
-              if (bloc.isClosed == false) {
-                bloc.add(SearchByTagGlobally(tag));
-              }
-            });
-            return bloc;
-          },
-          lazy: false,
-          child: TabbedFolderListScreen(
-            key: ValueKey('tag_search_$cacheKey'), // Add a stable key
-            path: '', // Empty path for global search
-            tabId: tabId,
-            searchTag: tag, // Pass the tag name
-            globalTagSearch: true, // Enable global search
-          ),
+      case '#ftp':
+        return FTPBrowserScreen(tabId: tabId);
+      case '#webdav':
+        return WebDAVBrowserScreen(tabId: tabId);
+      case '#gallery:images':
+        return const ImageGalleryScreen(
+          path: '',
+          recursive: true,
+          showAllImages: true,
         );
-      });
-
-      // Cache the widget to prevent rebuilding
-      _cachedWidgets[cacheKey] = tagSearchWidget;
-
-      return tagSearchWidget;
-    } else if (path.startsWith('#search?tag=')) {
-      // Support hash-based tag search path: #search?tag=...
-      if (_cachedWidgets.containsKey(cacheKey)) {
-        if (!_loggedKeys.contains(cacheKey)) {
-          _loggedKeys.add(cacheKey);
-        }
-        return _cachedWidgets[cacheKey]!;
-      }
-
-      // Avoid recursion: don't pass a '#' path into TabbedFolderListScreen
-      // or it will call SystemScreenRouter again. Instead, parse the tag
-      // and drive the screen via searchTag + globalTagSearch.
-      final String raw = path.substring('#search?tag='.length);
-      final String tag = UriUtils.safeDecodeComponent(raw);
-
-      final widgetToCache = TabbedFolderListScreen(
-        key: ValueKey('tag_search_$cacheKey'),
-        path: '',
-        tabId: tabId,
-        searchTag: tag,
-        globalTagSearch: true,
-      );
-
-      _cachedWidgets[cacheKey] = widgetToCache;
-      _loggedKeys.add(cacheKey);
-      return widgetToCache;
     }
 
-    // Handle network paths that might follow special format #network/TYPE/HOST/...
-    if (path.startsWith('#network/')) {
+    // 2. Handle dynamic paths
+    if (path.startsWith('#album/')) {
+      return _handleAlbumRoute(path);
+    } else if (path.startsWith('#gallery:videos')) {
+      return _handleVideoGalleryRoute(path);
+    } else if (path.startsWith('#image?')) {
+      return _handleImageRoute(context, path, tabId, cacheKey);
+    } else if (path.startsWith('#tag:')) {
+      return _handleTagRoute(context, path, tabId, cacheKey);
+    } else if (path.startsWith('#search?tag=')) {
+      return _handleSearchRoute(context, path, tabId, cacheKey);
+    } else if (path.startsWith('#network/')) {
       _loggedKeys.add(cacheKey);
       return _handleNetworkPath(context, path, tabId);
     }
@@ -277,6 +125,150 @@ class SystemScreenRouter {
     // Fallback for unknown system paths
     return _buildErrorWidget(context, '${context.tr.unknownSystemPath}: $path',
         cacheKey: cacheKey);
+  }
+
+  static Widget _handleAlbumRoute(String path) {
+    final albumIdStr = path.substring('#album/'.length);
+    final albumId = int.tryParse(albumIdStr);
+    if (albumId != null) {
+      return FutureBuilder<Album?>(
+        future: AlbumService.instance.getAlbumById(albumId),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasData && snapshot.data != null) {
+            return AlbumDetailScreen(album: snapshot.data!);
+          }
+          return const Center(child: Text('Album not found'));
+        },
+      );
+    }
+    return const Center(child: Text('Invalid album ID'));
+  }
+
+  static Widget _handleVideoGalleryRoute(String path) {
+    String galleryPath = '';
+    bool recursive = true;
+    final int qIndex = path.indexOf('?');
+    if (qIndex != -1 && qIndex < path.length - 1) {
+      final String query = path.substring(qIndex + 1);
+      try {
+        final params = Uri.splitQueryString(query);
+        if (params.containsKey('path')) {
+          galleryPath = Uri.decodeComponent(params['path'] ?? '');
+        }
+        if (params.containsKey('recursive')) {
+          final v = (params['recursive'] ?? '').toLowerCase();
+          if (v == 'false' || v == '0' || v == 'no') {
+            recursive = false;
+          } else if (v == 'true' || v == '1' || v == 'yes') {
+            recursive = true;
+          }
+        }
+      } catch (_) {
+        // Fallback to defaults if parsing fails
+      }
+    }
+
+    return VideoGalleryScreen(
+      path: galleryPath,
+      recursive: recursive,
+    );
+  }
+
+  static Widget _handleImageRoute(
+      BuildContext context, String path, String tabId, String cacheKey) {
+    String filePath = '';
+    final int qIndexImage = path.indexOf('?');
+    if (qIndexImage != -1 && qIndexImage < path.length - 1) {
+      final String query = path.substring(qIndexImage + 1);
+      try {
+        final params = Uri.splitQueryString(query);
+        if (params.containsKey('path')) {
+          filePath = UriUtils.safeDecodeComponent(params['path'] ?? '');
+        }
+      } catch (_) {
+        // Ignore parsing errors; will show error widget below
+      }
+    }
+    if (filePath.isEmpty) {
+      return _buildErrorWidget(context, 'Invalid image path',
+          cacheKey: cacheKey);
+    }
+    // Update tab name to image file name
+    final tabBloc = BlocProvider.of<TabManagerBloc>(context);
+    tabBloc.add(UpdateTabName(tabId, pathlib.basename(filePath)));
+    return ImageViewerScreen(file: File(filePath));
+  }
+
+  static Widget _handleTagRoute(
+      BuildContext context, String path, String tabId, String cacheKey) {
+    // Check if we already have a cached widget for this tab+path
+    if (_cachedWidgets.containsKey(cacheKey)) {
+      if (!_loggedKeys.contains(cacheKey)) {
+        _loggedKeys.add(cacheKey);
+      }
+      return _cachedWidgets[cacheKey]!;
+    }
+
+    final tag = path.substring(5); // Remove "#tag:" prefix
+
+    Widget tagSearchWidget = Builder(builder: (context) {
+      final tabBloc = BlocProvider.of<TabManagerBloc>(context);
+      tabBloc.add(UpdateTabName(tabId, '${context.tr.tagPrefix}: $tag'));
+
+      TagManager.clearCache();
+      _loggedKeys.add(cacheKey);
+
+      return BlocProvider(
+        create: (_) {
+          final bloc = FolderListBloc();
+          Future.delayed(const Duration(milliseconds: 500), () {
+            if (bloc.isClosed == false) {
+              bloc.add(SearchByTagGlobally(tag));
+            }
+          });
+          return bloc;
+        },
+        lazy: false,
+        child: TabbedFolderListScreen(
+          key: ValueKey('tag_search_$cacheKey'),
+          path: '',
+          tabId: tabId,
+          searchTag: tag,
+          globalTagSearch: true,
+        ),
+      );
+    });
+
+    _cachedWidgets[cacheKey] = tagSearchWidget;
+    return tagSearchWidget;
+  }
+
+  static Widget _handleSearchRoute(
+      BuildContext context, String path, String tabId, String cacheKey) {
+    if (_cachedWidgets.containsKey(cacheKey)) {
+      if (!_loggedKeys.contains(cacheKey)) {
+        _loggedKeys.add(cacheKey);
+      }
+      return _cachedWidgets[cacheKey]!;
+    }
+
+    final String raw = path.substring('#search?tag='.length);
+    final String tag = UriUtils.safeDecodeComponent(raw);
+
+    final widgetToCache = TabbedFolderListScreen(
+      key: ValueKey('tag_search_$cacheKey'),
+      path: '',
+      tabId: tabId,
+      searchTag: tag,
+      globalTagSearch: true,
+    );
+
+    _cachedWidgets[cacheKey] = widgetToCache;
+    _loggedKeys.add(cacheKey);
+    return widgetToCache;
   }
 
   /// Handles network paths (smb://, ftp://, etc.)

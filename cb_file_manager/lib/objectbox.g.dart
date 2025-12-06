@@ -16,6 +16,7 @@ import 'package:objectbox_flutter_libs/objectbox_flutter_libs.dart';
 
 import 'models/database/network_credentials.dart';
 import 'models/objectbox/album.dart';
+import 'models/objectbox/album_config.dart';
 import 'models/objectbox/album_file.dart';
 import 'models/objectbox/file_tag.dart';
 import 'models/objectbox/user_preference.dart';
@@ -289,6 +290,113 @@ final _entities = <obx_int.ModelEntity>[
     relations: <obx_int.ModelRelation>[],
     backlinks: <obx_int.ModelBacklink>[],
   ),
+  obx_int.ModelEntity(
+    id: const obx_int.IdUid(6, 8093577245119292471),
+    name: 'AlbumConfig',
+    lastPropertyId: const obx_int.IdUid(16, 7195634996299692075),
+    flags: 0,
+    properties: <obx_int.ModelProperty>[
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(1, 5205840095978072328),
+        name: 'id',
+        type: 6,
+        flags: 1,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(2, 277614084488294581),
+        name: 'albumId',
+        type: 6,
+        flags: 8,
+        indexId: const obx_int.IdUid(7, 8272886834281330939),
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(3, 7382013429497652143),
+        name: 'includeSubdirectories',
+        type: 1,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(4, 2811044461506168831),
+        name: 'fileExtensions',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(5, 6963933363374269828),
+        name: 'autoRefresh',
+        type: 1,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(6, 4228363794854707608),
+        name: 'maxFileCount',
+        type: 6,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(7, 3704849086469515431),
+        name: 'sortBy',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(8, 8958123274497082350),
+        name: 'sortAscending',
+        type: 1,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(9, 4485916255625962833),
+        name: 'excludePatterns',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(10, 5478363898327082683),
+        name: 'enableAutoRules',
+        type: 1,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(11, 7198277050346662436),
+        name: 'directories',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(12, 5498721553129892912),
+        name: 'lastScanTime',
+        type: 10,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(13, 3911821814749156053),
+        name: 'fileCount',
+        type: 6,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(14, 6413934631075641102),
+        name: 'fileExtensionsList',
+        type: 30,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(15, 4576915792095916095),
+        name: 'excludePatternsList',
+        type: 30,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(16, 7195634996299692075),
+        name: 'directoriesList',
+        type: 30,
+        flags: 0,
+      ),
+    ],
+    relations: <obx_int.ModelRelation>[],
+    backlinks: <obx_int.ModelBacklink>[],
+  ),
 ];
 
 /// Shortcut for [obx.Store.new] that passes [getObjectBoxModel] and for Flutter
@@ -329,8 +437,8 @@ Future<obx.Store> openStore({
 obx_int.ModelDefinition getObjectBoxModel() {
   final model = obx_int.ModelInfo(
     entities: _entities,
-    lastEntityId: const obx_int.IdUid(5, 1325907199832929183),
-    lastIndexId: const obx_int.IdUid(6, 1453680630834694226),
+    lastEntityId: const obx_int.IdUid(6, 8093577245119292471),
+    lastIndexId: const obx_int.IdUid(7, 8272886834281330939),
     lastRelationId: const obx_int.IdUid(0, 0),
     lastSequenceId: const obx_int.IdUid(0, 0),
     retiredEntityUids: const [],
@@ -669,6 +777,149 @@ obx_int.ModelDefinition getObjectBoxModel() {
         return object;
       },
     ),
+    AlbumConfig: obx_int.EntityDefinition<AlbumConfig>(
+      model: _entities[5],
+      toOneRelations: (AlbumConfig object) => [],
+      toManyRelations: (AlbumConfig object) => {},
+      getId: (AlbumConfig object) => object.id,
+      setId: (AlbumConfig object, int id) {
+        object.id = id;
+      },
+      objectToFB: (AlbumConfig object, fb.Builder fbb) {
+        final fileExtensionsOffset = fbb.writeString(object.fileExtensions);
+        final sortByOffset = fbb.writeString(object.sortBy);
+        final excludePatternsOffset = fbb.writeString(object.excludePatterns);
+        final directoriesOffset = fbb.writeString(object.directories);
+        final fileExtensionsListOffset = fbb.writeList(
+          object.fileExtensionsList
+              .map(fbb.writeString)
+              .toList(growable: false),
+        );
+        final excludePatternsListOffset = fbb.writeList(
+          object.excludePatternsList
+              .map(fbb.writeString)
+              .toList(growable: false),
+        );
+        final directoriesListOffset = fbb.writeList(
+          object.directoriesList.map(fbb.writeString).toList(growable: false),
+        );
+        fbb.startTable(17);
+        fbb.addInt64(0, object.id);
+        fbb.addInt64(1, object.albumId);
+        fbb.addBool(2, object.includeSubdirectories);
+        fbb.addOffset(3, fileExtensionsOffset);
+        fbb.addBool(4, object.autoRefresh);
+        fbb.addInt64(5, object.maxFileCount);
+        fbb.addOffset(6, sortByOffset);
+        fbb.addBool(7, object.sortAscending);
+        fbb.addOffset(8, excludePatternsOffset);
+        fbb.addBool(9, object.enableAutoRules);
+        fbb.addOffset(10, directoriesOffset);
+        fbb.addInt64(11, object.lastScanTime?.millisecondsSinceEpoch);
+        fbb.addInt64(12, object.fileCount);
+        fbb.addOffset(13, fileExtensionsListOffset);
+        fbb.addOffset(14, excludePatternsListOffset);
+        fbb.addOffset(15, directoriesListOffset);
+        fbb.finish(fbb.endTable());
+        return object.id;
+      },
+      objectFromFB: (obx.Store store, ByteData fbData) {
+        final buffer = fb.BufferContext(fbData);
+        final rootOffset = buffer.derefObject(0);
+        final lastScanTimeValue = const fb.Int64Reader().vTableGetNullable(
+          buffer,
+          rootOffset,
+          26,
+        );
+        final albumIdParam = const fb.Int64Reader().vTableGet(
+          buffer,
+          rootOffset,
+          6,
+          0,
+        );
+        final includeSubdirectoriesParam = const fb.BoolReader().vTableGet(
+          buffer,
+          rootOffset,
+          8,
+          false,
+        );
+        final fileExtensionsParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 10, '');
+        final autoRefreshParam = const fb.BoolReader().vTableGet(
+          buffer,
+          rootOffset,
+          12,
+          false,
+        );
+        final maxFileCountParam = const fb.Int64Reader().vTableGet(
+          buffer,
+          rootOffset,
+          14,
+          0,
+        );
+        final sortByParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 16, '');
+        final sortAscendingParam = const fb.BoolReader().vTableGet(
+          buffer,
+          rootOffset,
+          18,
+          false,
+        );
+        final excludePatternsParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 20, '');
+        final enableAutoRulesParam = const fb.BoolReader().vTableGet(
+          buffer,
+          rootOffset,
+          22,
+          false,
+        );
+        final directoriesParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 24, '');
+        final lastScanTimeParam = lastScanTimeValue == null
+            ? null
+            : DateTime.fromMillisecondsSinceEpoch(lastScanTimeValue);
+        final fileCountParam = const fb.Int64Reader().vTableGet(
+          buffer,
+          rootOffset,
+          28,
+          0,
+        );
+        final object =
+            AlbumConfig(
+                albumId: albumIdParam,
+                includeSubdirectories: includeSubdirectoriesParam,
+                fileExtensions: fileExtensionsParam,
+                autoRefresh: autoRefreshParam,
+                maxFileCount: maxFileCountParam,
+                sortBy: sortByParam,
+                sortAscending: sortAscendingParam,
+                excludePatterns: excludePatternsParam,
+                enableAutoRules: enableAutoRulesParam,
+                directories: directoriesParam,
+                lastScanTime: lastScanTimeParam,
+                fileCount: fileCountParam,
+              )
+              ..id = const fb.Int64Reader().vTableGet(buffer, rootOffset, 4, 0)
+              ..fileExtensionsList = const fb.ListReader<String>(
+                fb.StringReader(asciiOptimization: true),
+                lazy: false,
+              ).vTableGet(buffer, rootOffset, 30, [])
+              ..excludePatternsList = const fb.ListReader<String>(
+                fb.StringReader(asciiOptimization: true),
+                lazy: false,
+              ).vTableGet(buffer, rootOffset, 32, [])
+              ..directoriesList = const fb.ListReader<String>(
+                fb.StringReader(asciiOptimization: true),
+                lazy: false,
+              ).vTableGet(buffer, rootOffset, 34, []);
+
+        return object;
+      },
+    ),
   };
 
   return obx_int.ModelDefinition(model, bindings);
@@ -859,5 +1110,88 @@ class UserPreference_ {
   /// See [UserPreference.timestamp].
   static final timestamp = obx.QueryIntegerProperty<UserPreference>(
     _entities[4].properties[7],
+  );
+}
+
+/// [AlbumConfig] entity fields to define ObjectBox queries.
+class AlbumConfig_ {
+  /// See [AlbumConfig.id].
+  static final id = obx.QueryIntegerProperty<AlbumConfig>(
+    _entities[5].properties[0],
+  );
+
+  /// See [AlbumConfig.albumId].
+  static final albumId = obx.QueryIntegerProperty<AlbumConfig>(
+    _entities[5].properties[1],
+  );
+
+  /// See [AlbumConfig.includeSubdirectories].
+  static final includeSubdirectories = obx.QueryBooleanProperty<AlbumConfig>(
+    _entities[5].properties[2],
+  );
+
+  /// See [AlbumConfig.fileExtensions].
+  static final fileExtensions = obx.QueryStringProperty<AlbumConfig>(
+    _entities[5].properties[3],
+  );
+
+  /// See [AlbumConfig.autoRefresh].
+  static final autoRefresh = obx.QueryBooleanProperty<AlbumConfig>(
+    _entities[5].properties[4],
+  );
+
+  /// See [AlbumConfig.maxFileCount].
+  static final maxFileCount = obx.QueryIntegerProperty<AlbumConfig>(
+    _entities[5].properties[5],
+  );
+
+  /// See [AlbumConfig.sortBy].
+  static final sortBy = obx.QueryStringProperty<AlbumConfig>(
+    _entities[5].properties[6],
+  );
+
+  /// See [AlbumConfig.sortAscending].
+  static final sortAscending = obx.QueryBooleanProperty<AlbumConfig>(
+    _entities[5].properties[7],
+  );
+
+  /// See [AlbumConfig.excludePatterns].
+  static final excludePatterns = obx.QueryStringProperty<AlbumConfig>(
+    _entities[5].properties[8],
+  );
+
+  /// See [AlbumConfig.enableAutoRules].
+  static final enableAutoRules = obx.QueryBooleanProperty<AlbumConfig>(
+    _entities[5].properties[9],
+  );
+
+  /// See [AlbumConfig.directories].
+  static final directories = obx.QueryStringProperty<AlbumConfig>(
+    _entities[5].properties[10],
+  );
+
+  /// See [AlbumConfig.lastScanTime].
+  static final lastScanTime = obx.QueryDateProperty<AlbumConfig>(
+    _entities[5].properties[11],
+  );
+
+  /// See [AlbumConfig.fileCount].
+  static final fileCount = obx.QueryIntegerProperty<AlbumConfig>(
+    _entities[5].properties[12],
+  );
+
+  /// See [AlbumConfig.fileExtensionsList].
+  static final fileExtensionsList = obx.QueryStringVectorProperty<AlbumConfig>(
+    _entities[5].properties[13],
+  );
+
+  /// See [AlbumConfig.excludePatternsList].
+  static final excludePatternsList = obx.QueryStringVectorProperty<AlbumConfig>(
+    _entities[5].properties[14],
+  );
+
+  /// See [AlbumConfig.directoriesList].
+  static final directoriesList = obx.QueryStringVectorProperty<AlbumConfig>(
+    _entities[5].properties[15],
   );
 }

@@ -16,6 +16,7 @@ import '../../../services/network_browsing/webdav_service.dart';
 import '../../../helpers/network/streaming_helper.dart';
 import '../../../services/network_browsing/ftp_service.dart';
 import 'package:file_picker/file_picker.dart';
+import '../../../config/languages/app_localizations.dart';
 
 /// A shared context menu for files
 ///
@@ -158,7 +159,7 @@ class SharedFileContextMenu extends StatelessWidget {
             leading:
                 const Icon(remix.Remix.play_circle_line, color: Colors.red),
             title: Text(
-              'Play Video',
+              AppLocalizations.of(context)!.playVideo,
               style:
                   TextStyle(color: isDarkMode ? Colors.white : Colors.black87),
             ),
@@ -177,7 +178,7 @@ class SharedFileContextMenu extends StatelessWidget {
           ListTile(
             leading: const Icon(remix.Remix.image_line, color: Colors.blue),
             title: Text(
-              'View Image',
+              AppLocalizations.of(context)!.viewImage,
               style:
                   TextStyle(color: isDarkMode ? Colors.white : Colors.black87),
             ),
@@ -195,7 +196,7 @@ class SharedFileContextMenu extends StatelessWidget {
         ListTile(
           leading: const Icon(remix.Remix.eye_line),
           title: Text(
-            'Open File',
+            AppLocalizations.of(context)!.openFile,
             style: TextStyle(color: isDarkMode ? Colors.white : Colors.black87),
           ),
           onTap: () {
@@ -206,10 +207,10 @@ class SharedFileContextMenu extends StatelessWidget {
 
         ListTile(
           leading: const Icon(remix.Remix.external_link_line),
-          title: Text(
-            'Open With...',
-            style: TextStyle(color: isDarkMode ? Colors.white : Colors.black87),
-          ),
+            title: Text(
+              AppLocalizations.of(context)!.openWith,
+              style: TextStyle(color: isDarkMode ? Colors.white : Colors.black87),
+            ),
           onTap: () {
             Navigator.pop(context);
             showDialog(
@@ -224,7 +225,7 @@ class SharedFileContextMenu extends StatelessWidget {
           ListTile(
             leading: Icon(remix.Remix.download_line, color: Colors.blue),
             title: Text(
-              'Download',
+              AppLocalizations.of(context)!.download,
               style:
                   TextStyle(color: isDarkMode ? Colors.white : Colors.black87),
             ),
@@ -241,14 +242,14 @@ class SharedFileContextMenu extends StatelessWidget {
                     .downloadFile(file.path, saveLocation);
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Downloaded to $saveLocation')),
+                    SnackBar(content: Text(AppLocalizations.of(context)!.downloadedTo(saveLocation))),
                   );
                 }
               } catch (e) {
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                        content: Text('Download failed: $e'),
+                        content: Text(AppLocalizations.of(context)!.downloadFailed(e.toString())),
                         backgroundColor: Colors.red),
                   );
                 }
@@ -260,7 +261,7 @@ class SharedFileContextMenu extends StatelessWidget {
         ListTile(
           leading: const Icon(remix.Remix.file_copy_line),
           title: Text(
-            'Copy',
+            AppLocalizations.of(context)!.copy,
             style: TextStyle(color: isDarkMode ? Colors.white : Colors.black87),
           ),
           onTap: () {
@@ -269,7 +270,7 @@ class SharedFileContextMenu extends StatelessWidget {
             context.read<FolderListBloc>().add(CopyFile(file));
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                  content: Text('Copied "${_basename(file)}" to clipboard')),
+                  content: Text(AppLocalizations.of(context)!.copiedToClipboard(_basename(file)))),
             );
           },
         ),
@@ -278,7 +279,7 @@ class SharedFileContextMenu extends StatelessWidget {
         ListTile(
           leading: Icon(remix.Remix.scissors_cut_line),
           title: Text(
-            'Cut',
+            AppLocalizations.of(context)!.cut,
             style: TextStyle(color: isDarkMode ? Colors.white : Colors.black87),
           ),
           onTap: () {
@@ -286,7 +287,7 @@ class SharedFileContextMenu extends StatelessWidget {
             // Dispatch cut event to the bloc
             context.read<FolderListBloc>().add(CutFile(file));
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Cut "${_basename(file)}" to clipboard')),
+              SnackBar(content: Text(AppLocalizations.of(context)!.cutToClipboard(_basename(file)))),
             );
           },
         ),
@@ -295,7 +296,7 @@ class SharedFileContextMenu extends StatelessWidget {
         ListTile(
           leading: const Icon(remix.Remix.edit_line),
           title: Text(
-            'Rename',
+            AppLocalizations.of(context)!.rename,
             style: TextStyle(color: isDarkMode ? Colors.white : Colors.black87),
           ),
           onTap: () {
@@ -308,7 +309,7 @@ class SharedFileContextMenu extends StatelessWidget {
         ListTile(
           leading: const Icon(remix.Remix.bookmark_line, color: Colors.green),
           title: Text(
-            'Manage Tags',
+            AppLocalizations.of(context)!.manageTags,
             style: TextStyle(color: isDarkMode ? Colors.white : Colors.black87),
           ),
           onTap: () {
@@ -325,7 +326,7 @@ class SharedFileContextMenu extends StatelessWidget {
         ListTile(
           leading: const Icon(remix.Remix.information_line),
           title: Text(
-            'Properties',
+            AppLocalizations.of(context)!.properties,
             style: TextStyle(color: isDarkMode ? Colors.white : Colors.black87),
           ),
           onTap: () {
@@ -342,9 +343,9 @@ class SharedFileContextMenu extends StatelessWidget {
         // Move to trash
         ListTile(
           leading: const Icon(remix.Remix.delete_bin_2_line, color: Colors.red),
-          title: const Text(
-            'Move to Trash',
-            style: TextStyle(color: Colors.red),
+          title: Text(
+            AppLocalizations.of(context)!.moveToTrash,
+            style: const TextStyle(color: Colors.red),
           ),
           onTap: () {
             Navigator.pop(context);
@@ -366,7 +367,7 @@ class SharedFileContextMenu extends StatelessWidget {
   void _showRenameDialog(BuildContext context) {
     final TextEditingController nameController = TextEditingController();
     final String fileName = _basename(file);
-    final String extension = pathlib.extension(file.path);
+            final String extension = pathlib.extension(file.path);
     final String fileNameWithoutExt =
         pathlib.basenameWithoutExtension(file.path);
 
@@ -380,17 +381,17 @@ class SharedFileContextMenu extends StatelessWidget {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Rename File'),
+        title: Text(AppLocalizations.of(context)!.renameFileTitle),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('Current name: $fileName'),
+            Text(AppLocalizations.of(context)!.currentNameLabel(fileName)),
             const SizedBox(height: 16),
             TextField(
               controller: nameController,
-              decoration: const InputDecoration(
-                labelText: 'New name',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: AppLocalizations.of(context)!.newNameLabel,
+                border: const OutlineInputBorder(),
               ),
               autofocus: true,
             ),
@@ -399,7 +400,7 @@ class SharedFileContextMenu extends StatelessWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('CANCEL'),
+            child: Text(AppLocalizations.of(context)!.cancel.toUpperCase()),
           ),
           TextButton(
             onPressed: () {
@@ -415,12 +416,12 @@ class SharedFileContextMenu extends StatelessWidget {
                   );
               Navigator.pop(context);
 
-              // Show confirmation
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Renamed file to "$newName"')),
-              );
+                     // Show confirmation
+                     ScaffoldMessenger.of(context).showSnackBar(
+                       SnackBar(content: Text(AppLocalizations.of(context)!.renamedFileTo(newName))),
+                     );
             },
-            child: const Text('RENAME'),
+            child: Text(AppLocalizations.of(context)!.rename.toUpperCase()),
           ),
         ],
       ),
@@ -432,22 +433,21 @@ class SharedFileContextMenu extends StatelessWidget {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Move to Trash?'),
-        content: Text(
-            'Are you sure you want to move "${_basename(file)}" to trash?'),
+        title: Text(AppLocalizations.of(context)!.moveItemsToTrashConfirmation(1, AppLocalizations.of(context)!.file)),
+        content: Text(AppLocalizations.of(context)!.moveToTrashConfirmMessage(_basename(file))),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('CANCEL'),
+            child: Text(AppLocalizations.of(context)!.cancel.toUpperCase()),
           ),
           TextButton(
             onPressed: () {
               Navigator.pop(context);
               _moveToTrash(context);
             },
-            child: const Text(
-              'MOVE TO TRASH',
-              style: TextStyle(color: Colors.red),
+            child: Text(
+              AppLocalizations.of(context)!.moveToTrash.toUpperCase(),
+              style: const TextStyle(color: Colors.red),
             ),
           ),
         ],
@@ -463,9 +463,9 @@ class SharedFileContextMenu extends StatelessWidget {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('${_basename(file)} moved to trash'),
+            content: Text(AppLocalizations.of(context)!.movedToTrash(_basename(file))),
             action: SnackBarAction(
-              label: 'UNDO',
+              label: AppLocalizations.of(context)!.undo.toUpperCase(),
               onPressed: () async {
                 await trashManager.restoreFromTrash(file.path);
               },
@@ -476,7 +476,7 @@ class SharedFileContextMenu extends StatelessWidget {
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
+          SnackBar(content: Text(AppLocalizations.of(context)!.errorWithMessage(e.toString()))),
         );
       }
     }
@@ -549,9 +549,9 @@ class SharedFolderContextMenu extends StatelessWidget {
           leading: Icon(remix.Remix.folder_open_line,
               color: isDarkMode ? Colors.white70 : Colors.black87),
           title: Text(
-            'Open Folder',
-            style: TextStyle(color: isDarkMode ? Colors.white : Colors.black87),
-          ),
+              AppLocalizations.of(context)!.openFolder,
+              style: TextStyle(color: isDarkMode ? Colors.white : Colors.black87),
+            ),
           onTap: () {
             Navigator.pop(context);
             if (onNavigate != null) {
@@ -571,7 +571,7 @@ class SharedFolderContextMenu extends StatelessWidget {
           leading: Icon(remix.Remix.file_copy_line,
               color: isDarkMode ? Colors.white70 : Colors.black87),
           title: Text(
-            'Copy',
+            AppLocalizations.of(context)!.copy,
             style: TextStyle(color: isDarkMode ? Colors.white : Colors.black87),
           ),
           onTap: () {
@@ -580,7 +580,7 @@ class SharedFolderContextMenu extends StatelessWidget {
             context.read<FolderListBloc>().add(CopyFile(folder));
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                  content: Text('Copied "${_basename(folder)}" to clipboard')),
+                  content: Text(AppLocalizations.of(context)!.copiedToClipboard(_basename(folder)))),
             );
           },
         ),
@@ -590,7 +590,7 @@ class SharedFolderContextMenu extends StatelessWidget {
           leading: Icon(remix.Remix.scissors_cut_line,
               color: isDarkMode ? Colors.white70 : Colors.black87),
           title: Text(
-            'Cut',
+            AppLocalizations.of(context)!.cut,
             style: TextStyle(color: isDarkMode ? Colors.white : Colors.black87),
           ),
           onTap: () {
@@ -599,7 +599,7 @@ class SharedFolderContextMenu extends StatelessWidget {
             context.read<FolderListBloc>().add(CutFile(folder));
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                  content: Text('Cut "${_basename(folder)}" to clipboard')),
+                  content: Text(AppLocalizations.of(context)!.cutToClipboard(_basename(folder)))),
             );
           },
         ),
@@ -609,7 +609,7 @@ class SharedFolderContextMenu extends StatelessWidget {
           leading: Icon(remix.Remix.clipboard_line,
               color: isDarkMode ? Colors.white70 : Colors.black87),
           title: Text(
-            'Paste Here',
+            AppLocalizations.of(context)!.pasteHere,
             style: TextStyle(color: isDarkMode ? Colors.white : Colors.black87),
           ),
           onTap: () {
@@ -617,7 +617,7 @@ class SharedFolderContextMenu extends StatelessWidget {
             // Dispatch paste event to the bloc
             context.read<FolderListBloc>().add(PasteFile(folder.path));
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Pasting...')),
+              SnackBar(content: Text(AppLocalizations.of(context)!.pasting)),
             );
           },
         ),
@@ -627,7 +627,7 @@ class SharedFolderContextMenu extends StatelessWidget {
           leading: Icon(remix.Remix.edit_line,
               color: isDarkMode ? Colors.white70 : Colors.black87),
           title: Text(
-            'Rename',
+            AppLocalizations.of(context)!.rename,
             style: TextStyle(color: isDarkMode ? Colors.white : Colors.black87),
           ),
           onTap: () {
@@ -639,8 +639,8 @@ class SharedFolderContextMenu extends StatelessWidget {
         // Tag management option
         ListTile(
           leading: Icon(remix.Remix.bookmark_line, color: Colors.green),
-          title: Text(
-            'Manage Tags',
+            title: Text(
+            AppLocalizations.of(context)!.manageTags,
             style: TextStyle(color: isDarkMode ? Colors.white : Colors.black87),
           ),
           onTap: () {
@@ -654,7 +654,7 @@ class SharedFolderContextMenu extends StatelessWidget {
           leading: Icon(remix.Remix.information_line,
               color: isDarkMode ? Colors.white70 : Colors.black87),
           title: Text(
-            'Properties',
+            AppLocalizations.of(context)!.properties,
             style: TextStyle(color: isDarkMode ? Colors.white : Colors.black87),
           ),
           onTap: () {
@@ -681,11 +681,11 @@ class SharedFolderContextMenu extends StatelessWidget {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Rename Folder'),
+        title: Text(AppLocalizations.of(context)!.renameFolderTitle),
         content: TextField(
           controller: controller,
-          decoration: const InputDecoration(
-            labelText: 'New Name',
+          decoration: InputDecoration(
+            labelText: AppLocalizations.of(context)!.newNameLabel,
             border: OutlineInputBorder(),
           ),
           autofocus: true,
@@ -693,7 +693,7 @@ class SharedFolderContextMenu extends StatelessWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('CANCEL'),
+            child: Text(AppLocalizations.of(context)!.cancel.toUpperCase()),
           ),
           TextButton(
             onPressed: () {
@@ -704,13 +704,13 @@ class SharedFolderContextMenu extends StatelessWidget {
                     .add(RenameFileOrFolder(folder, newName));
                 Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Renamed folder to "$newName"')),
+                  SnackBar(content: Text(AppLocalizations.of(context)!.renamedFolderTo(newName))),
                 );
               } else {
                 Navigator.pop(context);
               }
             },
-            child: const Text('RENAME'),
+            child: Text(AppLocalizations.of(context)!.rename.toUpperCase()),
           ),
         ],
       ),
@@ -731,20 +731,20 @@ class SharedFolderContextMenu extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                _infoRow('Name', _basename(folder)),
+                _infoRow(AppLocalizations.of(context)!.fileName, _basename(folder)),
                 const Divider(),
-                _infoRow('Path', folder.path),
+                _infoRow(AppLocalizations.of(context)!.filePath, folder.path),
                 const Divider(),
-                _infoRow('Modified', stat.modified.toString().split('.')[0]),
+                _infoRow(AppLocalizations.of(context)!.fileModified, stat.modified.toString().split('.')[0]),
                 const Divider(),
-                _infoRow('Accessed', stat.accessed.toString().split('.')[0]),
+                _infoRow(AppLocalizations.of(context)!.fileAccessed, stat.accessed.toString().split('.')[0]),
               ],
             ),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('CLOSE'),
+              child: Text(AppLocalizations.of(context)!.close.toUpperCase()),
             ),
           ],
         ),
@@ -752,7 +752,7 @@ class SharedFolderContextMenu extends StatelessWidget {
     }).catchError((error) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error getting folder properties: $error')),
+        SnackBar(content: Text(AppLocalizations.of(context)!.errorGettingFolderProperties(error.toString()))),
       );
     });
   }
@@ -803,23 +803,237 @@ void showFileContextMenu({
   required bool isVideo,
   required bool isImage,
   Function(BuildContext, String)? showAddTagToFileDialog,
+  required Offset globalPosition,
 }) {
-  final isDarkMode = Theme.of(context).brightness == Brightness.dark;
-
-  showModalBottomSheet(
+  // Always show positioned menu at cursor/tap location
+  _showFileContextMenuDesktop(
     context: context,
-    backgroundColor: isDarkMode ? Colors.grey[900] : Colors.white,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-    ),
-    builder: (context) => SharedFileContextMenu(
-      file: file,
-      fileTags: fileTags,
-      isVideo: isVideo,
-      isImage: isImage,
-      showAddTagToFileDialog: showAddTagToFileDialog,
+    globalPosition: globalPosition,
+    file: file,
+    fileTags: fileTags,
+    isVideo: isVideo,
+    isImage: isImage,
+    showAddTagToFileDialog: showAddTagToFileDialog,
+  );
+}
+
+void _showFileContextMenuDesktop({
+  required BuildContext context,
+  required Offset globalPosition,
+  required File file,
+  required List<String> fileTags,
+  required bool isVideo,
+  required bool isImage,
+  Function(BuildContext, String)? showAddTagToFileDialog,
+}) {
+  final overlay = Overlay.of(context).context.findRenderObject() as RenderBox?;
+  if (overlay == null) return;
+
+  final RelativeRect position = RelativeRect.fromRect(
+    Rect.fromPoints(globalPosition, globalPosition),
+    Offset.zero & overlay.size,
+  );
+
+  showMenu<String>(
+    context: context,
+    position: position,
+    items: [
+      if (isVideo)
+        PopupMenuItem(
+          value: 'play_video',
+          child: _menuRow(AppLocalizations.of(context)!.playVideo, remix.Remix.play_circle_line),
+        ),
+      if (isImage)
+        PopupMenuItem(
+          value: 'view_image',
+          child: _menuRow(AppLocalizations.of(context)!.viewImage, remix.Remix.image_line),
+        ),
+      PopupMenuItem(
+        value: 'open',
+        child: _menuRow(AppLocalizations.of(context)!.open, remix.Remix.file_3_line),
+      ),
+      PopupMenuItem(
+        value: 'open_with',
+        child: _menuRow(AppLocalizations.of(context)!.openWith, remix.Remix.external_link_line),
+      ),
+      const PopupMenuDivider(),
+      PopupMenuItem(
+        value: 'copy',
+        child: _menuRow(AppLocalizations.of(context)!.copy, remix.Remix.file_copy_line),
+      ),
+      PopupMenuItem(
+        value: 'cut',
+        child: _menuRow(AppLocalizations.of(context)!.cut, remix.Remix.scissors_cut_line),
+      ),
+      PopupMenuItem(
+        value: 'rename',
+        child: _menuRow(AppLocalizations.of(context)!.rename, remix.Remix.edit_line),
+      ),
+      PopupMenuItem(
+        value: 'tags',
+        child: _menuRow(AppLocalizations.of(context)!.manageTags, remix.Remix.bookmark_line),
+      ),
+      const PopupMenuDivider(),
+      PopupMenuItem(
+        value: 'properties',
+        child: _menuRow(AppLocalizations.of(context)!.properties, remix.Remix.information_line),
+      ),
+      PopupMenuItem(
+        value: 'delete',
+        child: _menuRow(AppLocalizations.of(context)!.moveToTrash, remix.Remix.delete_bin_2_line,
+        color: Colors.red),
+      ),
+    ],
+  ).then((value) async {
+    if (value == null) return;
+    switch (value) {
+      case 'play_video':
+        Navigator.of(context, rootNavigator: true).push(
+          MaterialPageRoute(
+            fullscreenDialog: true,
+            builder: (context) => VideoPlayerFullScreen(file: file),
+          ),
+        );
+        break;
+      case 'view_image':
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+              builder: (context) => ImageViewerScreen(file: file)),
+        );
+        break;
+      case 'open':
+        ExternalAppHelper.openFileWithApp(file.path, 'shell_open');
+        break;
+      case 'open_with':
+        showDialog(
+          context: context,
+          builder: (context) => OpenWithDialog(filePath: file.path),
+        );
+        break;
+      case 'copy':
+        context.read<FolderListBloc>().add(CopyFile(file));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(AppLocalizations.of(context)!.copiedToClipboard(_fileBaseName(file)))),
+        );
+        break;
+      case 'cut':
+        context.read<FolderListBloc>().add(CutFile(file));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(AppLocalizations.of(context)!.cutToClipboard(_fileBaseName(file)))),
+        );
+        break;
+      case 'rename':
+        _showRenameDialogStandalone(context, file);
+        break;
+      case 'tags':
+        if (showAddTagToFileDialog != null) {
+          showAddTagToFileDialog(context, file.path);
+        } else {
+          tag_dialogs.showAddTagToFileDialog(context, file.path);
+        }
+        break;
+      case 'properties':
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+              builder: (context) => FileDetailsScreen(file: file)),
+        );
+        break;
+      case 'delete':
+        _moveToTrashStandalone(context, file);
+        break;
+    }
+  });
+}
+
+Widget _menuRow(String title, IconData icon, {Color? color}) {
+  return Row(
+    children: [
+      Icon(icon, size: 18, color: color),
+      const SizedBox(width: 8),
+      Text(title, style: TextStyle(color: color)),
+    ],
+  );
+}
+
+void _showRenameDialogStandalone(BuildContext context, File file) {
+  final TextEditingController nameController = TextEditingController();
+  final String fileName = _fileBaseName(file);
+  final String extension = pathlib.extension(file.path);
+  final String fileNameWithoutExt = pathlib.basenameWithoutExtension(file.path);
+
+  nameController.text = fileNameWithoutExt;
+  nameController.selection =
+      TextSelection(baseOffset: 0, extentOffset: fileNameWithoutExt.length);
+
+  showDialog(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text(AppLocalizations.of(context)!.renameFileTitle),
+      content: TextField(
+        controller: nameController,
+        decoration: InputDecoration(
+          labelText: AppLocalizations.of(context)!.newNameLabel,
+          border: OutlineInputBorder(),
+        ),
+        autofocus: true,
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text(AppLocalizations.of(context)!.cancel.toUpperCase()),
+        ),
+        TextButton(
+          onPressed: () {
+            final String newName = nameController.text.trim() + extension;
+            if (newName.isEmpty || newName == fileName) {
+              Navigator.pop(context);
+              return;
+            }
+            context
+                .read<FolderListBloc>()
+                .add(RenameFileOrFolder(file, newName));
+            Navigator.pop(context);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Renamed to \"$newName\"')),
+            );
+          },
+          child: const Text('RENAME'),
+        ),
+      ],
     ),
   );
+}
+
+Future<void> _moveToTrashStandalone(BuildContext context, File file) async {
+  final trashManager = TrashManager();
+  try {
+    await trashManager.moveToTrash(file.path);
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${_fileBaseName(file)} moved to trash'),
+          action: SnackBarAction(
+            label: 'UNDO',
+            onPressed: () async {
+              await trashManager.restoreFromTrash(file.path);
+            },
+          ),
+        ),
+      );
+    }
+  } catch (e) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.redAccent),
+      );
+    }
+  }
+}
+
+String _fileBaseName(File file) {
+  return file.path.split(Platform.pathSeparator).last;
 }
 
 /// Helper function to show folder context menu
@@ -829,20 +1043,220 @@ void showFolderContextMenu({
   Function(String)? onNavigate,
   List<String> folderTags = const [],
   Function(BuildContext, String)? showAddTagToFileDialog,
+  Offset? globalPosition, // Optional position for context menu
 }) {
-  final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+  // Always use popup menu at the provided position, or center of screen if not provided
+  final screenSize = MediaQuery.of(context).size;
+  final effectivePosition = globalPosition ?? 
+      Offset(screenSize.width / 2, screenSize.height / 2);
 
-  showModalBottomSheet(
+  _showFolderContextMenuDesktop(
     context: context,
-    backgroundColor: isDarkMode ? Colors.grey[850] : Colors.white,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+    globalPosition: effectivePosition,
+    folder: folder,
+    onNavigate: onNavigate,
+    folderTags: folderTags,
+    showAddTagToFileDialog: showAddTagToFileDialog,
+  );
+}
+
+/// Desktop folder context menu using popup menu at cursor position
+void _showFolderContextMenuDesktop({
+  required BuildContext context,
+  required Offset globalPosition,
+  required Directory folder,
+  Function(String)? onNavigate,
+  List<String> folderTags = const [],
+  Function(BuildContext, String)? showAddTagToFileDialog,
+}) {
+  final overlay = Overlay.of(context).context.findRenderObject() as RenderBox?;
+  if (overlay == null) return;
+
+  final RelativeRect position = RelativeRect.fromRect(
+    Rect.fromPoints(globalPosition, globalPosition),
+    Offset.zero & overlay.size,
+  );
+
+  final folderName = folder.path.split(Platform.pathSeparator).last;
+  final l10n = AppLocalizations.of(context)!;
+
+  showMenu<String>(
+    context: context,
+    position: position,
+    items: [
+      PopupMenuItem(
+        value: 'open',
+        child: _menuRow(l10n.openFolder, remix.Remix.folder_open_line),
+      ),
+      const PopupMenuDivider(),
+      PopupMenuItem(
+        value: 'copy',
+        child: _menuRow(l10n.copy, remix.Remix.file_copy_line),
+      ),
+      PopupMenuItem(
+        value: 'cut',
+        child: _menuRow(l10n.cut, remix.Remix.scissors_cut_line),
+      ),
+      PopupMenuItem(
+        value: 'paste',
+        child: _menuRow(l10n.pasteHere, remix.Remix.clipboard_line),
+      ),
+      PopupMenuItem(
+        value: 'rename',
+        child: _menuRow(l10n.rename, remix.Remix.edit_line),
+      ),
+      PopupMenuItem(
+        value: 'tags',
+        child: _menuRow(l10n.manageTags, remix.Remix.bookmark_line),
+      ),
+      const PopupMenuDivider(),
+      PopupMenuItem(
+        value: 'properties',
+        child: _menuRow(l10n.properties, remix.Remix.information_line),
+      ),
+    ],
+  ).then((value) {
+    if (value == null) return;
+    switch (value) {
+      case 'open':
+        if (onNavigate != null) {
+          onNavigate(folder.path);
+        }
+        break;
+      case 'copy':
+        context.read<FolderListBloc>().add(CopyFile(folder));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Copied "$folderName"')),
+        );
+        break;
+      case 'cut':
+        context.read<FolderListBloc>().add(CutFile(folder));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Cut "$folderName"')),
+        );
+        break;
+      case 'paste':
+        context.read<FolderListBloc>().add(PasteFile(folder.path));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Pasting...')),
+        );
+        break;
+      case 'rename':
+        _showRenameFolderDialogStandalone(context, folder);
+        break;
+      case 'tags':
+        if (showAddTagToFileDialog != null) {
+          showAddTagToFileDialog(context, folder.path);
+        } else {
+          tag_dialogs.showAddTagToFileDialog(context, folder.path);
+        }
+        break;
+      case 'properties':
+        _showFolderPropertiesDialog(context, folder);
+        break;
+    }
+  });
+}
+
+void _showRenameFolderDialogStandalone(BuildContext context, Directory folder) {
+  final folderName = folder.path.split(Platform.pathSeparator).last;
+  final TextEditingController controller = TextEditingController(text: folderName);
+  final l10n = AppLocalizations.of(context)!;
+
+  showDialog(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text(l10n.renameFolderTitle),
+      content: TextField(
+        controller: controller,
+        decoration: InputDecoration(
+          labelText: l10n.newNameLabel,
+          border: const OutlineInputBorder(),
+        ),
+        autofocus: true,
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text(l10n.cancel.toUpperCase()),
+        ),
+        TextButton(
+          onPressed: () {
+            final newName = controller.text.trim();
+            if (newName.isNotEmpty && newName != folderName) {
+              context.read<FolderListBloc>().add(RenameFileOrFolder(folder, newName));
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(l10n.renamedFolderTo(newName))),
+              );
+            } else {
+              Navigator.pop(context);
+            }
+          },
+          child: Text(l10n.rename.toUpperCase()),
+        ),
+      ],
     ),
-    builder: (context) => SharedFolderContextMenu(
-      folder: folder,
-      onNavigate: onNavigate,
-      folderTags: folderTags,
-      showAddTagToFileDialog: showAddTagToFileDialog,
+  );
+}
+
+void _showFolderPropertiesDialog(BuildContext context, Directory folder) {
+  final folderName = folder.path.split(Platform.pathSeparator).last;
+  final l10n = AppLocalizations.of(context)!;
+  
+  folder.stat().then((stat) {
+    if (!context.mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(l10n.properties),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _propertyRow(l10n.fileName, folderName),
+              const Divider(),
+              _propertyRow(l10n.filePath, folder.path),
+              const Divider(),
+              _propertyRow(l10n.fileModified, stat.modified.toString().split('.')[0]),
+              const Divider(),
+              _propertyRow(l10n.fileAccessed, stat.accessed.toString().split('.')[0]),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(l10n.close.toUpperCase()),
+          ),
+        ],
+      ),
+    );
+  }).catchError((error) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(l10n.errorGettingFolderProperties(error.toString()))),
+    );
+  });
+}
+
+Widget _propertyRow(String label, String value) {
+  return Padding(
+    padding: const EdgeInsets.symmetric(vertical: 4.0),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 80,
+          child: Text(
+            label,
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+        ),
+        Expanded(child: Text(value)),
+      ],
     ),
   );
 }

@@ -770,7 +770,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                 ClipRRect(
                   borderRadius: BorderRadius.circular(8),
                   child: Container(
-                    color: Colors.grey[200],
+                    color: Colors.transparent,
                     child: Hero(
                       tag: file.path,
                       child: Image.file(

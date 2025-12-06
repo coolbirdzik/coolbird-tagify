@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:cb_file_manager/ui/screens/folder_list/folder_list_bloc.dart';
 import 'package:cb_file_manager/ui/screens/folder_list/folder_list_event.dart';
 import 'package:cb_file_manager/helpers/tags/tag_manager.dart';
+import 'package:cb_file_manager/config/languages/app_localizations.dart';
 import 'package:cb_file_manager/ui/widgets/chips_input.dart';
 import 'package:cb_file_manager/helpers/tags/batch_tag_manager.dart';
 import 'dart:ui' as ui; // Import for ImageFilter
@@ -81,9 +82,9 @@ void showAddTagToFileDialog(BuildContext context, String filePath) {
           return BackdropFilter(
             filter: ui.ImageFilter.blur(sigmaX: 5, sigmaY: 5),
             child: AlertDialog(
-              title: const Text(
-                'Add Tag',
-                style: TextStyle(
+              title: Text(
+                AppLocalizations.of(context)!.addTag,
+                style: const TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.bold,
                 ),
@@ -126,7 +127,8 @@ void showAddTagToFileDialog(BuildContext context, String filePath) {
                     padding: const EdgeInsets.symmetric(
                         horizontal: 16, vertical: 12),
                   ),
-                  child: const Text('CANCEL'),
+                  child:
+                      Text(AppLocalizations.of(context)!.cancel.toUpperCase()),
                 ),
                 ElevatedButton(
                   onPressed: () async {
@@ -138,8 +140,9 @@ void showAddTagToFileDialog(BuildContext context, String filePath) {
 
                     // Show success notification
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Tags saved successfully'),
+                      SnackBar(
+                        content: Text(AppLocalizations.of(context)!
+                            .tagsSavedSuccessfully),
                         duration: Duration(seconds: 2),
                       ),
                     );
@@ -152,7 +155,7 @@ void showAddTagToFileDialog(BuildContext context, String filePath) {
                     padding: const EdgeInsets.symmetric(
                         horizontal: 20, vertical: 12),
                   ),
-                  child: const Text('SAVE'),
+                  child: Text(AppLocalizations.of(context)!.save.toUpperCase()),
                 ),
               ],
             ),
@@ -179,7 +182,7 @@ void showDeleteTagDialog(
           return BackdropFilter(
             filter: ui.ImageFilter.blur(sigmaX: 5, sigmaY: 5),
             child: AlertDialog(
-              title: const Text('Remove Tag'),
+              title: Text(AppLocalizations.of(context)!.removeTag),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
               ),
@@ -195,7 +198,7 @@ void showDeleteTagDialog(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Select a tag to remove:'),
+                    Text(AppLocalizations.of(context)!.selectTagToRemove),
                     const SizedBox(height: 16),
                     DropdownButton<String>(
                       isExpanded: true,
@@ -220,7 +223,8 @@ void showDeleteTagDialog(
                   onPressed: () {
                     RouteUtils.safePopDialog(context);
                   },
-                  child: const Text('CANCEL'),
+                  child:
+                      Text(AppLocalizations.of(context)!.cancel.toUpperCase()),
                 ),
                 TextButton(
                   onPressed: () async {
@@ -254,7 +258,8 @@ void showDeleteTagDialog(
                           // Show confirmation
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              content: Text('Tag "$selectedTag" removed'),
+                              content: Text(AppLocalizations.of(context)!
+                                  .tagDeleted(selectedTag!)),
                               duration: const Duration(seconds: 1),
                             ),
                           );
@@ -265,7 +270,8 @@ void showDeleteTagDialog(
                         if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              content: Text('Error removing tag: $e'),
+                              content: Text(AppLocalizations.of(context)!
+                                  .errorDeletingTag(e.toString())),
                               backgroundColor: Colors.red,
                             ),
                           );
@@ -275,7 +281,8 @@ void showDeleteTagDialog(
                       RouteUtils.safePopDialog(context);
                     }
                   },
-                  child: const Text('REMOVE'),
+                  child: Text(
+                      AppLocalizations.of(context)!.removeTag.toUpperCase()),
                 ),
               ],
             ),

@@ -27,6 +27,7 @@ import 'package:cb_file_manager/ui/utils/file_type_utils.dart';
 import 'package:cb_file_manager/helpers/network/streaming_helper.dart';
 import 'package:cb_file_manager/services/network_browsing/webdav_service.dart';
 import 'package:cb_file_manager/services/network_browsing/ftp_service.dart';
+import 'package:cb_file_manager/config/languages/app_localizations.dart';
 
 // Add this class to disable ripple effects
 class NoSplashFactory extends InteractiveInkFeatureFactory {
@@ -224,7 +225,7 @@ class _FileItemState extends State<FileItem> {
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Tag "$tag" đã được xóa'),
+            content: Text(AppLocalizations.of(context)!.tagDeleted(tag)),
             duration: const Duration(seconds: 2),
           ),
         );
@@ -233,7 +234,8 @@ class _FileItemState extends State<FileItem> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Lỗi khi xóa tag: $e'),
+            content: Text(
+                AppLocalizations.of(context)!.errorDeletingTag(e.toString())),
             backgroundColor: Colors.red,
           ),
         );
@@ -248,17 +250,14 @@ class _FileItemState extends State<FileItem> {
       // Open directly using default apps
       if (isVideo) {
         if (!context.mounted) return;
-        Navigator.of(context, rootNavigator: true).push(
-            MaterialPageRoute(
-                fullscreenDialog: true,
-                builder: (context) =>
-                    VideoPlayerFullScreen(file: widget.file)));
+        Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(
+            fullscreenDialog: true,
+            builder: (context) => VideoPlayerFullScreen(file: widget.file)));
       } else if (isImage) {
         if (!context.mounted) return;
-        Navigator.of(context, rootNavigator: true).push(
-            MaterialPageRoute(
-                fullscreenDialog: true,
-                builder: (context) => ImageViewerScreen(file: widget.file)));
+        Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(
+            fullscreenDialog: true,
+            builder: (context) => ImageViewerScreen(file: widget.file)));
       } else {
         ExternalAppHelper.openFileWithApp(widget.file.path, 'shell_open')
             .then((success) {
@@ -286,7 +285,7 @@ class _FileItemState extends State<FileItem> {
         shiftSelect: isShiftPressed, ctrlSelect: shouldCtrlSelect);
   }
 
-  void _showContextMenu(BuildContext context) {
+  void _showContextMenu(BuildContext context, Offset globalPosition) {
     final bool isVideo = FileTypeUtils.isVideoFile(widget.file.path);
     final bool isImage = FileTypeUtils.isImageFile(widget.file.path);
 
@@ -297,6 +296,7 @@ class _FileItemState extends State<FileItem> {
       isVideo: isVideo,
       isImage: isImage,
       showAddTagToFileDialog: widget.showAddTagToFileDialog,
+      globalPosition: globalPosition,
     );
   }
 
@@ -330,7 +330,7 @@ class _FileItemState extends State<FileItem> {
                       vertical: widget.isDesktopMode ? 4.0 : 0),
                   decoration: BoxDecoration(
                     color: backgroundColor,
-                    borderRadius: widget.isDesktopMode 
+                    borderRadius: widget.isDesktopMode
                         ? BorderRadius.circular(12)
                         : BorderRadius.zero,
                   ),
@@ -374,19 +374,25 @@ class _FileItemState extends State<FileItem> {
                         top: 0,
                         right: 0,
                         bottom: 0,
-                        child: OptimizedInteractionLayer(
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
                           onTap: () {
-                            // Click vào tên sẽ open file
+                            if (widget.isDesktopMode && isVideo) {
+                              _handleSelection();
+                              return;
+                            }
                             _openFile(isVideo, isImage);
                           },
                           onDoubleTap: () {
                             _openFile(isVideo, isImage);
                           },
-                          onSecondaryTap: () => _showContextMenu(context),
+                          onSecondaryTapUp: (details) {
+                            _showContextMenu(context, details.globalPosition);
+                          },
                         ),
                       ),
                       // Selection indicator - only rebuilds when selection changes
-                      if (isSelected)
+                      if (isSelected && !widget.isDesktopMode)
                         Positioned(
                           left: 0,
                           top: 0,
@@ -556,10 +562,13 @@ class _FileItemContentState extends State<_FileItemContent> {
                     return Container(
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(8),
-                        color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.3),
+                        color: theme.colorScheme.surfaceContainerHighest
+                            .withOpacity(0.3),
                       ),
                       child: Icon(
-                        isVideo ? remix.Remix.video_line : remix.Remix.image_line,
+                        isVideo
+                            ? remix.Remix.video_line
+                            : remix.Remix.image_line,
                         size: 36,
                         color: theme.colorScheme.primary,
                       ),
@@ -579,7 +588,8 @@ class _FileItemContentState extends State<_FileItemContent> {
                     height: 48,
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(8),
-                      color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.3),
+                      color: theme.colorScheme.surfaceContainerHighest
+                          .withOpacity(0.3),
                     ),
                     child: Icon(
                       remix.Remix.file_3_line,
@@ -681,7 +691,7 @@ class _FileItemContentState extends State<_FileItemContent> {
             } else if (snapshot.hasError) {
               // For network files or files with stat errors
               if (widget.file.path.startsWith('#network/')) {
-                return Text('Network file',
+                return Text(AppLocalizations.of(context)!.networkFile,
                     style: Theme.of(context).textTheme.bodySmall);
               }
               return Text('--', style: Theme.of(context).textTheme.bodySmall);
@@ -698,7 +708,7 @@ class _FileItemContentState extends State<_FileItemContent> {
           if (tagsToShow.isEmpty)
             // If no tags fit, show count
             Text(
-              '${widget.fileTags.length} tags',
+              AppLocalizations.of(context)!.tagCount(widget.fileTags.length),
               style: const TextStyle(
                 fontSize: 12,
                 color: AppTheme.primaryBlue,

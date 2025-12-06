@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
-import '../services/optimized_album_service.dart';
+import '../services/album_service.dart';
 import '../models/objectbox/album_config.dart';
 import '../widgets/lazy_album_grid.dart';
 
@@ -12,7 +12,7 @@ class LazyAlbumDemoPage extends StatefulWidget {
 }
 
 class _LazyAlbumDemoPageState extends State<LazyAlbumDemoPage> {
-  final OptimizedAlbumService _albumService = OptimizedAlbumService.instance;
+  final AlbumService _albumService = AlbumService.instance;
   int? _currentAlbumId;
   String _albumName = '';
 
@@ -184,6 +184,10 @@ class _LazyAlbumDemoPageState extends State<LazyAlbumDemoPage> {
           sortAscending: false,
         ),
       );
+
+      if (album == null) {
+        throw Exception('Failed to create album');
+      }
 
       // Close loading dialog
       if (mounted) {

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
+import 'package:cb_file_manager/config/languages/app_localizations.dart';
 import '../../../services/permission_state_service.dart';
 import '../../screens/permissions/permission_explainer_screen.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -25,7 +26,9 @@ class TabMainScreen extends StatefulWidget {
       openPath(context, directory.path);
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error accessing directory: $e')),
+        SnackBar(
+            content: Text(
+                '${AppLocalizations.of(context)!.errorAccessingDirectory}$e')),
       );
     }
   }

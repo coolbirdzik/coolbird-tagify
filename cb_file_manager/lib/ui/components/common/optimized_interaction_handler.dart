@@ -12,6 +12,7 @@ class OptimizedInteractionLayer extends StatefulWidget {
   final VoidCallback? onDoubleTap;
   final VoidCallback? onLongPress;
   final VoidCallback? onSecondaryTap;
+  final void Function(TapUpDetails)? onSecondaryTapUp;
 
   const OptimizedInteractionLayer({
     Key? key,
@@ -19,6 +20,7 @@ class OptimizedInteractionLayer extends StatefulWidget {
     this.onDoubleTap,
     this.onLongPress,
     this.onSecondaryTap,
+    this.onSecondaryTapUp,
   }) : super(key: key);
 
   @override
@@ -73,6 +75,7 @@ class OptimizedInteractionLayerState extends State<OptimizedInteractionLayer> {
       onTapDown: _handleTapDown,
       onLongPress: widget.onLongPress,
       onSecondaryTap: widget.onSecondaryTap,
+      onSecondaryTapUp: widget.onSecondaryTapUp,
     );
   }
 }

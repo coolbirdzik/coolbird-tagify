@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:remixicon/remixicon.dart' as remix;
 import 'external_app_helper.dart';
 import 'windows_app_icon.dart';
-import 'package:cb_file_manager/ui/utils/file_type_utils.dart';
+import 'package:cb_file_manager/helpers/files/file_type_registry.dart';
 
 /// Helper class to get file icons, including app icons for file types
 class FileIconHelper {
@@ -129,25 +129,14 @@ class FileIconHelper {
       debugPrint('Error getting app icon: $e');
     }
 
-    // Fallback to generic file type icons
-    Widget icon;
-
-    if (_isAudioFile(extension)) {
-      icon = Icon(remix.Remix.music_2_line, size: size, color: Colors.purple);
-    } else if (_isDocumentFile(extension)) {
-      icon = Icon(remix.Remix.file_text_line, size: size, color: Colors.indigo);
-    } else if (_isSpreadsheetFile(extension)) {
-      icon =
-          Icon(remix.Remix.grid_line, size: size, color: Colors.green);
-    } else if (_isPresentationFile(extension)) {
-      icon = Icon(remix.Remix.file_3_line, size: size, color: Colors.orange);
-    } else if (_isPdfFile(extension)) {
-      icon = Icon(remix.Remix.file_3_line, size: size, color: Colors.red[800]);
-    } else if (extension == 'apk') {
-      icon = Icon(remix.Remix.smartphone_line, size: size, color: Colors.green);
+    // Fallback to generic file type icons using registry
+    final iconData = FileTypeRegistry.getIcon('.$extension');
+    final iconColor = FileTypeRegistry.getColor('.$extension');
+    
+    final icon = Icon(iconData, size: size, color: iconColor);
+    
+    if (extension == 'apk') {
       print('APK_ICON_DEBUG: Created generic APK icon: ${icon.runtimeType}');
-    } else {
-      icon = Icon(remix.Remix.file_3_line, size: size, color: Colors.grey);
     }
 
     _iconCache[cacheKey] = icon;
@@ -264,37 +253,19 @@ class FileIconHelper {
     print('APK_ICON_DEBUG: === End APK Icon Debug ===');
   }
 
-  // Helper methods to identify file types using FileTypeUtils
+  // Helper methods to identify file types using FileTypeRegistry
   static String _getFileExtension(File file) {
-    return file.path.split('.').last.toLowerCase();
+    final fileName = file.path.split('/').last.split('\\').last;
+    final lastDotIndex = fileName.lastIndexOf('.');
+    if (lastDotIndex == -1) return '';
+    return fileName.substring(lastDotIndex).toLowerCase();
   }
 
   static bool _isImageFile(String extension) {
-    return FileTypeUtils.isImageFile('dummy.$extension');
+    return FileTypeRegistry.isCategory(extension, FileCategory.image);
   }
 
   static bool _isVideoFile(String extension) {
-    return FileTypeUtils.isVideoFile('dummy.$extension');
-  }
-
-  static bool _isAudioFile(String extension) {
-    return FileTypeUtils.isAudioFile('dummy.$extension');
-  }
-
-  static bool _isDocumentFile(String extension) {
-    return FileTypeUtils.isDocumentFile('dummy.$extension');
-  }
-
-  static bool _isSpreadsheetFile(String extension) {
-    return FileTypeUtils.isSpreadsheetFile('dummy.$extension');
-  }
-
-  static bool _isPresentationFile(String extension) {
-    return FileTypeUtils.isPresentationFile('dummy.$extension');
-  }
-
-  static bool _isPdfFile(String extension) {
-    return FileTypeUtils.isDocumentFile('dummy.$extension') &&
-        extension == 'pdf';
+    return FileTypeRegistry.isCategory(extension, FileCategory.video);
   }
 }

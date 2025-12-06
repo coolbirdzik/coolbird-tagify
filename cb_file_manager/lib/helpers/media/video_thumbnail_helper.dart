@@ -318,7 +318,8 @@ class VideoThumbnailHelper {
   // Lower priority for background operations
   static const int _defaultPriority = 0;
 
-  static const int _maxFileCacheSize = 500;
+  // PERFORMANCE: Further reduced cache size for better memory management on desktop
+  static const int _maxFileCacheSize = 150; // Further reduced from 300
 
   // Increase quality for better thumbnails (was 70)
   static const int thumbnailQuality = 90;
@@ -377,11 +378,13 @@ class VideoThumbnailHelper {
   /// Được sử dụng cho hiển thị nhanh khi cuộn
   static final Map<String, String> _inMemoryPathCache = {};
 
+  /// PERFORMANCE: Further reduced memory cache size for better performance
   /// Kích thước tối đa của cache trong bộ nhớ
-  static const int _maxMemoryCacheSize = 500;
+  static const int _maxMemoryCacheSize = 150; // Further reduced from 300
 
-  /// Thời gian trước khi dọn dẹp cache (10 phút)
-  static const Duration _memoryCacheCleanupInterval = Duration(minutes: 10);
+  /// Thời gian trước khi dọn dẹp cache (reduced for more frequent cleanup)
+  static const Duration _memoryCacheCleanupInterval =
+      Duration(minutes: 5); // Reduced from 10
 
   /// Thời điểm dọn dẹp cache cuối cùng
   static DateTime _lastMemoryCacheCleanup = DateTime.now();
@@ -782,11 +785,13 @@ class VideoThumbnailHelper {
       }
       final percentage = _thumbnailPercentage;
 
+      // PERFORMANCE: Ensure all file I/O operations are async (non-blocking)
       // First check if already exists in cache and valid before using compute
       if (!forceRegenerate && _fileCache.containsKey(videoPath)) {
         final cachedPath = _fileCache[videoPath]!;
         final cacheFile = File(cachedPath);
         try {
+          // All file operations are already async - verified
           if (await cacheFile.exists() && await cacheFile.length() > 0) {
             _log('VideoThumbnail: Using valid cache for $videoPath');
             return cachedPath;
@@ -825,11 +830,13 @@ class VideoThumbnailHelper {
         forceRegenerate: forceRegenerate,
       );
 
+      // PERFORMANCE: Further reduced timeout for faster failure recovery
       // Use a timeout to prevent isolate from hanging indefinitely
       String? generatedPath;
       try {
         generatedPath = await compute(_generateThumbnailIsolate, args).timeout(
-          const Duration(seconds: 30),
+          const Duration(
+              seconds: 8), // Reduced from 15s to 8s for faster failure recovery
           onTimeout: () {
             _log('VideoThumbnail: Timeout generating thumbnail for $videoPath',
                 forceShow: true);

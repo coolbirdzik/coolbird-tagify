@@ -6,6 +6,7 @@ import 'package:visibility_detector/visibility_detector.dart';
 import 'package:cb_file_manager/helpers/media/video_thumbnail_helper.dart';
 import 'package:cb_file_manager/helpers/network/network_thumbnail_helper.dart';
 import 'package:cb_file_manager/ui/widgets/lazy_video_thumbnail.dart';
+import 'package:cb_file_manager/ui/components/common/skeleton.dart';
 import 'package:remixicon/remixicon.dart' as remix;
 
 /// Memory pool để tái sử dụng image objects và giảm memory fragmentation
@@ -91,10 +92,11 @@ class ThumbnailWidgetCache {
   static Stream<bool> get onAllThumbnailsLoaded =>
       _allThumbnailsLoadedController.stream;
 
-  static const int _maxCacheSize = 300; // Increased cache size
+  // PERFORMANCE: Further reduced cache sizes for better memory management
+  static const int _maxCacheSize = 150; // Further reduced from 200 for desktop
   static const Duration _cacheRetentionTime = Duration(
-    minutes: 30,
-  ); // Increased retention time
+    minutes: 15, // Reduced from 30 minutes
+  );
 
   Widget? getCachedThumbnailWidget(String path) {
     final widget = _thumbnailWidgets[path];
@@ -275,7 +277,17 @@ class _ThumbnailLoaderState extends State<ThumbnailLoader>
   Timer? _loadTimer;
   Timer? _delayedLoadTimer;
   Timer? _refreshTimer;
+  Timer? _visibilityDebounceTimer;
   String? _networkThumbnailPath; // Store the generated thumbnail path
+
+  // PERFORMANCE: Reduced debounce timing for better responsiveness during scrolling
+  static const Duration _visibilityDebounceDuration = Duration(
+      milliseconds: 150); // Reduced from 300ms for faster thumbnail loading
+
+  // PERFORMANCE: Adaptive filter quality based on scrolling state
+  bool _isScrolling = false;
+  Timer? _scrollStopTimer;
+  static const Duration _scrollStopDelay = Duration(milliseconds: 150);
 
   // Viewport-based loading priority system
   static final List<String> _loadingQueue = [];
@@ -434,6 +446,8 @@ class _ThumbnailLoaderState extends State<ThumbnailLoader>
     _loadTimer?.cancel();
     _delayedLoadTimer?.cancel();
     _refreshTimer?.cancel();
+    _visibilityDebounceTimer?.cancel();
+    _scrollStopTimer?.cancel();
 
     // Clear retry tracking for this path
     _failedAttempts.remove(widget.filePath);
@@ -611,34 +625,48 @@ class _ThumbnailLoaderState extends State<ThumbnailLoader>
         onVisibilityChanged: (info) {
           if (!_widgetMounted) return;
 
+          // PERFORMANCE: Detect scrolling for adaptive quality
+          _markScrolling();
+
+          // PERFORMANCE: Debounce visibility changes to prevent excessive operations during scrolling
+          _visibilityDebounceTimer?.cancel();
+
           // Chỉ load khi visible fraction > 20% để tránh load quá sớm
           if (info.visibleFraction > 0.2) {
-            // Became visible
-            NetworkThumbnailHelper().markVisible(widget.filePath);
+            // Debounce becoming visible to avoid loading during fast scrolling
+            _visibilityDebounceTimer = Timer(_visibilityDebounceDuration, () {
+              if (!_widgetMounted) return;
 
-            // Nếu chưa tải thumbnail, bắt đầu tải với delay để tránh spam
-            if (_networkThumbnailPath == null &&
-                !_cache.isGeneratingThumbnail(widget.filePath)) {
-              _scheduleLoadWithDelay();
-            }
+              // Became visible
+              NetworkThumbnailHelper().markVisible(widget.filePath);
+
+              // Nếu chưa tải thumbnail, bắt đầu tải với delay để tránh spam
+              if (_networkThumbnailPath == null &&
+                  !_cache.isGeneratingThumbnail(widget.filePath)) {
+                _scheduleLoadWithDelay();
+              }
+            });
           } else if (info.visibleFraction == 0) {
-            // Completely invisible - cleanup resources
+            // Immediately handle becoming invisible (no debounce needed)
             NetworkThumbnailHelper().markInvisible(widget.filePath);
             _cancelPendingLoad();
           }
         },
         child: ClipRRect(
           borderRadius: widget.borderRadius ?? BorderRadius.zero,
+          // PERFORMANCE: Consolidated ValueListenableBuilder to eliminate double rebuilds
           child: ValueListenableBuilder<bool>(
-            valueListenable: _isLoadingNotifier,
-            builder: (context, isLoading, child) {
-              return ValueListenableBuilder<bool>(
-                valueListenable: _hasErrorNotifier,
-                builder: (context, hasError, _) {
-                  if (hasError) {
-                    return RepaintBoundary(child: _buildFallbackWidget());
-                  }
+            valueListenable: _hasErrorNotifier,
+            builder: (context, hasError, _) {
+              if (hasError) {
+                return RepaintBoundary(child: _buildFallbackWidget());
+              }
 
+              // Use a separate ValueListenableBuilder only for loading state
+              // to minimize rebuilds when only loading state changes
+              return ValueListenableBuilder<bool>(
+                valueListenable: _isLoadingNotifier,
+                builder: (context, isLoading, _) {
                   return Stack(
                     fit: StackFit.expand,
                     children: [
@@ -679,6 +707,32 @@ class _ThumbnailLoaderState extends State<ThumbnailLoader>
     }
   }
 
+  // PERFORMANCE: Mark that scrolling is happening and reset timer
+  void _markScrolling() {
+    if (!_isScrolling) {
+      setState(() => _isScrolling = true);
+    }
+
+    _scrollStopTimer?.cancel();
+    _scrollStopTimer = Timer(_scrollStopDelay, () {
+      if (mounted) {
+        setState(() => _isScrolling = false);
+      }
+    });
+  }
+
+  // PERFORMANCE: Get adaptive filter quality based on scroll state
+  FilterQuality _getAdaptiveFilterQuality() {
+    // Use low quality during scrolling for better performance
+    if (_isScrolling) {
+      return FilterQuality.low;
+    }
+
+    // Use higher quality when stopped
+    final bool isMobile = Platform.isAndroid || Platform.isIOS;
+    return isMobile ? FilterQuality.medium : FilterQuality.high;
+  }
+
   Widget _buildVideoThumbnail() {
     // For SMB videos, we need special handling
     if (widget.filePath.toLowerCase().startsWith('#network/smb/')) {
@@ -688,15 +742,13 @@ class _ThumbnailLoaderState extends State<ThumbnailLoader>
 
       if (thumbnailPath != null) {
         // We have a thumbnail, display it
-        // Adaptive filter quality dựa trên kích thước và device performance
-        final isLargeImage = (widget.width * widget.height) > 40000; // 200x200
-        final filter = isLargeImage ? FilterQuality.none : FilterQuality.low;
+        // PERFORMANCE: Use adaptive filter quality based on scrolling state
         return Image.file(
           File(thumbnailPath),
           width: widget.width,
           height: widget.height,
           fit: widget.fit,
-          filterQuality: filter,
+          filterQuality: _getAdaptiveFilterQuality(),
           errorBuilder: (context, error, stackTrace) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (_widgetMounted) {
@@ -842,14 +894,13 @@ class _ThumbnailLoaderState extends State<ThumbnailLoader>
           _cache.cacheThumbnailPath(widget.filePath, thumbnailPath);
         }
 
-        final bool isMobile = Platform.isAndroid || Platform.isIOS;
-        final filter = isMobile ? FilterQuality.medium : FilterQuality.high;
+        // PERFORMANCE: Use adaptive filter quality based on scrolling state
         return Image.file(
           File(thumbnailPath),
           width: widget.width,
           height: widget.height,
           fit: widget.fit,
-          filterQuality: filter, // Lower on mobile to reduce GPU cost
+          filterQuality: _getAdaptiveFilterQuality(),
           cacheWidth: widget.width.isInfinite ? null : widget.width.toInt(),
           cacheHeight: widget.height.isInfinite ? null : widget.height.toInt(),
           errorBuilder: (context, error, stackTrace) {
@@ -962,14 +1013,13 @@ class _ThumbnailLoaderState extends State<ThumbnailLoader>
     }
 
     // For local files, use the original logic
-    final bool isMobile = Platform.isAndroid || Platform.isIOS;
-    final filter = isMobile ? FilterQuality.medium : FilterQuality.high;
+    // PERFORMANCE: Use adaptive filter quality based on scrolling state
     return Image.file(
       File(widget.filePath),
       width: widget.width,
       height: widget.height,
       fit: widget.fit,
-      filterQuality: filter, // Lower on mobile to reduce GPU cost
+      filterQuality: _getAdaptiveFilterQuality(),
       cacheWidth: widget.width.isInfinite ? null : widget.width.toInt(),
       cacheHeight: widget.height.isInfinite ? null : widget.height.toInt(),
       errorBuilder: (context, error, stackTrace) {
@@ -1025,67 +1075,12 @@ class _ThumbnailLoaderState extends State<ThumbnailLoader>
     }
   }
 
-  /// Build simple and clean skeleton loader
+  /// Build skeleton loader using unified ShimmerBox
   Widget _buildSkeletonLoader() {
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: widget.borderRadius ?? BorderRadius.circular(8),
-        color: Colors.grey[800],
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          // Icon area
-          Expanded(
-            flex: 3,
-            child: Center(
-              child: Icon(
-                widget.isVideo
-                    ? remix.Remix.play_circle_line
-                    : widget.isImage
-                        ? remix.Remix.image_line
-                        : remix.Remix.file_text_line,
-                color: Colors.grey[600],
-                size: 32,
-              ),
-            ),
-          ),
-
-          // Text area
-          Expanded(
-            flex: 1,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Flexible(
-                    child: Container(
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: Colors.grey[700],
-                        borderRadius: BorderRadius.circular(3),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Flexible(
-                    child: Container(
-                      height: 4,
-                      width: 40,
-                      decoration: BoxDecoration(
-                        color: Colors.grey[700]?.withValues(alpha: 0.7),
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
+    return ShimmerBox(
+      width: double.infinity,
+      height: double.infinity,
+      borderRadius: widget.borderRadius ?? BorderRadius.circular(8),
     );
   }
 }

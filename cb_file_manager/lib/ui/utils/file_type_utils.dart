@@ -1,34 +1,27 @@
-import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:cb_file_manager/helpers/files/file_type_registry.dart';
+import 'package:cb_file_manager/config/languages/app_localizations.dart';
 
 /// Utility class for checking file types
+/// Now delegates to FileTypeRegistry for all file type detection
+///
+/// Example usage for localized file type labels:
+/// ```dart
+/// // In a widget with BuildContext:
+/// final label = FileTypeUtils.getFileTypeLabel(context, '.jpg');
+/// // Returns "JPEG Image" in English or "Ảnh JPEG" in Vietnamese
+/// ```
 class FileTypeUtils {
   /// Check if a file is an image based on its extension
   static bool isImageFile(String filePath) {
-    final fileName = filePath.split('/').last.toLowerCase();
-    return fileName.endsWith('.jpg') ||
-        fileName.endsWith('.jpeg') ||
-        fileName.endsWith('.png') ||
-        fileName.endsWith('.gif') ||
-        fileName.endsWith('.bmp') ||
-        fileName.endsWith('.webp') ||
-        fileName.endsWith('.tiff') ||
-        fileName.endsWith('.tif') ||
-        fileName.endsWith('.svg');
+    final extension = getFileExtension(filePath);
+    return FileTypeRegistry.isCategory(extension, FileCategory.image);
   }
 
   /// Check if a file is a video based on its extension
   static bool isVideoFile(String filePath) {
-    final fileName = filePath.split('/').last.toLowerCase();
-    return fileName.endsWith('.mp4') ||
-        fileName.endsWith('.avi') ||
-        fileName.endsWith('.mkv') ||
-        fileName.endsWith('.mov') ||
-        fileName.endsWith('.wmv') ||
-        fileName.endsWith('.flv') ||
-        fileName.endsWith('.webm') ||
-        fileName.endsWith('.m4v') ||
-        fileName.endsWith('.3gp') ||
-        fileName.endsWith('.ogv');
+    final extension = getFileExtension(filePath);
+    return FileTypeRegistry.isCategory(extension, FileCategory.video);
   }
 
   /// Check if a file is an image or video (media file)
@@ -38,27 +31,21 @@ class FileTypeUtils {
 
   /// Check if a file is an audio file
   static bool isAudioFile(String filePath) {
-    final fileName = filePath.split('/').last.toLowerCase();
-    return fileName.endsWith('.mp3') ||
-        fileName.endsWith('.wav') ||
-        fileName.endsWith('.flac') ||
-        fileName.endsWith('.aac') ||
-        fileName.endsWith('.ogg') ||
-        fileName.endsWith('.wma') ||
-        fileName.endsWith('.m4a');
+    final extension = getFileExtension(filePath);
+    return FileTypeRegistry.isCategory(extension, FileCategory.audio);
   }
 
   /// Get the file extension from a path
   static String getFileExtension(String filePath) {
-    final fileName = filePath.split('/').last;
+    final fileName = filePath.split('/').last.split('\\').last;
     final lastDotIndex = fileName.lastIndexOf('.');
     if (lastDotIndex == -1) return '';
-    return fileName.substring(lastDotIndex + 1).toLowerCase();
+    return fileName.substring(lastDotIndex).toLowerCase();
   }
 
   /// Get the file name without extension
   static String getFileNameWithoutExtension(String filePath) {
-    final fileName = filePath.split('/').last;
+    final fileName = filePath.split('/').last.split('\\').last;
     final lastDotIndex = fileName.lastIndexOf('.');
     if (lastDotIndex == -1) return fileName;
     return fileName.substring(0, lastDotIndex);
@@ -66,61 +53,65 @@ class FileTypeUtils {
 
   /// Check if a file is a document
   static bool isDocumentFile(String filePath) {
-    final fileName = filePath.split('/').last.toLowerCase();
-    return fileName.endsWith('.pdf') ||
-        fileName.endsWith('.doc') ||
-        fileName.endsWith('.docx') ||
-        fileName.endsWith('.txt') ||
-        fileName.endsWith('.rtf') ||
-        fileName.endsWith('.odt') ||
-        fileName.endsWith('.pages');
+    final extension = getFileExtension(filePath);
+    return FileTypeRegistry.isCategory(extension, FileCategory.document) ||
+        FileTypeRegistry.isCategory(extension, FileCategory.pdf);
   }
 
   /// Check if a file is a spreadsheet
   static bool isSpreadsheetFile(String filePath) {
-    final fileName = filePath.split('/').last.toLowerCase();
-    return fileName.endsWith('.xls') ||
-        fileName.endsWith('.xlsx') ||
-        fileName.endsWith('.csv') ||
-        fileName.endsWith('.ods') ||
-        fileName.endsWith('.numbers');
+    final extension = getFileExtension(filePath);
+    return FileTypeRegistry.isCategory(extension, FileCategory.spreadsheet);
   }
 
   /// Check if a file is a presentation
   static bool isPresentationFile(String filePath) {
-    final fileName = filePath.split('/').last.toLowerCase();
-    return fileName.endsWith('.ppt') ||
-        fileName.endsWith('.pptx') ||
-        fileName.endsWith('.odp') ||
-        fileName.endsWith('.key');
+    final extension = getFileExtension(filePath);
+    return FileTypeRegistry.isCategory(extension, FileCategory.presentation);
   }
 
   /// Check if a file is an archive/compressed file
   static bool isArchiveFile(String filePath) {
-    final fileName = filePath.split('/').last.toLowerCase();
-    return fileName.endsWith('.zip') ||
-        fileName.endsWith('.rar') ||
-        fileName.endsWith('.7z') ||
-        fileName.endsWith('.tar') ||
-        fileName.endsWith('.gz') ||
-        fileName.endsWith('.bz2');
+    final extension = getFileExtension(filePath);
+    return FileTypeRegistry.isCategory(extension, FileCategory.archive);
   }
 
   /// Get the file type category
   static String getFileTypeCategory(String filePath) {
-    if (isImageFile(filePath)) return 'image';
-    if (isVideoFile(filePath)) return 'video';
-    if (isAudioFile(filePath)) return 'audio';
-    if (isDocumentFile(filePath)) return 'document';
-    if (isSpreadsheetFile(filePath)) return 'spreadsheet';
-    if (isPresentationFile(filePath)) return 'presentation';
-    if (isArchiveFile(filePath)) return 'archive';
-    return 'other';
+    final extension = getFileExtension(filePath);
+    final category = FileTypeRegistry.getCategory(extension);
+    
+    switch (category) {
+      case FileCategory.image:
+        return 'image';
+      case FileCategory.video:
+        return 'video';
+      case FileCategory.audio:
+        return 'audio';
+      case FileCategory.document:
+      case FileCategory.pdf:
+        return 'document';
+      case FileCategory.spreadsheet:
+        return 'spreadsheet';
+      case FileCategory.presentation:
+        return 'presentation';
+      case FileCategory.archive:
+        return 'archive';
+      default:
+        return 'other';
+    }
   }
 
-  // Get human-readable file type label
-  static String getFileTypeLabel(String extension) {
-    if (extension.isEmpty) return 'Tệp tin';
+  /// Get human-readable file type label with i18n support
+  /// Requires BuildContext to access localization
+  /// Returns localized file type labels in English or Vietnamese
+  static String getFileTypeLabel(
+    BuildContext context,
+    String extension,
+  ) {
+    if (extension.isEmpty) {
+      return AppLocalizations.of(context)!.fileTypeGeneric;
+    }
 
     // Remove the dot if present
     if (extension.startsWith('.')) {
@@ -128,68 +119,69 @@ class FileTypeUtils {
     }
 
     final upperExtension = extension.toUpperCase();
+    final localizations = AppLocalizations.of(context)!;
 
     switch (upperExtension) {
       case 'JPG':
       case 'JPEG':
-        return 'Ảnh JPEG';
+        return localizations.fileTypeJpeg;
       case 'PNG':
-        return 'Ảnh PNG';
+        return localizations.fileTypePng;
       case 'GIF':
-        return 'Ảnh GIF';
+        return localizations.fileTypeGif;
       case 'BMP':
-        return 'Ảnh BMP';
+        return localizations.fileTypeBmp;
       case 'TIFF':
-        return 'Ảnh TIFF';
+        return localizations.fileTypeTiff;
       case 'WEBP':
-        return 'Ảnh WebP';
+        return localizations.fileTypeWebp;
       case 'SVG':
-        return 'Ảnh SVG';
+        return localizations.fileTypeSvg;
       case 'MP4':
-        return 'Video MP4';
+        return localizations.fileTypeMp4;
       case 'AVI':
-        return 'Video AVI';
+        return localizations.fileTypeAvi;
       case 'MOV':
-        return 'Video MOV';
+        return localizations.fileTypeMov;
       case 'WMV':
-        return 'Video WMV';
+        return localizations.fileTypeWmv;
       case 'FLV':
-        return 'Video FLV';
+        return localizations.fileTypeFlv;
       case 'MKV':
-        return 'Video MKV';
+        return localizations.fileTypeMkv;
       case 'MP3':
-        return 'Âm thanh MP3';
+        return localizations.fileTypeMp3;
       case 'WAV':
-        return 'Âm thanh WAV';
+        return localizations.fileTypeWav;
       case 'AAC':
-        return 'Âm thanh AAC';
+        return localizations.fileTypeAac;
       case 'FLAC':
-        return 'Âm thanh FLAC';
+        return localizations.fileTypeFlac;
       case 'OGG':
-        return 'Âm thanh OGG';
+        return localizations.fileTypeOgg;
       case 'PDF':
-        return 'Tài liệu PDF';
+        return localizations.fileTypePdf;
       case 'DOCX':
       case 'DOC':
-        return 'Tài liệu Word';
+        return localizations.fileTypeWord;
       case 'XLSX':
       case 'XLS':
-        return 'Bảng tính Excel';
+        return localizations.fileTypeExcel;
       case 'PPTX':
       case 'PPT':
-        return 'Bài thuyết trình PowerPoint';
+        return localizations.fileTypePowerPoint;
       case 'TXT':
-        return 'Tệp văn bản';
+        return localizations.fileTypeTxt;
       case 'RTF':
-        return 'Tài liệu RTF';
+        return localizations.fileTypeRtf;
       case 'ZIP':
-        return 'Tệp nén ZIP';
+        return localizations.fileTypeZip;
       case 'RAR':
-        return 'Tệp nén RAR';
+        return localizations.fileTypeRar;
       case '7Z':
-        return 'Tệp nén 7Z';
+        return localizations.fileType7z;
       default:
-        return 'Tệp $upperExtension';
+        return localizations.fileTypeWithExtension(upperExtension);
     }
   }
 }

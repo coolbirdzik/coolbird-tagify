@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:remixicon/remixicon.dart' as remix;
+import '../../../config/languages/app_localizations.dart';
 import 'package:cb_file_manager/helpers/tags/tag_manager.dart';
 
 /// Menu item cho dynamic menu system
@@ -48,37 +49,37 @@ class ScreenMenuRegistry {
     _menuRegistry['#tags'] = [
       ScreenMenuItem.divider(),
       ScreenMenuItem(
-        title: 'Tạo thẻ mới',
+        title: AppLocalizations.of(context)!.createNewTag,
         icon: remix.Remix.add_line,
         onTap: () => _TagManagementHelper.showCreateTagDialog(context),
       ),
       ScreenMenuItem(
-        title: 'Tìm kiếm thẻ',
+        title: AppLocalizations.of(context)!.searchTags,
         icon: remix.Remix.search_line,
         onTap: () => _TagManagementHelper.showTagSearchDialog(context),
       ),
       ScreenMenuItem(
-        title: 'Thông tin quản lý thẻ',
+        title: AppLocalizations.of(context)!.tagManagementTitle,
         icon: remix.Remix.information_line,
         onTap: () => _TagManagementHelper.showTagManagementInfo(context),
       ),
       ScreenMenuItem(
-        title: 'Làm mới danh sách thẻ',
+        title: AppLocalizations.of(context)!.tagListRefreshing,
         icon: remix.Remix.refresh_line,
         onTap: () => _TagManagementHelper.refreshTagManagement(context),
       ),
       ScreenMenuItem(
-        title: 'Sắp xếp thẻ',
+        title: AppLocalizations.of(context)!.sortTags,
         icon: remix.Remix.settings_3_line,
         onTap: () => _TagManagementHelper.showTagSortOptions(context),
       ),
       ScreenMenuItem(
-        title: 'Chế độ lưới',
+        title: AppLocalizations.of(context)!.gridViewMode,
         icon: remix.Remix.grid_line,
         onTap: () => _TagManagementHelper.toggleViewMode(context),
       ),
       ScreenMenuItem(
-        title: 'Chế độ danh sách',
+        title: AppLocalizations.of(context)!.listViewMode,
         icon: remix.Remix.list_unordered,
         onTap: () => _TagManagementHelper.toggleViewMode(context),
       ),
@@ -90,27 +91,27 @@ class ScreenMenuRegistry {
     _menuRegistry['#filebrowser'] = [
       ScreenMenuItem.divider(),
       ScreenMenuItem(
-        title: 'Tạo thư mục mới',
+        title: AppLocalizations.of(context)!.newFolder,
         icon: remix.Remix.folder_add_line,
         onTap: () => _FileBrowserHelper.createNewFolder(context),
       ),
       ScreenMenuItem(
-        title: 'Tạo file mới',
+        title: AppLocalizations.of(context)!.create,
         icon: remix.Remix.file_add_line,
         onTap: () => _FileBrowserHelper.createNewFile(context),
       ),
       ScreenMenuItem(
-        title: 'Dán file',
+        title: AppLocalizations.of(context)!.pasteHere,
         icon: remix.Remix.file_copy_line,
         onTap: () => _FileBrowserHelper.pasteFiles(context),
       ),
       ScreenMenuItem(
-        title: 'Sắp xếp',
+        title: AppLocalizations.of(context)!.sort,
         icon: remix.Remix.settings_3_line,
         onTap: () => _FileBrowserHelper.showSortOptions(context),
       ),
       ScreenMenuItem(
-        title: 'Thay đổi chế độ xem',
+        title: AppLocalizations.of(context)!.featureNotImplemented,
         icon: remix.Remix.grid_line,
         onTap: () => _FileBrowserHelper.toggleViewMode(context),
       ),
@@ -122,17 +123,17 @@ class ScreenMenuRegistry {
     _menuRegistry['#settings'] = [
       ScreenMenuItem.divider(),
       ScreenMenuItem(
-        title: 'Xuất cài đặt',
+        title: AppLocalizations.of(context)!.exportSettings,
         icon: remix.Remix.download_line,
         onTap: () => _SettingsHelper.exportSettings(context),
       ),
       ScreenMenuItem(
-        title: 'Nhập cài đặt',
+        title: AppLocalizations.of(context)!.importSettings,
         icon: remix.Remix.upload_line,
         onTap: () => _SettingsHelper.importSettings(context),
       ),
       ScreenMenuItem(
-        title: 'Đặt lại cài đặt',
+        title: AppLocalizations.of(context)!.resetSettings,
         icon: remix.Remix.refresh_line,
         onTap: () => _SettingsHelper.resetSettings(context),
       ),
@@ -144,17 +145,17 @@ class ScreenMenuRegistry {
     _menuRegistry['#network'] = [
       ScreenMenuItem.divider(),
       ScreenMenuItem(
-        title: 'Thêm kết nối mới',
+        title: AppLocalizations.of(context)!.addConnection,
         icon: remix.Remix.add_line,
         onTap: () => _NetworkHelper.addNewConnection(context),
       ),
       ScreenMenuItem(
-        title: 'Quét mạng',
+        title: AppLocalizations.of(context)!.startScan,
         icon: remix.Remix.search_line,
         onTap: () => _NetworkHelper.scanNetwork(context),
       ),
       ScreenMenuItem(
-        title: 'Làm mới danh sách',
+        title: AppLocalizations.of(context)!.refresh,
         icon: remix.Remix.refresh_line,
         onTap: () => _NetworkHelper.refreshConnections(context),
       ),
@@ -244,14 +245,16 @@ class _TagManagementHelper {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Đã tạo thẻ "$tagName" thành công'),
+          content: Text(
+              AppLocalizations.of(context)!.tagCreatedSuccessfully(tagName)),
           backgroundColor: Colors.green,
         ),
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Lỗi khi tạo thẻ: $e'),
+          content: Text(
+              AppLocalizations.of(context)!.errorCreatingTag + e.toString()),
           backgroundColor: Colors.red,
         ),
       );
@@ -272,7 +275,9 @@ class _TagManagementHelper {
           onSubmitted: (value) {
             Navigator.pop(context);
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Tìm kiếm: $value')),
+              SnackBar(
+                  content:
+                      Text(AppLocalizations.of(context)!.searchingFor(value))),
             );
           },
         ),
@@ -310,9 +315,9 @@ class _TagManagementHelper {
 
   static void refreshTagManagement(BuildContext context) {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Đang làm mới danh sách thẻ...'),
-        duration: Duration(seconds: 1),
+      SnackBar(
+        content: Text(AppLocalizations.of(context)!.tagListRefreshing),
+        duration: const Duration(seconds: 1),
       ),
     );
   }

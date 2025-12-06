@@ -12,6 +12,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:cb_file_manager/ui/tab_manager/core/tab_manager.dart';
 import 'package:cb_file_manager/services/smart_album_service.dart';
 import 'package:cb_file_manager/ui/components/common/skeleton_helper.dart';
+import 'package:cb_file_manager/core/service_locator.dart';
 
 class AlbumManagementScreen extends StatefulWidget {
   const AlbumManagementScreen({Key? key}) : super(key: key);
@@ -21,7 +22,10 @@ class AlbumManagementScreen extends StatefulWidget {
 }
 
 class _AlbumManagementScreenState extends State<AlbumManagementScreen> {
-  final AlbumService _albumService = AlbumService.instance;
+  // Migration to dependency injection: Use locator instead of .instance
+  // Old way: final AlbumService _albumService = AlbumService.instance;
+  // New way: Use service locator for better testability and dependency management
+  final AlbumService _albumService = locator<AlbumService>();
   List<Album> _albums = [];
   bool _isLoading = true;
   bool _isGridView = true;
@@ -517,22 +521,28 @@ class _AlbumManagementScreenState extends State<AlbumManagementScreen> {
       future: _albumService.getAlbumFiles(album.id),
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
-          return Container(
-              color: Colors.grey[300],
-              child: const Center(child: Icon(Icons.photo_album, size: 30)));
+          return SkeletonHelper.box(
+              width: double.infinity,
+              height: double.infinity,
+              borderRadius: BorderRadius.circular(8),
+          );
         }
         final files = (snapshot.data as List?) ?? [];
         if (files.isEmpty) {
-          return Container(
-              color: Colors.grey[300],
-              child: const Center(child: Icon(Icons.photo_album, size: 30)));
+          return SkeletonHelper.box(
+              width: double.infinity,
+              height: double.infinity,
+              borderRadius: BorderRadius.circular(8),
+          );
         }
         final idx = album.id % files.length;
         final path = files[idx].filePath as String;
         if (!File(path).existsSync()) {
-          return Container(
-              color: Colors.grey[300],
-              child: const Center(child: Icon(Icons.photo_album, size: 30)));
+          return SkeletonHelper.box(
+              width: double.infinity,
+              height: double.infinity,
+              borderRadius: BorderRadius.circular(8),
+          );
         }
         return Image.file(
           File(path),

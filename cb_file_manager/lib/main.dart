@@ -32,6 +32,8 @@ import 'config/language_controller.dart'; // Import our language controller
 import 'config/languages/app_localizations_delegate.dart'; // Import our localization delegate
 import 'services/streaming_service_manager.dart'; // Import streaming service manager
 import 'ui/utils/safe_navigation_wrapper.dart'; // Import safe navigation wrapper
+import 'core/service_locator.dart'; // Import service locator
+import 'package:cb_file_manager/services/album_service.dart'; // Import AlbumService
 // Permission explainer is pushed from TabMainScreen; no direct import needed here
 
 // Global access to test the video thumbnail screen (for development)
@@ -148,15 +150,22 @@ void main() async {
 
     // Do not request permissions at startup; handled via explainer UI on demand
 
+    // Setup dependency injection container
+    // This must be done before initializing any services
+    await setupServiceLocator();
+    debugPrint('Service locator initialized successfully');
+
     // Khởi tạo cơ sở dữ liệu và hệ thống tag một cách an toàn
     try {
       // Khởi tạo UserPreferences trước tiên
-      final preferences = UserPreferences.instance;
+      // Now using service locator, but keeping backward compatibility
+      final preferences = locator<UserPreferences>();
       await preferences.init();
       debugPrint('User preferences initialized successfully');
 
       // Sau đó khởi tạo DatabaseManager
-      final dbManager = DatabaseManager.getInstance();
+      // Now using service locator, but keeping backward compatibility
+      final dbManager = locator<DatabaseManager>();
       if (!dbManager.isInitialized()) {
         await dbManager.initialize();
         debugPrint('Database manager initialized successfully');
@@ -165,10 +174,13 @@ void main() async {
       }
       final store = dbManager.getStore();
       if (store != null) {
-        await NetworkCredentialsService().init(store);
+        // Initialize NetworkCredentialsService with the store
+        final networkCredService = locator<NetworkCredentialsService>();
+        await networkCredService.init(store);
       }
 
       // Khởi tạo các hệ thống phụ thuộc khác
+      // Services are now available through the locator
       await BatchTagManager.initialize();
       await TagManager.initialize();
 
@@ -180,7 +192,7 @@ void main() async {
     }
 
     // Initialize folder thumbnail service
-    await FolderThumbnailService().initialize();
+    await locator<FolderThumbnailService>().initialize();
 
     // Initialize video thumbnail cache system
     debugPrint('Initializing video thumbnail cache system');
@@ -192,7 +204,10 @@ void main() async {
     }
 
     // Initialize language controller
-    await LanguageController().initialize();
+    await locator<LanguageController>().initialize();
+
+    // Initialize AlbumService (starts background processing)
+    await locator<AlbumService>().initialize();
 
     // Streaming functionality is now handled directly by StreamingHelper with network services
 
@@ -219,7 +234,7 @@ void main() async {
 
     runApp(
       ChangeNotifierProvider(
-        create: (context) => ThemeProvider(),
+        create: (context) => locator<ThemeProvider>(),
         child: const CBFileApp(),
       ),
     );
@@ -263,7 +278,7 @@ class CBFileApp extends StatefulWidget {
 
 class _CBFileAppState extends State<CBFileApp> with WidgetsBindingObserver {
   // Language controller for handling language changes
-  final LanguageController _languageController = LanguageController();
+  final LanguageController _languageController = locator<LanguageController>();
   ValueNotifier<Locale>? _localeNotifier;
 
   @override

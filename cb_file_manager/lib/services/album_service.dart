@@ -7,6 +7,10 @@ import '../models/objectbox/album_file.dart';
 import '../models/objectbox/objectbox_database_provider.dart';
 import '../objectbox.g.dart';
 import '../helpers/core/filesystem_utils.dart';
+import '../models/objectbox/album_config.dart';
+import 'album_file_scanner.dart';
+import 'background_album_processor.dart';
+import 'lazy_album_scanner.dart';
 import 'package:path/path.dart' as path;
 
 /// Service class for managing albums and their file associations
@@ -15,6 +19,11 @@ class AlbumService {
   static AlbumService get instance => _instance ??= AlbumService._();
 
   final ObjectBoxDatabaseProvider _dbProvider = ObjectBoxDatabaseProvider();
+  
+  // Helper services for smart albums
+  final AlbumFileScanner _scanner = AlbumFileScanner.instance;
+  final BackgroundAlbumProcessor _processor = BackgroundAlbumProcessor.instance;
+  final LazyAlbumScanner _lazyScanner = LazyAlbumScanner.instance;
 
   AlbumService._();
 
@@ -31,6 +40,23 @@ class AlbumService {
   Future<Store?> _getStore() async {
     await _dbProvider.initialize();
     return _dbProvider.getStore();
+  }
+
+  /// Initialize the service and start background processing
+  Future<void> initialize() async {
+    await _processor.startMonitoring();
+    
+    // Restore monitoring for existing smart albums
+    try {
+      final configs = await getAllAlbumConfigs();
+      for (final config in configs) {
+        if (config.directoriesList.isNotEmpty) {
+          await _processor.addAlbumToMonitoring(config.albumId, config.directoriesList);
+        }
+      }
+    } catch (e) {
+      debugPrint('Error restoring album monitoring: $e');
+    }
   }
 
   /// Get all albums
@@ -61,12 +87,14 @@ class AlbumService {
     }
   }
 
-  /// Create a new album
+  /// Create a new album (manual or smart)
   Future<Album?> createAlbum({
     required String name,
     String? description,
     String? coverImagePath,
     String? colorTheme,
+    List<String>? directories, // For smart albums
+    AlbumConfig? config,      // Custom config for smart albums
   }) async {
     try {
       // Check if album with same name already exists
@@ -80,6 +108,7 @@ class AlbumService {
       if (store == null) throw Exception('Database not initialized');
 
       final albumBox = store.box<Album>();
+      final configBox = store.box<AlbumConfig>();
 
       final album = Album(
         name: name,
@@ -90,6 +119,21 @@ class AlbumService {
 
       final id = albumBox.put(album);
       album.id = id;
+
+      // If directories provided, create config for smart album
+      if (directories != null && directories.isNotEmpty) {
+        final albumConfig = config ?? AlbumConfig(albumId: id);
+        albumConfig.albumId = id; // Ensure ID links match
+        albumConfig.directoriesList = directories;
+        
+        configBox.put(albumConfig);
+        
+        // Start monitoring
+        await _processor.addAlbumToMonitoring(id, directories);
+        
+        // Trigger initial scan
+        _triggerBackgroundScan(album, albumConfig);
+      }
 
       debugPrint('Created album: ${album.name} with ID: $id');
       return album;
@@ -126,14 +170,28 @@ class AlbumService {
 
       final albumBox = store.box<Album>();
       final albumFileBox = store.box<AlbumFile>();
+      final configBox = store.box<AlbumConfig>();
 
-      // Delete all file associations first
+      // 1. Delete manual file associations
       final albumFiles = await getAlbumFiles(albumId);
       for (final albumFile in albumFiles) {
         albumFileBox.remove(albumFile.id);
       }
 
-      // Delete the album
+      // 2. Handle smart album cleanup
+      final config = await getAlbumConfig(albumId);
+      if (config != null) {
+        // Stop monitoring
+        await _processor.removeAlbumFromMonitoring(config.directoriesList);
+        // Delete config
+        configBox.remove(config.id);
+      }
+      
+      // Clear caches
+      _scanner.clearCache(albumId);
+      _lazyScanner.disposeAlbum(albumId);
+
+      // 3. Delete the album
       final success = albumBox.remove(albumId);
 
       debugPrint('Deleted album ID: $albumId, success: $success');
@@ -448,5 +506,155 @@ class AlbumService {
 
     final imageFiles = await getAllImages(directoryPath, recursive: recursive);
     return imageFiles.map((f) => f.path).toList();
+  }
+
+  // ========================================================================
+  // Smart Album / Optimized Methods
+  // ========================================================================
+
+  /// Get album configuration
+  Future<AlbumConfig?> getAlbumConfig(int albumId) async {
+    try {
+      final store = await _getStore();
+      if (store == null) return null;
+      
+      final configBox = store.box<AlbumConfig>();
+      final query = configBox.query(AlbumConfig_.albumId.equals(albumId)).build();
+      final config = query.findFirst();
+      query.close();
+      
+      return config;
+    } catch (e) {
+      debugPrint('Error getting album config: $e');
+      return null;
+    }
+  }
+
+  /// Get all album configurations
+  Future<List<AlbumConfig>> getAllAlbumConfigs() async {
+    try {
+      final store = await _getStore();
+      if (store == null) return [];
+      
+      return store.box<AlbumConfig>().getAll();
+    } catch (e) {
+      return [];
+    }
+  }
+
+  /// Update album configuration
+  Future<void> updateAlbumConfig(AlbumConfig config) async {
+    try {
+      final store = await _getStore();
+      if (store == null) return;
+      
+      store.box<AlbumConfig>().put(config);
+      
+      // Clear cache to force rescan
+      _scanner.clearCache(config.albumId);
+      
+      // Refresh monitoring
+      await _processor.refreshMonitoring();
+    } catch (e) {
+      debugPrint('Error updating album config: $e');
+    }
+  }
+
+  /// Get lazy stream of album files (Smart + Manual merged)
+  /// Returns FileInfo objects which are lighter than AlbumFile
+  Stream<List<FileInfo>> getLazyAlbumFiles(int albumId) {
+    // Create a controller to merge streams if needed
+    // For now, we'll prioritize smart album stream if config exists
+    // In a full implementation, we would merge manual files into this stream
+    
+    final controller = StreamController<List<FileInfo>>();
+    
+    _initLazyStream(albumId, controller);
+    
+    return controller.stream;
+  }
+
+  Future<void> _initLazyStream(int albumId, StreamController<List<FileInfo>> controller) async {
+    try {
+      final album = await getAlbumById(albumId);
+      if (album == null) {
+        controller.close();
+        return;
+      }
+
+      final config = await getAlbumConfig(albumId);
+      
+      if (config != null && config.directoriesList.isNotEmpty) {
+        // It's a smart album, use lazy scanner
+        final stream = _lazyScanner.getLazyAlbumFiles(album, config);
+        await controller.addStream(stream);
+      } else {
+        // It's a manual album, convert stored files to FileInfo
+        final manualFiles = await getAlbumFiles(albumId);
+        final fileInfos = manualFiles.map((f) {
+          final file = File(f.filePath);
+          final stat = file.existsSync() ? file.statSync() : null;
+          return FileInfo(
+            path: f.filePath,
+            name: path.basename(f.filePath),
+            size: stat?.size ?? 0,
+            modifiedTime: stat?.modified ?? DateTime.now(),
+            isImage: true, // Assume image for manual album files for now
+            isVideo: false,
+          );
+        }).toList();
+        
+        controller.add(fileInfos);
+      }
+    } catch (e) {
+      debugPrint('Error initializing lazy stream: $e');
+      controller.add([]);
+    } finally {
+      if (!controller.isClosed) controller.close();
+    }
+  }
+
+  /// Trigger background scan for album
+  void _triggerBackgroundScan(Album album, AlbumConfig config) {
+    // Run scan in background without blocking UI
+    Timer(const Duration(milliseconds: 100), () async {
+      try {
+        final files = await _scanner.scanAlbumFiles(album, config);
+        config.updateScanStats(files.length);
+        await updateAlbumConfig(config);
+      } catch (e) {
+        debugPrint('Background scan error for album ${album.name}: $e');
+      }
+    });
+  }
+
+  /// Refresh album (force rescan)
+  Future<void> refreshAlbum(int albumId) async {
+    _scanner.clearCache(albumId);
+    _lazyScanner.refreshAlbum(albumId);
+  }
+
+  /// Get immediate files (cached only, no scanning)
+  List<FileInfo> getImmediateFiles(int albumId) {
+    return _lazyScanner.getImmediateFiles(albumId);
+  }
+
+  /// Check if album is currently scanning
+  bool isAlbumScanning(int albumId) {
+    return _lazyScanner.isScanning(albumId);
+  }
+
+  /// Get scan progress (0.0 to 1.0)
+  Future<double> getAlbumScanProgress(int albumId) async {
+    final config = await getAlbumConfig(albumId);
+    if (config == null) return 0.0;
+    return _lazyScanner.getScanProgress(albumId, config);
+  }
+
+  /// Dispose resources
+  Future<void> dispose() async {
+    await _processor.stopMonitoring();
+    _scanner.clearAllCache();
+    _lazyScanner.dispose();
   }
 }

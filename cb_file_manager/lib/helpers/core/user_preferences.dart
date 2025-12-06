@@ -270,16 +270,97 @@ class UserPreferences {
     return _useObjectBox;
   }
 
+  /// Generic method to get a preference value
+  /// Automatically handles SharedPreferences and ObjectBox storage backends
+  Future<T?> _getPreference<T>(
+    String key, {
+    T? defaultValue,
+  }) async {
+    if (_useObjectBox && _databaseManager != null) {
+      // Handle ObjectBox storage
+      if (T == int) {
+        return await _databaseManager!.getIntPreference(
+          key,
+          defaultValue: defaultValue as int?,
+        ) as T?;
+      } else if (T == double) {
+        return await _databaseManager!.getDoublePreference(
+          key,
+          defaultValue: defaultValue as double?,
+        ) as T?;
+      } else if (T == bool) {
+        return await _databaseManager!.getBoolPreference(
+          key,
+          defaultValue: defaultValue as bool?,
+        ) as T?;
+      } else if (T == String) {
+        return await _databaseManager!.getStringPreference(
+          key,
+          defaultValue: defaultValue as String?,
+        ) as T?;
+      }
+    } else {
+      // Handle SharedPreferences storage
+      if (T == int) {
+        return _preferences?.getInt(key) as T? ?? defaultValue;
+      } else if (T == double) {
+        return _preferences?.getDouble(key) as T? ?? defaultValue;
+      } else if (T == bool) {
+        return _preferences?.getBool(key) as T? ?? defaultValue;
+      } else if (T == String) {
+        return _preferences?.getString(key) as T? ?? defaultValue;
+      }
+    }
+    return defaultValue;
+  }
+
+  /// Generic method to save a preference value
+  /// Automatically handles SharedPreferences and ObjectBox storage backends
+  Future<bool> _savePreference<T>(
+    String key,
+    T value,
+  ) async {
+    if (_useObjectBox && _databaseManager != null) {
+      // Handle ObjectBox storage
+      if (value is int) {
+        return await _databaseManager!.saveIntPreference(key, value);
+      } else if (value is double) {
+        return await _databaseManager!.saveDoublePreference(key, value);
+      } else if (value is bool) {
+        return await _databaseManager!.saveBoolPreference(key, value);
+      } else if (value is String) {
+        return await _databaseManager!.saveStringPreference(key, value);
+      }
+    } else {
+      // Handle SharedPreferences storage
+      if (value is int) {
+        return await _preferences?.setInt(key, value) ?? false;
+      } else if (value is double) {
+        return await _preferences?.setDouble(key, value) ?? false;
+      } else if (value is bool) {
+        return await _preferences?.setBool(key, value) ?? false;
+      } else if (value is String) {
+        return await _preferences?.setString(key, value) ?? false;
+      }
+    }
+    return false;
+  }
+
+  /// Generic method to delete a preference
+  Future<bool> _deletePreference(String key) async {
+    if (_useObjectBox && _databaseManager != null) {
+      return await _databaseManager!.deletePreference(key);
+    } else {
+      return await _preferences?.remove(key) ?? false;
+    }
+  }
+
   /// Get image gallery thumbnail size (as grid count - higher means smaller thumbnails)
   Future<double> getImageGalleryThumbnailSize() async {
-    if (_useObjectBox) {
-      return await _databaseManager!.getDoublePreference(
-            _imageGalleryThumbnailSizeKey,
-            defaultValue: defaultThumbnailSize,
-          ) ??
-          defaultThumbnailSize;
-    }
-    return _preferences?.getDouble(_imageGalleryThumbnailSizeKey) ??
+    return await _getPreference<double>(
+          _imageGalleryThumbnailSizeKey,
+          defaultValue: defaultThumbnailSize,
+        ) ??
         defaultThumbnailSize;
   }
 
@@ -287,30 +368,15 @@ class UserPreferences {
   Future<bool> setImageGalleryThumbnailSize(double size) async {
     // Ensure the size is within bounds
     double validSize = size.clamp(minThumbnailSize, maxThumbnailSize);
-
-    if (_useObjectBox) {
-      return await _databaseManager!.saveDoublePreference(
-        _imageGalleryThumbnailSizeKey,
-        validSize,
-      );
-    }
-
-    return await _preferences?.setDouble(
-            _imageGalleryThumbnailSizeKey, validSize) ??
-        false;
+    return await _savePreference<double>(_imageGalleryThumbnailSizeKey, validSize);
   }
 
   /// Get video gallery thumbnail size (as grid count - higher means smaller thumbnails)
   Future<double> getVideoGalleryThumbnailSize() async {
-    if (_useObjectBox) {
-      return await _databaseManager!.getDoublePreference(
-            _videoGalleryThumbnailSizeKey,
-            defaultValue: defaultThumbnailSize,
-          ) ??
-          defaultThumbnailSize;
-    }
-
-    return _preferences?.getDouble(_videoGalleryThumbnailSizeKey) ??
+    return await _getPreference<double>(
+          _videoGalleryThumbnailSizeKey,
+          defaultValue: defaultThumbnailSize,
+        ) ??
         defaultThumbnailSize;
   }
 
@@ -318,28 +384,12 @@ class UserPreferences {
   Future<bool> setVideoGalleryThumbnailSize(double size) async {
     // Ensure the size is within bounds
     double validSize = size.clamp(minThumbnailSize, maxThumbnailSize);
-
-    if (_useObjectBox) {
-      return await _databaseManager!.saveDoublePreference(
-        _videoGalleryThumbnailSizeKey,
-        validSize,
-      );
-    }
-
-    return await _preferences?.setDouble(
-            _videoGalleryThumbnailSizeKey, validSize) ??
-        false;
+    return await _savePreference<double>(_videoGalleryThumbnailSizeKey, validSize);
   }
 
   /// Get the last accessed folder path with validation
   Future<String?> getLastAccessedFolder() async {
-    String? folderPath;
-
-    if (_useObjectBox) {
-      folderPath = await _databaseManager!.getStringPreference(_lastFolderKey);
-    } else {
-      folderPath = _preferences?.getString(_lastFolderKey);
-    }
+    String? folderPath = await _getPreference<String>(_lastFolderKey);
 
     // Add validation to ensure the folder exists before returning it
     if (folderPath != null) {
@@ -350,20 +400,12 @@ class UserPreferences {
           return folderPath;
         } else {
           // If directory doesn't exist, clear the preference
-          if (_useObjectBox) {
-            await _databaseManager!.deletePreference(_lastFolderKey);
-          } else {
-            await _preferences?.remove(_lastFolderKey);
-          }
+          await _deletePreference(_lastFolderKey);
           return null;
         }
       } catch (e) {
         // If there's an error, clear the preference
-        if (_useObjectBox) {
-          await _databaseManager!.deletePreference(_lastFolderKey);
-        } else {
-          await _preferences?.remove(_lastFolderKey);
-        }
+        await _deletePreference(_lastFolderKey);
         return null;
       }
     }
@@ -376,15 +418,7 @@ class UserPreferences {
       // Verify the folder exists before saving it
       final directory = Directory(folderPath);
       if (await directory.exists()) {
-        if (_useObjectBox) {
-          return await _databaseManager!.saveStringPreference(
-            _lastFolderKey,
-            folderPath,
-          );
-        }
-
-        return await _preferences?.setString(_lastFolderKey, folderPath) ??
-            false;
+        return await _savePreference<String>(_lastFolderKey, folderPath);
       }
       return false;
     } catch (e) {
@@ -394,193 +428,106 @@ class UserPreferences {
 
   /// Clear the last accessed folder preference
   Future<bool> clearLastAccessedFolder() async {
-    if (_useObjectBox) {
-      return await _databaseManager!.deletePreference(_lastFolderKey);
-    }
-
-    return await _preferences?.remove(_lastFolderKey) ?? false;
+    return await _deletePreference(_lastFolderKey);
   }
 
   /// Get current view mode preference (list or grid)
   Future<ViewMode> getViewMode() async {
-    int viewModeIndex;
-
-    if (_useObjectBox) {
-      viewModeIndex = await _databaseManager!.getIntPreference(
-            _viewModeKey,
-            defaultValue: 0,
-          ) ??
-          0;
-    } else {
-      viewModeIndex = _preferences?.getInt(_viewModeKey) ?? 0;
-    }
-
+    int viewModeIndex = await _getPreference<int>(
+          _viewModeKey,
+          defaultValue: 0,
+        ) ??
+        0;
     return ViewMode.values[viewModeIndex];
   }
 
   /// Save view mode preference
   Future<bool> setViewMode(ViewMode viewMode) async {
-    if (_useObjectBox) {
-      return await _databaseManager!.saveIntPreference(
-        _viewModeKey,
-        viewMode.index,
-      );
-    }
-
-    return await _preferences?.setInt(_viewModeKey, viewMode.index) ?? false;
+    return await _savePreference<int>(_viewModeKey, viewMode.index);
   }
 
   /// Get current sort option preference
   Future<SortOption> getSortOption() async {
-    int sortOptionIndex;
-
-    if (_useObjectBox) {
-      sortOptionIndex = await _databaseManager!.getIntPreference(
-            _sortOptionKey,
-            defaultValue: 0,
-          ) ??
-          0;
-    } else {
-      sortOptionIndex = _preferences?.getInt(_sortOptionKey) ?? 0;
-    }
-
+    int sortOptionIndex = await _getPreference<int>(
+          _sortOptionKey,
+          defaultValue: 0,
+        ) ??
+        0;
     return SortOption.values[sortOptionIndex];
   }
 
   /// Save sort option preference
   Future<bool> setSortOption(SortOption sortOption) async {
-    if (_useObjectBox) {
-      return await _databaseManager!.saveIntPreference(
-        _sortOptionKey,
-        sortOption.index,
-      );
-    }
-
-    return await _preferences?.setInt(_sortOptionKey, sortOption.index) ??
-        false;
+    return await _savePreference<int>(_sortOptionKey, sortOption.index);
   }
 
   /// Get grid zoom level preference
   Future<int> getGridZoomLevel() async {
-    if (_useObjectBox) {
-      return await _databaseManager!.getIntPreference(
-            _gridZoomLevelKey,
-            defaultValue: defaultGridZoomLevel,
-          ) ??
-          defaultGridZoomLevel;
-    }
-
-    return _preferences?.getInt(_gridZoomLevelKey) ?? defaultGridZoomLevel;
+    return await _getPreference<int>(
+          _gridZoomLevelKey,
+          defaultValue: defaultGridZoomLevel,
+        ) ??
+        defaultGridZoomLevel;
   }
 
   /// Save grid zoom level preference
   Future<bool> setGridZoomLevel(int zoomLevel) async {
     // Ensure the zoom level is within bounds
     final validZoom = zoomLevel.clamp(minGridZoomLevel, maxGridZoomLevel);
-
-    if (_useObjectBox) {
-      return await _databaseManager!.saveIntPreference(
-        _gridZoomLevelKey,
-        validZoom,
-      );
-    }
-
-    return await _preferences?.setInt(_gridZoomLevelKey, validZoom) ?? false;
+    return await _savePreference<int>(_gridZoomLevelKey, validZoom);
   }
 
   /// Get video player volume preference (0-100)
   Future<double> getVideoPlayerVolume() async {
-    if (_useObjectBox) {
-      return await _databaseManager!.getDoublePreference(
-            _videoPlayerVolumeKey,
-            defaultValue: 70.0,
-          ) ??
-          70.0;
-    }
-
-    return _preferences?.getDouble(_videoPlayerVolumeKey) ?? 70.0;
+    return await _getPreference<double>(
+          _videoPlayerVolumeKey,
+          defaultValue: 70.0,
+        ) ??
+        70.0;
   }
 
   /// Save video player volume preference (0-100)
   Future<bool> setVideoPlayerVolume(double volume) async {
     // Ensure volume is within bounds (0 to 100)
     double validVolume = volume.clamp(0.0, 100.0);
-
-    if (_useObjectBox) {
-      return await _databaseManager!.saveDoublePreference(
-        _videoPlayerVolumeKey,
-        validVolume,
-      );
-    }
-
-    return await _preferences?.setDouble(_videoPlayerVolumeKey, validVolume) ??
-        false;
+    return await _savePreference<double>(_videoPlayerVolumeKey, validVolume);
   }
 
   /// Get video player mute state
   Future<bool> getVideoPlayerMute() async {
-    if (_useObjectBox) {
-      return await _databaseManager!.getBoolPreference(
-            _videoPlayerMuteKey,
-            defaultValue: false,
-          ) ??
-          false;
-    }
-
-    return _preferences?.getBool(_videoPlayerMuteKey) ?? false;
+    return await _getPreference<bool>(
+          _videoPlayerMuteKey,
+          defaultValue: false,
+        ) ??
+        false;
   }
 
   /// Save video player mute state
   Future<bool> setVideoPlayerMute(bool isMuted) async {
-    if (_useObjectBox) {
-      return await _databaseManager!.saveBoolPreference(
-        _videoPlayerMuteKey,
-        isMuted,
-      );
-    }
-
-    return await _preferences?.setBool(_videoPlayerMuteKey, isMuted) ?? false;
+    return await _savePreference<bool>(_videoPlayerMuteKey, isMuted);
   }
 
   /// Get drawer pinned state
   Future<bool> getDrawerPinned() async {
-    if (_useObjectBox) {
-      return await _databaseManager!.getBoolPreference(
-            _drawerPinnedKey,
-            defaultValue: false,
-          ) ??
-          false;
-    }
-
-    return _preferences?.getBool(_drawerPinnedKey) ?? false;
+    return await _getPreference<bool>(
+          _drawerPinnedKey,
+          defaultValue: false,
+        ) ??
+        false;
   }
 
   /// Save drawer pinned state
   Future<bool> setDrawerPinned(bool isPinned) async {
-    if (_useObjectBox) {
-      return await _databaseManager!.saveBoolPreference(
-        _drawerPinnedKey,
-        isPinned,
-      );
-    }
-
-    return await _preferences?.setBool(_drawerPinnedKey, isPinned) ?? false;
+    return await _savePreference<bool>(_drawerPinnedKey, isPinned);
   }
 
   /// Get current theme preference
   Future<ThemePreference> getThemePreference() async {
-    int themeIndex;
-
-    if (_useObjectBox) {
-      themeIndex = await _databaseManager!.getIntPreference(
-            _themePreferenceKey,
-            defaultValue: 0,
-          ) ??
-          0;
-    } else {
-      themeIndex = _preferences?.getInt(_themePreferenceKey) ?? 0;
-    }
-
+    int themeIndex = await _getPreference<int>(
+          _themePreferenceKey,
+          defaultValue: 0,
+        ) ??
+        0;
     return ThemePreference.values[themeIndex];
   }
 
@@ -600,18 +547,7 @@ class UserPreferences {
 
   /// Save theme preference and notify listeners
   Future<bool> setThemePreference(ThemePreference preference) async {
-    bool result;
-
-    if (_useObjectBox) {
-      result = await _databaseManager!.saveIntPreference(
-        _themePreferenceKey,
-        preference.index,
-      );
-    } else {
-      result =
-          await _preferences?.setInt(_themePreferenceKey, preference.index) ??
-              false;
-    }
+    bool result = await _savePreference<int>(_themePreferenceKey, preference.index);
 
     if (result) {
       // Notify listeners about the theme change
@@ -623,15 +559,10 @@ class UserPreferences {
 
   /// Get video thumbnail timestamp preference (in seconds)
   Future<int> getVideoThumbnailTimestamp() async {
-    if (_useObjectBox) {
-      return await _databaseManager!.getIntPreference(
-            _videoThumbnailTimestampKey,
-            defaultValue: defaultVideoThumbnailTimestamp,
-          ) ??
-          defaultVideoThumbnailTimestamp;
-    }
-
-    return _preferences?.getInt(_videoThumbnailTimestampKey) ??
+    return await _getPreference<int>(
+          _videoThumbnailTimestampKey,
+          defaultValue: defaultVideoThumbnailTimestamp,
+        ) ??
         defaultVideoThumbnailTimestamp;
   }
 
@@ -640,30 +571,15 @@ class UserPreferences {
     // Ensure the timestamp is within bounds
     final validTimestamp =
         seconds.clamp(minVideoThumbnailTimestamp, maxVideoThumbnailTimestamp);
-
-    if (_useObjectBox) {
-      return await _databaseManager!.saveIntPreference(
-        _videoThumbnailTimestampKey,
-        validTimestamp,
-      );
-    }
-
-    return await _preferences?.setInt(
-            _videoThumbnailTimestampKey, validTimestamp) ??
-        false;
+    return await _savePreference<int>(_videoThumbnailTimestampKey, validTimestamp);
   }
 
   /// Get video thumbnail position preference (as percentage of video duration)
   Future<int> getVideoThumbnailPercentage() async {
-    if (_useObjectBox) {
-      return await _databaseManager!.getIntPreference(
-            _videoThumbnailPercentageKey,
-            defaultValue: defaultVideoThumbnailPercentage,
-          ) ??
-          defaultVideoThumbnailPercentage;
-    }
-
-    return _preferences?.getInt(_videoThumbnailPercentageKey) ??
+    return await _getPreference<int>(
+          _videoThumbnailPercentageKey,
+          defaultValue: defaultVideoThumbnailPercentage,
+        ) ??
         defaultVideoThumbnailPercentage;
   }
 
@@ -672,91 +588,46 @@ class UserPreferences {
     // Ensure the percentage is within bounds
     final validPercentage = percentage.clamp(
         minVideoThumbnailPercentage, maxVideoThumbnailPercentage);
-
-    if (_useObjectBox) {
-      return await _databaseManager!.saveIntPreference(
-        _videoThumbnailPercentageKey,
-        validPercentage,
-      );
-    }
-
-    return await _preferences?.setInt(
-            _videoThumbnailPercentageKey, validPercentage) ??
-        false;
+    return await _savePreference<int>(_videoThumbnailPercentageKey, validPercentage);
   }
 
   /// Search tip shown preference
   Future<bool> getSearchTipShown() async {
-    if (_useObjectBox) {
-      return await _databaseManager!.getBoolPreference(
-            _keySearchTipShown,
-            defaultValue: false,
-          ) ??
-          false;
-    }
-
-    return _preferences?.getBool(_keySearchTipShown) ?? false;
+    return await _getPreference<bool>(
+          _keySearchTipShown,
+          defaultValue: false,
+        ) ??
+        false;
   }
 
   Future<void> setSearchTipShown(bool shown) async {
-    if (_useObjectBox) {
-      await _databaseManager!.saveBoolPreference(_keySearchTipShown, shown);
-    } else {
-      await _preferences?.setBool(_keySearchTipShown, shown);
-    }
+    await _savePreference<bool>(_keySearchTipShown, shown);
   }
 
   // Generic methods for video player settings
   Future<void> setVideoPlayerString(String key, String value) async {
-    if (_useObjectBox) {
-      await _databaseManager!.saveStringPreference(key, value);
-    } else {
-      await _preferences?.setString(key, value);
-    }
+    await _savePreference<String>(key, value);
   }
 
   Future<String?> getVideoPlayerString(String key,
       {String? defaultValue}) async {
-    if (_useObjectBox) {
-      return await _databaseManager!
-          .getStringPreference(key, defaultValue: defaultValue);
-    } else {
-      return _preferences?.getString(key) ?? defaultValue;
-    }
+    return await _getPreference<String>(key, defaultValue: defaultValue);
   }
 
   Future<void> setVideoPlayerBool(String key, bool value) async {
-    if (_useObjectBox) {
-      await _databaseManager!.saveBoolPreference(key, value);
-    } else {
-      await _preferences?.setBool(key, value);
-    }
+    await _savePreference<bool>(key, value);
   }
 
   Future<bool?> getVideoPlayerBool(String key, {bool? defaultValue}) async {
-    if (_useObjectBox) {
-      return await _databaseManager!
-          .getBoolPreference(key, defaultValue: defaultValue);
-    } else {
-      return _preferences?.getBool(key) ?? defaultValue;
-    }
+    return await _getPreference<bool>(key, defaultValue: defaultValue);
   }
 
   Future<void> setVideoPlayerInt(String key, int value) async {
-    if (_useObjectBox) {
-      await _databaseManager!.saveIntPreference(key, value);
-    } else {
-      await _preferences?.setInt(key, value);
-    }
+    await _savePreference<int>(key, value);
   }
 
   Future<int?> getVideoPlayerInt(String key, {int? defaultValue}) async {
-    if (_useObjectBox) {
-      return await _databaseManager!
-          .getIntPreference(key, defaultValue: defaultValue);
-    } else {
-      return _preferences?.getInt(key) ?? defaultValue;
-    }
+    return await _getPreference<int>(key, defaultValue: defaultValue);
   }
 
   /// Export preferences to a JSON file with custom destination
@@ -1022,15 +893,7 @@ class UserPreferences {
 
   /// Get column visibility settings for details view
   Future<ColumnVisibility> getColumnVisibility() async {
-    String? columnVisibilityJson;
-
-    if (_useObjectBox) {
-      columnVisibilityJson = await _databaseManager!.getStringPreference(
-        _columnVisibilityKey,
-      );
-    } else {
-      columnVisibilityJson = _preferences?.getString(_columnVisibilityKey);
-    }
+    String? columnVisibilityJson = await _getPreference<String>(_columnVisibilityKey);
 
     if (columnVisibilityJson == null) {
       return const ColumnVisibility(); // Use default
@@ -1048,40 +911,20 @@ class UserPreferences {
   /// Save column visibility settings
   Future<bool> setColumnVisibility(ColumnVisibility visibility) async {
     final String jsonData = json.encode(visibility.toMap());
-
-    if (_useObjectBox) {
-      return await _databaseManager!.saveStringPreference(
-        _columnVisibilityKey,
-        jsonData,
-      );
-    }
-
-    return await _preferences?.setString(_columnVisibilityKey, jsonData) ??
-        false;
+    return await _savePreference<String>(_columnVisibilityKey, jsonData);
   }
 
   /// Get show file tags setting
   Future<bool> getShowFileTags() async {
-    if (_useObjectBox) {
-      return await _databaseManager!.getBoolPreference(
-            _showFileTagsKey,
-            defaultValue: true, // Default to showing tags
-          ) ??
-          true;
-    }
-
-    return _preferences?.getBool(_showFileTagsKey) ?? true;
+    return await _getPreference<bool>(
+          _showFileTagsKey,
+          defaultValue: true, // Default to showing tags
+        ) ??
+        true;
   }
 
   /// Save show file tags setting
   Future<bool> setShowFileTags(bool showTags) async {
-    if (_useObjectBox) {
-      return await _databaseManager!.saveBoolPreference(
-        _showFileTagsKey,
-        showTags,
-      );
-    }
-
-    return await _preferences?.setBool(_showFileTagsKey, showTags) ?? false;
+    return await _savePreference<bool>(_showFileTagsKey, showTags);
   }
 }

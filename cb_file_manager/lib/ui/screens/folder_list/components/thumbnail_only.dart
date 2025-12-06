@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'dart:io'; // Import dart:io for FileSystemEntity
 import 'package:cb_file_manager/ui/widgets/thumbnail_loader.dart';
-import 'package:cb_file_manager/helpers/files/file_type_helper.dart'; // Import the helper
+import 'package:cb_file_manager/helpers/files/file_type_registry.dart';
+import 'package:cb_file_manager/helpers/files/file_icon_helper.dart';
 import 'package:path/path.dart' as p;
 
 /// A widget that displays only the thumbnail of a file item.
@@ -22,19 +23,84 @@ class ThumbnailOnly extends StatefulWidget {
 
 class _ThumbnailOnlyState extends State<ThumbnailOnly>
     with AutomaticKeepAliveClientMixin {
+  late Future<Widget> _iconFuture;
+
   @override
   bool get wantKeepAlive => true;
+
+  @override
+  void initState() {
+    super.initState();
+    // Initialize the icon future for non-media files
+    final extension = p.extension(widget.file.path).toLowerCase();
+    final category = FileTypeRegistry.getCategory(extension);
+    final isVideo = category == FileCategory.video;
+    final isImage = category == FileCategory.image;
+
+    if (!isVideo && !isImage && widget.file is File) {
+      _iconFuture = FileIconHelper.getIconForFile(widget.file as File,
+          size: widget.iconSize);
+    }
+  }
+
+  @override
+  void didUpdateWidget(ThumbnailOnly oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.file.path != oldWidget.file.path) {
+      final extension = p.extension(widget.file.path).toLowerCase();
+      final category = FileTypeRegistry.getCategory(extension);
+      final isVideo = category == FileCategory.video;
+      final isImage = category == FileCategory.image;
+
+      if (!isVideo && !isImage && widget.file is File) {
+        _iconFuture = FileIconHelper.getIconForFile(widget.file as File,
+            size: widget.iconSize);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     super.build(context); // Required for AutomaticKeepAliveClientMixin
 
-    final extension = p.extension(widget.file.path);
-    final isVideo = FileTypeHelper.isVideo(extension);
-    final isImage = FileTypeHelper.isImage(extension);
-    final fileType = FileTypeHelper.getFileType(extension);
-    final icon = FileTypeHelper.getIconForFileType(fileType);
+    final extension = p.extension(widget.file.path).toLowerCase();
+    final category = FileTypeRegistry.getCategory(extension);
+    final isVideo = category == FileCategory.video;
+    final isImage = category == FileCategory.image;
+    final genericIcon = FileTypeRegistry.getIcon(extension);
 
+    // For non-media files, directly show the icon without ThumbnailLoader
+    if (!isVideo && !isImage && widget.file is File) {
+      return RepaintBoundary(
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8.0),
+            color: Theme.of(context)
+                .colorScheme
+                .surfaceContainerHighest
+                .withValues(alpha: 0.3),
+          ),
+          child: Center(
+            child: FutureBuilder<Widget>(
+              future: _iconFuture,
+              builder: (context, snapshot) {
+                if (snapshot.hasData) {
+                  return snapshot.data!;
+                }
+                // Show generic icon while loading
+                return Icon(
+                  genericIcon,
+                  size: widget.iconSize,
+                  color: Theme.of(context).colorScheme.secondary,
+                );
+              },
+            ),
+          ),
+        ),
+      );
+    }
+
+    // For media files (video/image), use ThumbnailLoader
     return RepaintBoundary(
       child: ThumbnailLoader(
         key: ValueKey('thumb-loader-${widget.file.path}'),
@@ -46,9 +112,9 @@ class _ThumbnailOnlyState extends State<ThumbnailOnly>
         fit: BoxFit.cover,
         isPriority: true,
         borderRadius: BorderRadius.circular(8.0),
-        showLoadingIndicator: true, // Enable skeleton loading
+        showLoadingIndicator: true,
         fallbackBuilder: () => Icon(
-          icon,
+          genericIcon,
           size: widget.iconSize,
           color: Theme.of(context).colorScheme.secondary,
         ),

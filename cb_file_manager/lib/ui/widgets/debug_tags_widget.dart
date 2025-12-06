@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cb_file_manager/helpers/tags/tag_manager.dart';
 import 'package:cb_file_manager/helpers/core/user_preferences.dart';
 import 'package:cb_file_manager/models/database/database_manager.dart';
+import 'package:cb_file_manager/config/languages/app_localizations.dart';
 
 class DebugTagsWidget extends StatefulWidget {
   const DebugTagsWidget({Key? key}) : super(key: key);

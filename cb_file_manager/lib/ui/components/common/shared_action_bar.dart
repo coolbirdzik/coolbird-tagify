@@ -3,6 +3,7 @@ import '../../screens/folder_list/folder_list_state.dart';
 import '../../../helpers/core/user_preferences.dart';
 import 'package:remixicon/remixicon.dart' as remix;
 import '../../../config/app_theme.dart';
+import '../../../config/languages/app_localizations.dart';
 
 class SharedActionBar {
   /// Tạo popup menu item cho các tùy chọn sắp xếp
@@ -39,20 +40,20 @@ class SharedActionBar {
     );
   }
 
-  /// Dialog điều chỉnh kích thước lưới
   static void showGridSizeDialog(
     BuildContext context, {
     required int currentGridSize,
     required Function(int) onApply,
   }) {
     int size = currentGridSize;
+    final l10n = AppLocalizations.of(context)!;
 
     showDialog(
       context: context,
       builder: (BuildContext context) {
         return StatefulBuilder(builder: (context, setState) {
           return AlertDialog(
-            title: const Text('Điều chỉnh kích thước lưới'),
+            title: Text(l10n.adjustGridSizeTitle),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -62,16 +63,16 @@ class SharedActionBar {
                   max: UserPreferences.maxGridZoomLevel.toDouble(),
                   divisions: UserPreferences.maxGridZoomLevel -
                       UserPreferences.minGridZoomLevel,
-                  label: '${size.round()} ô trên mỗi hàng',
+                  label: l10n.gridSizeLabel(size.round()),
                   onChanged: (double value) {
                     setState(() {
                       size = value.round();
                     });
                   },
                 ),
-                const Text(
-                  'Di chuyển thanh trượt để chọn số lượng ô hiển thị trên mỗi hàng',
-                  style: TextStyle(
+                Text(
+                  l10n.gridSizeInstructions,
+                  style: const TextStyle(
                     fontSize: 12,
                     color: Colors.grey,
                   ),
@@ -84,14 +85,14 @@ class SharedActionBar {
                 onPressed: () {
                   Navigator.pop(context);
                 },
-                child: const Text('HỦY'),
+                child: Text(l10n.cancel.toUpperCase()),
               ),
               TextButton(
                 onPressed: () {
                   onApply(size);
                   Navigator.pop(context);
                 },
-                child: const Text('ÁP DỤNG'),
+                child: Text(l10n.apply),
               ),
             ],
           );
@@ -100,12 +101,12 @@ class SharedActionBar {
     );
   }
 
-  /// Dialog thiết lập hiển thị cột
   static void showColumnVisibilityDialog(
     BuildContext context, {
     required ColumnVisibility currentVisibility,
     required Function(ColumnVisibility) onApply,
   }) {
+    final l10n = AppLocalizations.of(context)!;
     // Create a mutable copy of the current visibility
     bool size = currentVisibility.size;
     bool type = currentVisibility.type;
@@ -119,11 +120,11 @@ class SharedActionBar {
         return StatefulBuilder(
           builder: (context, setState) {
             return AlertDialog(
-              title: const Row(
+              title: Row(
                 children: [
-                  Icon(remix.Remix.layout_column_line, size: 24),
-                  SizedBox(width: 8),
-                  Text('Tùy chỉnh hiển thị cột'),
+                  const Icon(remix.Remix.layout_column_line, size: 24),
+                  const SizedBox(width: 8),
+                  Text(l10n.columnVisibilityTitle),
                 ],
               ),
               content: SingleChildScrollView(
@@ -138,79 +139,75 @@ class SharedActionBar {
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(color: Colors.grey.shade300),
                       ),
-                      child: const Text(
-                        'Chọn các cột bạn muốn hiển thị trong chế độ xem chi tiết. '
-                        'Cột "Tên" luôn được hiển thị và không thể tắt.',
-                        style: TextStyle(fontSize: 14),
+                      child: Text(
+                        l10n.columnVisibilityInstructions,
+                        style: const TextStyle(fontSize: 14),
                       ),
                     ),
                     const SizedBox(height: 16),
                     const Divider(),
                     CheckboxListTile(
-                      title: const Text('Kích thước'),
-                      subtitle: const Text('Hiển thị kích thước của file'),
+                      title: Text(l10n.columnSize),
+                      subtitle: Text(l10n.columnSizeDescription),
                       value: size,
                       onChanged: (value) {
                         setState(() {
                           size = value ?? true;
                         });
                       },
-                      secondary: Icon(remix.Remix.hard_drive_2_line),
+                      secondary: const Icon(remix.Remix.hard_drive_2_line),
                       dense: true,
                     ),
                     const Divider(height: 1),
                     CheckboxListTile(
-                      title: const Text('Loại'),
-                      subtitle:
-                          const Text('Hiển thị loại tệp tin (PDF, Word, v.v.)'),
+                      title: Text(l10n.columnType),
+                      subtitle: Text(l10n.columnTypeDescription),
                       value: type,
                       onChanged: (value) {
                         setState(() {
                           type = value ?? true;
                         });
                       },
-                      secondary: Icon(remix.Remix.file_text_line),
+                      secondary: const Icon(remix.Remix.file_text_line),
                       dense: true,
                     ),
                     const Divider(height: 1),
                     CheckboxListTile(
-                      title: const Text('Ngày sửa đổi'),
-                      subtitle:
-                          const Text('Hiển thị ngày giờ tệp được sửa đổi'),
+                      title: Text(l10n.columnDateModified),
+                      subtitle: Text(l10n.columnDateModifiedDescription),
                       value: dateModified,
                       onChanged: (value) {
                         setState(() {
                           dateModified = value ?? true;
                         });
                       },
-                      secondary: Icon(remix.Remix.refresh_line),
+                      secondary: const Icon(remix.Remix.refresh_line),
                       dense: true,
                     ),
                     const Divider(height: 1),
                     CheckboxListTile(
-                      title: const Text('Ngày tạo'),
-                      subtitle: const Text('Hiển thị ngày giờ tệp được tạo ra'),
+                      title: Text(l10n.columnDateCreated),
+                      subtitle: Text(l10n.columnDateCreatedDescription),
                       value: dateCreated,
                       onChanged: (value) {
                         setState(() {
                           dateCreated = value ?? false;
                         });
                       },
-                      secondary: Icon(remix.Remix.calendar_line),
+                      secondary: const Icon(remix.Remix.calendar_line),
                       dense: true,
                     ),
                     const Divider(height: 1),
                     CheckboxListTile(
-                      title: const Text('Thuộc tính'),
-                      subtitle:
-                          const Text('Hiển thị thuộc tính tệp (quyền đọc/ghi)'),
+                      title: Text(l10n.columnAttributes),
+                      subtitle: Text(l10n.columnAttributesDescription),
                       value: attributes,
                       onChanged: (value) {
                         setState(() {
                           attributes = value ?? false;
                         });
                       },
-                      secondary: Icon(remix.Remix.information_line),
+                      secondary: const Icon(remix.Remix.information_line),
                       dense: true,
                     ),
                   ],
@@ -221,11 +218,11 @@ class SharedActionBar {
                   onPressed: () {
                     Navigator.pop(context);
                   },
-                  child: const Text('HỦY'),
+                  child: Text(l10n.cancel.toUpperCase()),
                 ),
                 ElevatedButton.icon(
-                  icon: Icon(remix.Remix.check_line),
-                  label: const Text('ÁP DỤNG'),
+                  icon: const Icon(remix.Remix.check_line),
+                  label: Text(l10n.apply),
                   onPressed: () {
                     final newVisibility = ColumnVisibility(
                       size: size,
@@ -246,104 +243,107 @@ class SharedActionBar {
     );
   }
 
-  /// Xây dựng menu "Thêm tùy chọn"
   static Widget buildMoreOptionsMenu({
     required VoidCallback onSelectionModeToggled,
     VoidCallback? onManageTagsPressed,
     Function(String)? onGallerySelected,
     String? currentPath,
   }) {
-    return PopupMenuButton<String>(
-      icon: const Icon(remix.Remix.more_2_line),
-      tooltip: 'Thêm tùy chọn',
-      offset: const Offset(0, 50),
-      itemBuilder: (context) {
-        List<PopupMenuEntry<String>> items = [
-          const PopupMenuItem<String>(
-            value: 'selection_mode',
-            child: Row(
-              children: [
-                Icon(remix.Remix.checkbox_line, size: 20),
-                SizedBox(width: 10),
-                Text('Chọn nhiều file'),
-              ],
-            ),
-          ),
-        ];
-
-        // Only show tag management if the callback is provided
-        if (onManageTagsPressed != null) {
-          items.add(
-            const PopupMenuItem<String>(
-              value: 'manage_tags',
-              child: Row(
-                children: [
-                  Icon(remix.Remix.bookmark_line, size: 20),
-                  SizedBox(width: 10),
-                  Text('Quản lý thẻ'),
-                ],
+    return Builder(
+      builder: (context) {
+        final l10n = AppLocalizations.of(context)!;
+        return PopupMenuButton<String>(
+          icon: const Icon(remix.Remix.more_2_line),
+          tooltip: l10n.moreOptionsTooltip,
+          offset: const Offset(0, 50),
+          itemBuilder: (context) {
+            List<PopupMenuEntry<String>> items = [
+              PopupMenuItem<String>(
+                value: 'selection_mode',
+                child: Row(
+                  children: [
+                    const Icon(remix.Remix.checkbox_line, size: 20),
+                    const SizedBox(width: 10),
+                    Text(l10n.selectMultipleFiles),
+                  ],
+                ),
               ),
-            ),
-          );
-        }
+            ];
 
-        // Only show gallery options if the callback and path are provided
-        if (onGallerySelected != null && currentPath != null) {
-          items.add(const PopupMenuDivider());
-          items.add(
-            const PopupMenuItem<String>(
-              value: 'image_gallery',
-              child: Row(
-                children: [
-                  Icon(remix.Remix.image_line, size: 20),
-                  SizedBox(width: 10),
-                  Text('Xem thư viện ảnh'),
-                ],
-              ),
-            ),
-          );
-          items.add(
-            const PopupMenuItem<String>(
-              value: 'video_gallery',
-              child: Row(
-                children: [
-                  Icon(remix.Remix.video_line, size: 20),
-                  SizedBox(width: 10),
-                  Text('Xem thư viện video'),
-                ],
-              ),
-            ),
-          );
-        }
-
-        return items;
-      },
-      onSelected: (String value) {
-        switch (value) {
-          case 'selection_mode':
-            onSelectionModeToggled();
-            break;
-          case 'manage_tags':
+            // Only show tag management if the callback is provided
             if (onManageTagsPressed != null) {
-              onManageTagsPressed();
+              items.add(
+                PopupMenuItem<String>(
+                  value: 'manage_tags',
+                  child: Row(
+                    children: [
+                      const Icon(remix.Remix.bookmark_line, size: 20),
+                      const SizedBox(width: 10),
+                      Text(l10n.manageTags),
+                    ],
+                  ),
+                ),
+              );
             }
-            break;
-          case 'image_gallery':
+
+            // Only show gallery options if the callback and path are provided
             if (onGallerySelected != null && currentPath != null) {
-              onGallerySelected('image_gallery');
+              items.add(const PopupMenuDivider());
+              items.add(
+                PopupMenuItem<String>(
+                  value: 'image_gallery',
+                  child: Row(
+                    children: [
+                      const Icon(remix.Remix.image_line, size: 20),
+                      const SizedBox(width: 10),
+                      Text(l10n.viewImageGallery),
+                    ],
+                  ),
+                ),
+              );
+              items.add(
+                PopupMenuItem<String>(
+                  value: 'video_gallery',
+                  child: Row(
+                    children: [
+                      const Icon(remix.Remix.video_line, size: 20),
+                      const SizedBox(width: 10),
+                      Text(l10n.viewVideoGallery),
+                    ],
+                  ),
+                ),
+              );
             }
-            break;
-          case 'video_gallery':
-            if (onGallerySelected != null && currentPath != null) {
-              onGallerySelected('video_gallery');
+
+            return items;
+          },
+          onSelected: (String value) {
+            switch (value) {
+              case 'selection_mode':
+                onSelectionModeToggled();
+                break;
+              case 'manage_tags':
+                if (onManageTagsPressed != null) {
+                  onManageTagsPressed();
+                }
+                break;
+              case 'image_gallery':
+                if (onGallerySelected != null && currentPath != null) {
+                  onGallerySelected('image_gallery');
+                }
+                break;
+              case 'video_gallery':
+                if (onGallerySelected != null && currentPath != null) {
+                  onGallerySelected('video_gallery');
+                }
+                break;
             }
-            break;
-        }
+          },
+        );
       },
     );
   }
 
-  /// Xây dựng danh sách action cho app bar
   static List<Widget> buildCommonActions({
     required BuildContext context,
     required VoidCallback onSearchPressed,
@@ -360,122 +360,123 @@ class SharedActionBar {
     String? currentPath,
     Function(ViewMode)? onViewModeSelected,
   }) {
+    final l10n = AppLocalizations.of(context)!;
     List<Widget> actions = [];
 
-    // Thêm nút tìm kiếm
+    // Add search button
     actions.add(
       IconButton(
         icon: const Icon(remix.Remix.search_line),
-        tooltip: 'Tìm kiếm',
+        tooltip: l10n.searchTooltip,
         onPressed: onSearchPressed,
       ),
     );
 
-    // Thêm nút sắp xếp
+    // Add sort button
     actions.add(
       PopupMenuButton<SortOption>(
         icon: const Icon(remix.Remix.settings_3_line),
-        tooltip: 'Sắp xếp theo',
+        tooltip: l10n.sortByTooltip,
         offset: const Offset(0, 50),
         initialValue: currentSortOption,
         onSelected: onSortOptionSelected,
         itemBuilder: (context) => [
-          buildSortMenuItem(context, SortOption.nameAsc, 'Tên (A → Z)',
+          buildSortMenuItem(context, SortOption.nameAsc, l10n.sortNameAsc,
               remix.Remix.file_text_line, currentSortOption),
-          buildSortMenuItem(context, SortOption.nameDesc, 'Tên (Z → A)',
+          buildSortMenuItem(context, SortOption.nameDesc, l10n.sortNameDesc,
               remix.Remix.file_text_line, currentSortOption),
           const PopupMenuDivider(),
           buildSortMenuItem(
               context,
               SortOption.dateAsc,
-              'Ngày sửa (Cũ nhất trước)',
+              l10n.sortDateModifiedOldest,
               remix.Remix.calendar_line,
               currentSortOption),
           buildSortMenuItem(
               context,
               SortOption.dateDesc,
-              'Ngày sửa (Mới nhất trước)',
+              l10n.sortDateModifiedNewest,
               remix.Remix.calendar_line,
               currentSortOption),
           const PopupMenuDivider(),
           buildSortMenuItem(
               context,
               SortOption.dateCreatedAsc,
-              'Ngày tạo (Cũ nhất trước)',
+              l10n.sortDateCreatedOldest,
               remix.Remix.time_line,
               currentSortOption),
           buildSortMenuItem(
               context,
               SortOption.dateCreatedDesc,
-              'Ngày tạo (Mới nhất trước)',
+              l10n.sortDateCreatedNewest,
               remix.Remix.time_line,
               currentSortOption),
           buildSortMenuItem(
               context,
               SortOption.sizeAsc,
-              'Kích thước (Nhỏ nhất trước)',
+              l10n.sortSizeSmallest,
               remix.Remix.pulse_line,
               currentSortOption),
           buildSortMenuItem(
               context,
               SortOption.sizeDesc,
-              'Kích thước (Lớn nhất trước)',
+              l10n.sortSizeLargest,
               remix.Remix.pulse_line,
               currentSortOption),
           const PopupMenuDivider(),
-          buildSortMenuItem(context, SortOption.typeAsc, 'Loại tệp (A → Z)',
+          buildSortMenuItem(context, SortOption.typeAsc, l10n.sortTypeAsc,
               remix.Remix.file_3_line, currentSortOption),
-          buildSortMenuItem(context, SortOption.typeDesc, 'Loại tệp (Z → A)',
+          buildSortMenuItem(context, SortOption.typeDesc, l10n.sortTypeDesc,
               remix.Remix.file_3_line, currentSortOption),
           const PopupMenuDivider(),
           buildSortMenuItem(context, SortOption.extensionAsc,
-              'Đuôi tệp (A → Z)', remix.Remix.at_line, currentSortOption),
+              l10n.sortExtensionAsc, remix.Remix.at_line, currentSortOption),
           buildSortMenuItem(context, SortOption.extensionDesc,
-              'Đuôi tệp (Z → A)', remix.Remix.at_line, currentSortOption),
+              l10n.sortExtensionDesc, remix.Remix.at_line, currentSortOption),
           const PopupMenuDivider(),
           buildSortMenuItem(
               context,
               SortOption.attributesAsc,
-              'Thuộc tính (A → Z)',
+              l10n.sortAttributesAsc,
               remix.Remix.information_line,
               currentSortOption),
           buildSortMenuItem(
               context,
               SortOption.attributesDesc,
-              'Thuộc tính (Z → A)',
+              l10n.sortAttributesDesc,
               remix.Remix.information_line,
               currentSortOption),
         ],
       ),
     );
 
-    // Thêm nút điều chỉnh kích thước lưới nếu đang ở chế độ lưới
+    // Add grid size button if in grid mode
     if (viewMode == ViewMode.grid && onGridSizePressed != null) {
       actions.add(
         IconButton(
           icon: const Icon(remix.Remix.grid_line),
-          tooltip: 'Điều chỉnh kích thước lưới',
+          tooltip: l10n.adjustGridSizeTooltip,
           onPressed: onGridSizePressed,
         ),
       );
     }
 
-    // Thêm nút điều chỉnh hiển thị cột nếu đang ở chế độ chi tiết
+    // Add column settings button if in details mode
     if (viewMode == ViewMode.details && onColumnSettingsPressed != null) {
       actions.add(
         IconButton(
           icon: const Icon(remix.Remix.layout_line),
-          tooltip: 'Thiết lập hiển thị cột',
+          tooltip: l10n.columnSettingsTooltip,
           onPressed: onColumnSettingsPressed,
         ),
       );
     }
 
-    // Thêm nút chuyển đổi chế độ xem
+    // Add view mode toggle button
     actions.add(
       PopupMenuButton<ViewMode>(
         icon: const Icon(remix.Remix.eye_line),
-        tooltip: 'Chế độ xem',
+        tooltip: l10n.viewModeTooltip,
         offset: const Offset(0, 50),
         initialValue: viewMode,
         itemBuilder: (context) => [
@@ -490,7 +491,7 @@ class SharedActionBar {
                 ),
                 const SizedBox(width: 10),
                 Text(
-                  'Danh sách',
+                  l10n.viewModeList,
                   style: TextStyle(
                     fontWeight: viewMode == ViewMode.list
                         ? FontWeight.bold
@@ -516,7 +517,7 @@ class SharedActionBar {
                 ),
                 const SizedBox(width: 10),
                 Text(
-                  'Lưới',
+                  l10n.viewModeGrid,
                   style: TextStyle(
                     fontWeight: viewMode == ViewMode.grid
                         ? FontWeight.bold
@@ -542,7 +543,7 @@ class SharedActionBar {
                 ),
                 const SizedBox(width: 10),
                 Text(
-                  'Chi tiết',
+                  l10n.viewModeDetails,
                   style: TextStyle(
                     fontWeight: viewMode == ViewMode.details
                         ? FontWeight.bold
@@ -570,16 +571,16 @@ class SharedActionBar {
       ),
     );
 
-    // Thêm nút làm mới
+    // Add refresh button
     actions.add(
       IconButton(
         icon: const Icon(remix.Remix.refresh_line),
-        tooltip: 'Làm mới',
+        tooltip: l10n.refreshTooltip,
         onPressed: onRefresh,
       ),
     );
 
-    // Thêm menu tùy chọn khác
+    // Add more options menu
     actions.add(buildMoreOptionsMenu(
       onSelectionModeToggled: onSelectionModeToggled,
       onManageTagsPressed: onManageTagsPressed,

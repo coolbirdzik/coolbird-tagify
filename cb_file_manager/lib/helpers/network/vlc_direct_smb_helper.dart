@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import '../files/file_type_helper.dart';
+import '../files/file_type_registry.dart';
 import '../../services/network_browsing/i_smb_service.dart';
 import '../../ui/components/video/video_player/video_player.dart';
 // Unified player is StreamingMediaPlayer; this file only builds URLs.
@@ -15,7 +15,7 @@ class VlcDirectSmbHelper {
     required BuildContext context,
     required String smbPath,
     required String fileName,
-    required FileType fileType,
+    required FileCategory fileType,
     required ISmbService smbService,
   }) async {
     debugPrint('[VlcDirectSmbHelper] ENTERING openMediaWithVlcDirectSmb');
@@ -109,7 +109,7 @@ class VlcDirectSmbHelper {
   }
 
   /// Kiểm tra xem có thể stream trực tiếp với VLC không
-  static bool canStreamDirectly(FileType fileType) {
+  static bool canStreamDirectly(FileCategory fileType) {
     return _isSupportedMediaType(fileType);
   }
 
@@ -157,14 +157,14 @@ class VlcDirectSmbHelper {
   }
 
   /// Kiểm tra file type có được hỗ trợ không
-  static bool _isSupportedMediaType(FileType fileType) {
+  static bool _isSupportedMediaType(FileCategory fileType) {
     switch (fileType) {
-      case FileType.video:
-      case FileType.audio:
+      case FileCategory.video:
+      case FileCategory.audio:
         return true;
-      case FileType.image:
-      case FileType.document:
-      case FileType.archive:
+      case FileCategory.image:
+      case FileCategory.document:
+      case FileCategory.archive:
       default:
         return false;
     }
@@ -273,7 +273,7 @@ class VlcDirectSmbHelper {
     required ISmbService smbService,
     required String smbPath,
     required String fileName,
-    required FileType fileType,
+    required FileCategory fileType,
   }) {
     debugPrint('=== VLC Direct SMB Debug Info ===');
     debugPrint('SMB Service Connected: ${smbService.isConnected}');

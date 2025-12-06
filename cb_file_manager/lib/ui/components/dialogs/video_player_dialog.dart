@@ -40,7 +40,8 @@ class _VideoPlayerDialogState extends State<VideoPlayerDialog> {
             onError: (errorMessage) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text('Error playing video: $errorMessage'),
+                  content: Text(AppLocalizations.of(context)!
+                      .errorPlayingVideoMessage(errorMessage)),
                 ),
               );
             },

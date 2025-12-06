@@ -28,7 +28,7 @@ import '../pip_window/windows_pip_overlay.dart';
 import '../../../../services/streaming/smb_http_proxy_server.dart';
 import 'package:cb_file_manager/ui/state/video_ui_state.dart';
 
-import '../../../../helpers/files/file_type_helper.dart';
+import '../../../../helpers/files/file_type_registry.dart';
 import '../../../../helpers/core/user_preferences.dart';
 import '../../../../helpers/network/win32_smb_helper.dart';
 import '../../streaming/stream_speed_indicator.dart';
@@ -83,7 +83,7 @@ class VideoPlayer extends StatefulWidget {
 
   // Media metadata
   final String fileName;
-  final FileType? fileType;
+  final FileCategory? fileType;
 
   // Playback configuration
   final bool autoPlay;
@@ -148,6 +148,13 @@ class VideoPlayer extends StatefulWidget {
         ),
         super(key: key);
 
+  static String _extensionFromPath(String path) {
+    final name = pathlib.basename(path);
+    final dotIndex = name.lastIndexOf('.');
+    if (dotIndex == -1) return '';
+    return name.substring(dotIndex).toLowerCase();
+  }
+
   /// Constructor for local file playback
   VideoPlayer.file({
     Key? key,
@@ -171,10 +178,11 @@ class VideoPlayer extends StatefulWidget {
     bool showStreamingSpeed = false,
     VoidCallback? onToggleStreamingSpeed,
   }) : this._(
-          key: key,
-          file: file,
-          fileName: pathlib.basename(file.path),
-          fileType: FileTypeHelper.getFileType(file.path),
+           key: key,
+           file: file,
+           fileName: pathlib.basename(file.path),
+           fileType:
+               FileTypeRegistry.getCategory(_extensionFromPath(file.path)),
           autoPlay: autoPlay,
           looping: looping,
           showControls: showControls,
@@ -200,7 +208,7 @@ class VideoPlayer extends StatefulWidget {
     Key? key,
     required String streamingUrl,
     required String fileName,
-    FileType? fileType,
+    FileCategory? fileType,
     bool autoPlay = true,
     bool looping = false,
     bool showControls = true,
@@ -216,10 +224,11 @@ class VideoPlayer extends StatefulWidget {
     bool showStreamingSpeed = false,
     VoidCallback? onToggleStreamingSpeed,
   }) : this._(
-          key: key,
-          streamingUrl: streamingUrl,
-          fileName: fileName,
-          fileType: fileType ?? FileTypeHelper.getFileType(fileName),
+           key: key,
+           streamingUrl: streamingUrl,
+           fileName: fileName,
+           fileType: fileType ??
+               FileTypeRegistry.getCategory(_extensionFromPath(fileName)),
           autoPlay: autoPlay,
           looping: looping,
           showControls: showControls,
@@ -241,7 +250,7 @@ class VideoPlayer extends StatefulWidget {
     Key? key,
     required String smbMrl,
     required String fileName,
-    FileType? fileType,
+    FileCategory? fileType,
     bool autoPlay = true,
     bool looping = false,
     bool showControls = true,
@@ -257,10 +266,11 @@ class VideoPlayer extends StatefulWidget {
     bool showStreamingSpeed = false,
     VoidCallback? onToggleStreamingSpeed,
   }) : this._(
-          key: key,
-          smbMrl: smbMrl,
-          fileName: fileName,
-          fileType: fileType ?? FileTypeHelper.getFileType(fileName),
+           key: key,
+           smbMrl: smbMrl,
+           fileName: fileName,
+           fileType: fileType ??
+               FileTypeRegistry.getCategory(_extensionFromPath(fileName)),
           autoPlay: autoPlay,
           looping: looping,
           showControls: showControls,
@@ -282,7 +292,7 @@ class VideoPlayer extends StatefulWidget {
     Key? key,
     required Stream<List<int>> fileStream,
     required String fileName,
-    FileType? fileType,
+    FileCategory? fileType,
     bool autoPlay = true,
     bool looping = false,
     bool showControls = true,
@@ -298,10 +308,11 @@ class VideoPlayer extends StatefulWidget {
     bool showStreamingSpeed = false,
     VoidCallback? onToggleStreamingSpeed,
   }) : this._(
-          key: key,
-          fileStream: fileStream,
-          fileName: fileName,
-          fileType: fileType ?? FileTypeHelper.getFileType(fileName),
+           key: key,
+           fileStream: fileStream,
+           fileName: fileName,
+           fileType: fileType ??
+               FileTypeRegistry.getCategory(_extensionFromPath(fileName)),
           autoPlay: autoPlay,
           looping: looping,
           showControls: showControls,
@@ -1495,7 +1506,7 @@ class _VideoPlayerState extends State<VideoPlayer> {
   }
 
   Widget _buildPlayer() {
-    if (widget.fileType == FileType.video) {
+    if (widget.fileType == FileCategory.video) {
       return _buildVideoPlayer();
     } else {
       return _buildAudioPlayer();

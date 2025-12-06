@@ -14,6 +14,7 @@ class ScreenScaffold extends StatelessWidget {
   final void Function(BuildContext) showManageAllTagsDialog;
   final void Function(BuildContext) showDeleteConfirmationDialog;
   final Widget? selectionModeFloatingActionButton;
+  final bool isDesktop;
 
   // Normal mode params
   final bool showAppBar;
@@ -33,6 +34,7 @@ class ScreenScaffold extends StatelessWidget {
     required this.showManageAllTagsDialog,
     required this.showDeleteConfirmationDialog,
     this.selectionModeFloatingActionButton,
+    this.isDesktop = false,
     required this.showAppBar,
     required this.showSearchBar,
     required this.searchBar,
@@ -43,7 +45,13 @@ class ScreenScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (selectionState.isSelectionMode) {
+    final bool useSelectionAppBar =
+        selectionState.isSelectionMode && !isDesktop;
+    final Widget? fab = selectionState.isSelectionMode
+        ? selectionModeFloatingActionButton
+        : floatingActionButton;
+
+    if (useSelectionAppBar) {
       return Scaffold(
         appBar: tab_components.SelectionAppBar(
           selectedCount: selectionState.selectedCount,
@@ -58,7 +66,7 @@ class ScreenScaffold extends StatelessWidget {
           isNetworkPath: isNetworkPath,
         ),
         body: body,
-        floatingActionButton: selectionModeFloatingActionButton,
+        floatingActionButton: fab,
       );
     }
 
@@ -73,7 +81,7 @@ class ScreenScaffold extends StatelessWidget {
             )
           : null,
       body: body,
-      floatingActionButton: floatingActionButton,
+      floatingActionButton: fab,
     );
   }
 }
