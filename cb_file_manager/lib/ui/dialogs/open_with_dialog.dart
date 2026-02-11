@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:cb_file_manager/helpers/files/external_app_helper.dart';
 import 'package:cb_file_manager/helpers/files/windows_app_icon.dart';
+import 'package:cb_file_manager/helpers/core/user_preferences.dart';
 import 'package:cb_file_manager/ui/screens/media_gallery/video_player_full_screen.dart';
 import 'package:cb_file_manager/ui/utils/file_type_utils.dart';
 import 'package:cb_file_manager/config/languages/app_localizations.dart';
@@ -10,8 +11,13 @@ import 'package:file_picker/file_picker.dart';
 
 class OpenWithDialog extends StatefulWidget {
   final String filePath;
+  final bool saveAsDefaultOnSelect;
 
-  const OpenWithDialog({Key? key, required this.filePath}) : super(key: key);
+  const OpenWithDialog({
+    Key? key,
+    required this.filePath,
+    this.saveAsDefaultOnSelect = false,
+  }) : super(key: key);
 
   @override
   State<OpenWithDialog> createState() => _OpenWithDialogState();
@@ -27,12 +33,36 @@ class _OpenWithDialogState extends State<OpenWithDialog> {
     _appsFuture = ExternalAppHelper.getInstalledAppsForFile(widget.filePath);
   }
 
+  Future<void> _saveVideoDefaultIfNeeded(String appIdentifier) async {
+    if (!widget.saveAsDefaultOnSelect) return;
+    if (!FileTypeUtils.isVideoFile(widget.filePath)) return;
+
+    final prefs = UserPreferences.instance;
+    await prefs.init();
+
+    if (appIdentifier == '__cb_video_player__') {
+      await prefs.clearPreferredVideoPlayerApp();
+      await prefs.setUseSystemDefaultForVideo(false);
+      return;
+    }
+
+    if (appIdentifier == 'shell_open') {
+      await prefs.clearPreferredVideoPlayerApp();
+      await prefs.setUseSystemDefaultForVideo(true);
+      return;
+    }
+
+    await prefs.setPreferredVideoPlayerApp(appIdentifier);
+    await prefs.setUseSystemDefaultForVideo(false);
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     final screen = MediaQuery.of(context).size;
     final isNarrow = screen.width < 500;
-    final dialogWidth = isNarrow ? (screen.width * 0.92).clamp(280.0, 400.0) : 420.0;
+    final dialogWidth =
+        isNarrow ? (screen.width * 0.92).clamp(280.0, 400.0) : 420.0;
     final listMaxH = (screen.height * 0.48).clamp(320.0, 560.0);
 
     return Dialog(
@@ -125,15 +155,20 @@ class _OpenWithDialogState extends State<OpenWithDialog> {
                               leading: app.icon,
                               title: Text(app.appName),
                               onTap: () async {
+                                final rootNavigator =
+                                    Navigator.of(context, rootNavigator: true);
                                 setState(() {
                                   _loadingIcons = true;
                                 });
 
-                                Navigator.pop(context);
+                                await _saveVideoDefaultIfNeeded(
+                                    app.packageName);
+
+                                if (!mounted) return;
+                                rootNavigator.pop();
 
                                 if (app.packageName == '__cb_video_player__') {
-                                  Navigator.of(context, rootNavigator: true)
-                                      .push(
+                                  rootNavigator.push(
                                     MaterialPageRoute(
                                       fullscreenDialog: true,
                                       builder: (_) => VideoPlayerFullScreen(
@@ -141,11 +176,8 @@ class _OpenWithDialogState extends State<OpenWithDialog> {
                                     ),
                                   );
                                 } else if (app.packageName == 'shell_open') {
-                                  if (Platform.isWindows) {
-                                    final process = await Process.start(
-                                        'explorer', [widget.filePath]);
-                                    await process.exitCode;
-                                  }
+                                  await ExternalAppHelper.openWithSystemDefault(
+                                      widget.filePath);
                                 } else {
                                   await ExternalAppHelper.openFileWithApp(
                                       widget.filePath, app.packageName);
@@ -167,18 +199,21 @@ class _OpenWithDialogState extends State<OpenWithDialog> {
                         ListTile(
                           leading: const Icon(remix.Remix.video_line),
                           title: Text(
-                              AppLocalizations.of(context)!
-                                  .setCoolBirdAsDefaultForVideos,
+                            AppLocalizations.of(context)!
+                                .setCoolBirdAsDefaultForVideos,
                             style: TextStyle(
                               fontWeight: FontWeight.w600,
-                              color: isDarkMode ? Colors.blue[200] : Colors.blue[700],
+                              color: isDarkMode
+                                  ? Colors.blue[200]
+                                  : Colors.blue[700],
                             ),
                           ),
                           onTap: () async {
                             if (Platform.isWindows) {
                               final exe = Platform.resolvedExecutable;
-                              final ok = await WindowsAppIcon
-                                  .setSelfAsDefaultForVideo(exe);
+                              final ok =
+                                  await WindowsAppIcon.setSelfAsDefaultForVideo(
+                                      exe);
                               if (mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
@@ -208,7 +243,8 @@ class _OpenWithDialogState extends State<OpenWithDialog> {
                         const Divider(),
                       ListTile(
                         leading: const Icon(remix.Remix.more_line),
-                        title: Text(AppLocalizations.of(context)!.chooseAnotherApp),
+                        title: Text(
+                            AppLocalizations.of(context)!.chooseAnotherApp),
                         onTap: () async {
                           // Close the dialog
                           Navigator.pop(context);
@@ -226,6 +262,7 @@ class _OpenWithDialogState extends State<OpenWithDialog> {
                             if (result != null &&
                                 result.files.single.path != null) {
                               final appPath = result.files.single.path!;
+                              await _saveVideoDefaultIfNeeded(appPath);
                               await ExternalAppHelper.openFileWithApp(
                                   widget.filePath, appPath);
                             }

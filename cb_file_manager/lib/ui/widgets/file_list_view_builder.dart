@@ -15,6 +15,7 @@ import 'package:cb_file_manager/ui/screens/folder_list/components/index.dart'
 import 'package:cb_file_manager/bloc/selection/selection.dart';
 import 'package:cb_file_manager/ui/tab_manager/core/tabbed_folder/tabbed_folder_drag_selection_controller.dart';
 import 'package:cb_file_manager/ui/utils/fluent_background.dart';
+import 'package:cb_file_manager/ui/utils/scroll_velocity_notifier.dart';
 import 'package:cb_file_manager/ui/widgets/file_preview_pane.dart';
 import 'package:cb_file_manager/ui/utils/grid_zoom_constraints.dart';
 
@@ -34,9 +35,8 @@ class FileListViewBuilder {
   }
 
   static int _gridCrossAxisCount(double availableWidth, double itemWidth) {
-    final raw = ((availableWidth + _gridSpacing) /
-            (itemWidth + _gridSpacing))
-        .floor();
+    final raw =
+        ((availableWidth + _gridSpacing) / (itemWidth + _gridSpacing)).floor();
     return math.max(1, raw);
   }
 
@@ -187,6 +187,19 @@ class FileListViewBuilder {
                 },
                 onPanStart: isDesktopPlatform
                     ? (details) {
+                        // Don't start drag selection if user is editing text (inline rename)
+                        final focused = FocusManager.instance.primaryFocus;
+                        final focusedContext = focused?.context;
+                        if (focusedContext != null) {
+                          final isEditableText =
+                              focusedContext.widget is EditableText ||
+                                  focusedContext.findAncestorWidgetOfExactType<
+                                          EditableText>() !=
+                                      null;
+                          if (isEditableText) {
+                            return; // Don't start drag selection
+                          }
+                        }
                         dragSelectionController.start(details.localPosition);
                       }
                     : null,
@@ -201,7 +214,7 @@ class FileListViewBuilder {
                       }
                     : null,
                 behavior: HitTestBehavior.translucent,
-                  child: Listener(
+                child: Listener(
                   onPointerSignal: (PointerSignalEvent event) {
                     if (state.viewMode != ViewMode.grid &&
                         state.viewMode != ViewMode.gridPreview) {
@@ -233,8 +246,7 @@ class FileListViewBuilder {
                         final effectiveZoom = state.gridZoomLevel
                             .clamp(UserPreferences.minGridZoomLevel, maxZoom)
                             .toInt();
-                        final itemWidth =
-                            _gridItemWidthForZoom(effectiveZoom);
+                        final itemWidth = _gridItemWidthForZoom(effectiveZoom);
                         final availableWidth = math.max(
                           0.0,
                           constraints.maxWidth - (_gridSpacing * 2),
@@ -254,177 +266,186 @@ class FileListViewBuilder {
                             state.files[i].path: i,
                         };
 
-                        return GridView.builder(
-                          padding: const EdgeInsets.all(8.0),
-                          physics: const ClampingScrollPhysics(),
-                          cacheExtent: 1500,
-                          addAutomaticKeepAlives: false,
-                          addRepaintBoundaries: true,
-                          addSemanticIndexes: false,
-                          findChildIndexCallback: (Key key) {
-                            if (key is! ValueKey<String>) return null;
-                            final value = key.value;
-                            if (value.startsWith('folder-grid-')) {
-                              final folderPath =
-                                  value.substring('folder-grid-'.length);
-                              final index = folderIndexByPath[folderPath];
-                              return index;
-                            }
-                            if (value.startsWith('file-grid-')) {
-                              final filePath =
-                                  value.substring('file-grid-'.length);
-                              final index = fileIndexByPath[filePath];
-                              if (index == null) return null;
-                              return state.folders.length + index;
-                            }
-                            return null;
-                          },
-                          gridDelegate:
-                              SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: crossAxisCount,
-                            crossAxisSpacing: _gridSpacing,
-                            mainAxisSpacing: _gridSpacing,
-                            mainAxisExtent: itemHeight,
-                          ),
-                          itemCount: state.folders.length + state.files.length,
-                          itemBuilder: (context, index) {
-                            final String itemPath = index < state.folders.length
-                                ? state.folders[index].path
-                                : state
-                                    .files[index - state.folders.length].path;
-                            final String itemKey = index < state.folders.length
-                                ? 'folder-grid-$itemPath'
-                                : 'file-grid-$itemPath';
+                        return ScrollVelocityListener(
+                          child: GridView.builder(
+                            padding: const EdgeInsets.all(8.0),
+                            physics: const ClampingScrollPhysics(),
+                            // PERFORMANCE: Reduced cacheExtent to minimize pre-building during fast scroll
+                            // Desktop: 400px, Mobile: 200px - balances smooth scrolling vs thumbnail generation
+                            cacheExtent: isDesktopPlatform ? 400 : 200,
+                            addAutomaticKeepAlives: false,
+                            addRepaintBoundaries: true,
+                            addSemanticIndexes: false,
+                            findChildIndexCallback: (Key key) {
+                              if (key is! ValueKey<String>) return null;
+                              final value = key.value;
+                              if (value.startsWith('folder-grid-')) {
+                                final folderPath =
+                                    value.substring('folder-grid-'.length);
+                                final index = folderIndexByPath[folderPath];
+                                return index;
+                              }
+                              if (value.startsWith('file-grid-')) {
+                                final filePath =
+                                    value.substring('file-grid-'.length);
+                                final index = fileIndexByPath[filePath];
+                                if (index == null) return null;
+                                return state.folders.length + index;
+                              }
+                              return null;
+                            },
+                            gridDelegate:
+                                SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: crossAxisCount,
+                              crossAxisSpacing: _gridSpacing,
+                              mainAxisSpacing: _gridSpacing,
+                              mainAxisExtent: itemHeight,
+                            ),
+                            itemCount:
+                                state.folders.length + state.files.length,
+                            itemBuilder: (context, index) {
+                              final String itemPath =
+                                  index < state.folders.length
+                                      ? state.folders[index].path
+                                      : state
+                                          .files[index - state.folders.length]
+                                          .path;
+                              final String itemKey =
+                                  index < state.folders.length
+                                      ? 'folder-grid-$itemPath'
+                                      : 'file-grid-$itemPath';
 
-                            final bool isSelected =
-                                selectionState.isPathSelected(itemPath);
+                              final bool isSelected =
+                                  selectionState.isPathSelected(itemPath);
 
-                            return KeyedSubtree(
-                              key: ValueKey(itemKey),
-                              child: LayoutBuilder(
-                                builder: (BuildContext context,
-                                    BoxConstraints constraints) {
-                                  if (isDesktopPlatform) {
-                                    WidgetsBinding.instance
-                                        .addPostFrameCallback((_) {
-                                      try {
-                                        final RenderBox? renderBox = context
-                                            .findRenderObject() as RenderBox?;
-                                        if (renderBox != null &&
-                                            renderBox.hasSize &&
-                                            renderBox.attached) {
-                                          final position = renderBox
-                                              .localToGlobal(Offset.zero);
-                                          dragSelectionController
-                                              .registerItemPosition(
-                                                  itemPath,
-                                                  Rect.fromLTWH(
-                                                      position.dx,
-                                                      position.dy,
-                                                      renderBox.size.width,
-                                                      renderBox.size.height));
+                              return KeyedSubtree(
+                                key: ValueKey(itemKey),
+                                child: LayoutBuilder(
+                                  builder: (BuildContext context,
+                                      BoxConstraints constraints) {
+                                    if (isDesktopPlatform) {
+                                      WidgetsBinding.instance
+                                          .addPostFrameCallback((_) {
+                                        try {
+                                          final RenderBox? renderBox = context
+                                              .findRenderObject() as RenderBox?;
+                                          if (renderBox != null &&
+                                              renderBox.hasSize &&
+                                              renderBox.attached) {
+                                            final position = renderBox
+                                                .localToGlobal(Offset.zero);
+                                            dragSelectionController
+                                                .registerItemPosition(
+                                                    itemPath,
+                                                    Rect.fromLTWH(
+                                                        position.dx,
+                                                        position.dy,
+                                                        renderBox.size.width,
+                                                        renderBox.size.height));
+                                          }
+                                        } catch (e) {
+                                          debugPrint(
+                                              'Layout error in grid view: $e');
                                         }
-                                      } catch (e) {
-                                        debugPrint(
-                                            'Layout error in grid view: $e');
-                                      }
-                                    });
-                                  }
+                                      });
+                                    }
 
-                                  if (index < state.folders.length) {
-                                    final folder =
-                                        state.folders[index] as Directory;
-                                    return Align(
-                                      alignment: Alignment.topCenter,
-                                      child: SizedBox(
-                                        width: itemWidth,
-                                        height: itemHeight,
-                                        child: RepaintBoundary(
-                                          child: FluentBackground.container(
-                                            context: context,
-                                            enableBlur: isDesktopPlatform,
-                                            padding: EdgeInsets.zero,
-                                            blurAmount: 5.0,
-                                            opacity: isSelected ? 0.8 : 0.6,
-                                            backgroundColor: isSelected
-                                                ? Theme.of(context)
-                                                    .colorScheme
-                                                    .primaryContainer
-                                                    .withValues(alpha: 0.6)
-                                                : Theme.of(context)
-                                                    .cardColor
-                                                    .withValues(alpha: 0.4),
-                                            child: folder_list_components
-                                                .FolderGridItem(
-                                              key: ValueKey(
-                                                  'folder-grid-item-${folder.path}'),
-                                              folder: folder,
-                                              onNavigate: onNavigateToPath,
-                                              isSelected: isSelected,
-                                              toggleFolderSelection:
-                                                  toggleFolderSelection,
-                                              isDesktopMode: isDesktopPlatform,
-                                              lastSelectedPath: selectionState
-                                                  .lastSelectedPath,
-                                              clearSelectionMode:
-                                                  clearSelection,
+                                    if (index < state.folders.length) {
+                                      final folder =
+                                          state.folders[index] as Directory;
+                                      return Align(
+                                        alignment: Alignment.topCenter,
+                                        child: SizedBox(
+                                          width: itemWidth,
+                                          height: itemHeight,
+                                          child: RepaintBoundary(
+                                            child: FluentBackground.container(
+                                              context: context,
+                                              enableBlur: isDesktopPlatform,
+                                              padding: EdgeInsets.zero,
+                                              blurAmount: 5.0,
+                                              opacity: isSelected ? 0.8 : 0.6,
+                                              backgroundColor: isSelected
+                                                  ? Theme.of(context)
+                                                      .colorScheme
+                                                      .primaryContainer
+                                                      .withValues(alpha: 0.6)
+                                                  : Theme.of(context)
+                                                      .cardColor
+                                                      .withValues(alpha: 0.4),
+                                              child: folder_list_components
+                                                  .FolderGridItem(
+                                                key: ValueKey(
+                                                    'folder-grid-item-${folder.path}'),
+                                                folder: folder,
+                                                onNavigate: onNavigateToPath,
+                                                isSelected: isSelected,
+                                                toggleFolderSelection:
+                                                    toggleFolderSelection,
+                                                isDesktopMode:
+                                                    isDesktopPlatform,
+                                                lastSelectedPath: selectionState
+                                                    .lastSelectedPath,
+                                                clearSelectionMode:
+                                                    clearSelection,
+                                              ),
                                             ),
                                           ),
                                         ),
-                                      ),
-                                    );
-                                  } else {
-                                    final file = state
-                                        .files[index - state.folders.length]
-                                            as File;
-                                    return Align(
-                                      alignment: Alignment.topCenter,
-                                      child: SizedBox(
-                                        width: itemWidth,
-                                        height: itemHeight,
-                                        child: RepaintBoundary(
-                                          child: FluentBackground.container(
-                                            context: context,
-                                            enableBlur: isDesktopPlatform,
-                                            padding: EdgeInsets.zero,
-                                            blurAmount: 5.0,
-                                            opacity: isSelected ? 0.8 : 0.6,
-                                            backgroundColor: isSelected
-                                                ? Theme.of(context)
-                                                    .colorScheme
-                                                    .primaryContainer
-                                                    .withValues(alpha: 0.6)
-                                                : Theme.of(context)
-                                                    .cardColor
-                                                    .withValues(alpha: 0.4),
-                                            child: folder_list_components
-                                                .FileGridItem(
-                                              key: ValueKey(
-                                                  'file-grid-item-${file.path}'),
-                                              file: file,
-                                              state: state,
-                                              isSelectionMode: selectionState
-                                                  .isSelectionMode,
-                                              isSelected: isSelected,
-                                              toggleFileSelection:
-                                                  toggleFileSelection,
-                                              toggleSelectionMode:
-                                                  toggleSelectionMode,
-                                              onFileTap: onFileTap,
-                                              isDesktopMode: isDesktopPlatform,
-                                              lastSelectedPath: selectionState
-                                                  .lastSelectedPath,
-                                              showFileTags: showFileTags,
+                                      );
+                                    } else {
+                                      final file = state.files[
+                                          index - state.folders.length] as File;
+                                      return Align(
+                                        alignment: Alignment.topCenter,
+                                        child: SizedBox(
+                                          width: itemWidth,
+                                          height: itemHeight,
+                                          child: RepaintBoundary(
+                                            child: FluentBackground.container(
+                                              context: context,
+                                              enableBlur: isDesktopPlatform,
+                                              padding: EdgeInsets.zero,
+                                              blurAmount: 5.0,
+                                              opacity: isSelected ? 0.8 : 0.6,
+                                              backgroundColor: isSelected
+                                                  ? Theme.of(context)
+                                                      .colorScheme
+                                                      .primaryContainer
+                                                      .withValues(alpha: 0.6)
+                                                  : Theme.of(context)
+                                                      .cardColor
+                                                      .withValues(alpha: 0.4),
+                                              child: folder_list_components
+                                                  .FileGridItem(
+                                                key: ValueKey(
+                                                    'file-grid-item-${file.path}'),
+                                                file: file,
+                                                state: state,
+                                                isSelectionMode: selectionState
+                                                    .isSelectionMode,
+                                                isSelected: isSelected,
+                                                toggleFileSelection:
+                                                    toggleFileSelection,
+                                                toggleSelectionMode:
+                                                    toggleSelectionMode,
+                                                onFileTap: onFileTap,
+                                                isDesktopMode:
+                                                    isDesktopPlatform,
+                                                lastSelectedPath: selectionState
+                                                    .lastSelectedPath,
+                                                showFileTags: showFileTags,
+                                              ),
                                             ),
                                           ),
                                         ),
-                                      ),
-                                    );
-                                  }
-                                },
-                              ),
-                            );
-                          },
+                                      );
+                                    }
+                                  },
+                                ),
+                              );
+                            },
+                          ),
                         );
                       },
                     ),
@@ -477,6 +498,19 @@ class FileListViewBuilder {
                 },
                 onPanStart: isDesktopPlatform
                     ? (details) {
+                        // Don't start drag selection if user is editing text (inline rename)
+                        final focused = FocusManager.instance.primaryFocus;
+                        final focusedContext = focused?.context;
+                        if (focusedContext != null) {
+                          final isEditableText =
+                              focusedContext.widget is EditableText ||
+                                  focusedContext.findAncestorWidgetOfExactType<
+                                          EditableText>() !=
+                                      null;
+                          if (isEditableText) {
+                            return; // Don't start drag selection
+                          }
+                        }
                         dragSelectionController.start(details.localPosition);
                       }
                     : null,
@@ -555,6 +589,19 @@ class FileListViewBuilder {
                 },
                 onPanStart: isDesktopPlatform
                     ? (details) {
+                        // Don't start drag selection if user is editing text (inline rename)
+                        final focused = FocusManager.instance.primaryFocus;
+                        final focusedContext = focused?.context;
+                        if (focusedContext != null) {
+                          final isEditableText =
+                              focusedContext.widget is EditableText ||
+                                  focusedContext.findAncestorWidgetOfExactType<
+                                          EditableText>() !=
+                                      null;
+                          if (isEditableText) {
+                            return; // Don't start drag selection
+                          }
+                        }
                         dragSelectionController.start(details.localPosition);
                       }
                     : null,
@@ -740,7 +787,8 @@ class FileListViewBuilder {
         const double minPreviewWidth = 280.0;
         const double minGridWidth = 360.0;
         final double maxPreviewWidthByRatio = constraints.maxWidth * 0.8;
-        final double maxPreviewWidthByGrid = constraints.maxWidth - minGridWidth;
+        final double maxPreviewWidthByGrid =
+            constraints.maxWidth - minGridWidth;
         final double maxPreviewWidth = math.max(
           0.0,
           math.min(maxPreviewWidthByRatio, maxPreviewWidthByGrid),
@@ -1035,9 +1083,7 @@ class _PreviewResizeHandle extends StatelessWidget {
               width: _indicatorWidth,
               height: _indicatorHeight,
               decoration: BoxDecoration(
-                color: Theme.of(context)
-                    .dividerColor
-                    .withValues(alpha: 0.7),
+                color: Theme.of(context).dividerColor.withValues(alpha: 0.7),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),

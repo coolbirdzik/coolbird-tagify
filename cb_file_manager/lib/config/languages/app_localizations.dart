@@ -376,9 +376,18 @@ abstract class AppLocalizations {
 
   // Video thumbnails
   String get videoThumbnails;
+  String get thumbnailMode;
+  String get thumbnailModeFast;
+  String get thumbnailModeCustom;
+  String get thumbnailModeFastDescription;
+  String get thumbnailModeCustomDescription;
   String get thumbnailPosition;
   String get percentOfVideo;
   String get thumbnailDescription;
+  String get generatingAtPosition;
+  String get generatingFast;
+  String get maxConcurrency;
+  String get maxConcurrencyDescription;
   String get useSystemDefaultForVideo;
   String get useSystemDefaultForVideoDescription;
   String get useSystemDefaultForVideoEnabled;

@@ -16,6 +16,76 @@ import 'package:remixicon/remixicon.dart' as remix;
 
 import 'fc_native_video_thumbnail.dart';
 
+/// Enum for thumbnail generation mode
+enum ThumbnailMode {
+  /// Fast mode: uses OS built-in methods (Windows shell, Android MediaStore, etc.)
+  fast,
+
+  /// Custom mode: uses FFmpeg with user-configurable timestamp position
+  custom,
+}
+
+/// Status information for thumbnail generation
+class ThumbnailGenerationStatus {
+  /// The video path being processed
+  final String videoPath;
+
+  /// Whether the thumbnail is currently being generated
+  final bool isGenerating;
+
+  /// The generation mode being used
+  final ThumbnailMode mode;
+
+  /// The position percentage (only for custom mode)
+  final int? positionPercent;
+
+  /// The timestamp in seconds (only for custom mode)
+  final int? timestampSeconds;
+
+  /// Status message for display
+  final String statusMessage;
+
+  const ThumbnailGenerationStatus({
+    required this.videoPath,
+    required this.isGenerating,
+    required this.mode,
+    this.positionPercent,
+    this.timestampSeconds,
+    required this.statusMessage,
+  });
+}
+
+/// Cache for video durations to avoid repeated native calls
+final Map<String, int> _durationCache = {};
+
+/// Get actual video duration using native FFmpeg library (Windows) or estimation (other platforms)
+Future<int> _getActualVideoDuration(String videoPath) async {
+  // Check cache first
+  if (_durationCache.containsKey(videoPath)) {
+    return _durationCache[videoPath]!;
+  }
+
+  if (Platform.isWindows) {
+    try {
+      // Native call runs on background thread, won't block UI
+      final duration = await FcNativeVideoThumbnail.getVideoDuration(videoPath);
+      if (duration > 0) {
+        final durationInt = duration.round();
+        _durationCache[videoPath] = durationInt;
+        return durationInt;
+      }
+    } catch (e) {
+      debugPrint(
+          'VideoThumbnail: ✗ FFmpeg native exception for $videoPath: $e');
+    }
+  }
+
+  // Fallback to estimation if native method not available or failed
+  debugPrint(
+      'VideoThumbnail: Using file size estimation for duration of $videoPath');
+  return _getEstimatedVideoDurationIsolate(videoPath);
+}
+
 Future<int> _getEstimatedVideoDurationIsolate(String videoPath) async {
   try {
     final videoFile = File(videoPath);
@@ -69,20 +139,15 @@ Future<int> _calculateTimestampFromPercentageIsolate(
   String videoPath,
   double percentage,
 ) async {
-  final estimatedDuration = await _getEstimatedVideoDurationIsolate(videoPath);
+  // Use actual duration from ffprobe when available for accurate timestamp
+  final actualDuration = await _getActualVideoDuration(videoPath);
 
   // Ensure percentage is within valid range
   final validPercentage = percentage.clamp(0.0, 100.0);
 
   // For very short videos, use a fixed timestamp
-  if (estimatedDuration <= 10) {
-    final timestamp = (estimatedDuration / 2).round().clamp(
-          2,
-          estimatedDuration - 2,
-        );
-    debugPrint(
-      'VideoThumbnail: Short video ($estimatedDuration s), using middle timestamp: ${timestamp}s',
-    );
+  if (actualDuration <= 10) {
+    final timestamp = (actualDuration / 2).round().clamp(2, actualDuration - 2);
     return timestamp;
   }
 
@@ -96,21 +161,13 @@ Future<int> _calculateTimestampFromPercentageIsolate(
 
   // Calculate timestamp in seconds
   int timestampSeconds =
-      ((adjustedPercentage / 100.0) * estimatedDuration).round();
+      ((adjustedPercentage / 100.0) * actualDuration).round();
 
   // Ensure timestamp is within safe bounds (avoid first/last 5 seconds)
   const minTimestamp = 5;
   final maxTimestamp =
-      estimatedDuration > 10 ? estimatedDuration - 5 : estimatedDuration ~/ 2;
+      actualDuration > 10 ? actualDuration - 5 : actualDuration ~/ 2;
   timestampSeconds = timestampSeconds.clamp(minTimestamp, maxTimestamp);
-
-  // Debug logging to track thumbnail timestamp calculation
-  debugPrint('VideoThumbnail: Calculating timestamp for $videoPath');
-  debugPrint('  - Original percentage: $percentage%');
-  debugPrint('  - Adjusted percentage: $adjustedPercentage%');
-  debugPrint('  - Estimated duration: ${estimatedDuration}s');
-  debugPrint('  - Calculated timestamp: ${timestampSeconds}s');
-  debugPrint('  - Safe range: ${minTimestamp}s - ${maxTimestamp}s');
 
   return timestampSeconds;
 }
@@ -125,6 +182,7 @@ class _ThumbnailIsolateArgs {
   final bool isWindows;
   final RootIsolateToken? rootIsolateToken;
   final bool forceRegenerate;
+  final bool useFastMode;
 
   _ThumbnailIsolateArgs({
     required this.videoPath,
@@ -136,6 +194,7 @@ class _ThumbnailIsolateArgs {
     required this.isWindows,
     required this.rootIsolateToken,
     required this.forceRegenerate,
+    required this.useFastMode,
   });
 }
 
@@ -196,18 +255,28 @@ Future<String?> _generateThumbnailIsolate(_ThumbnailIsolateArgs args) async {
       }
     }
 
-    final int timestampSeconds = await _calculateTimestampFromPercentageIsolate(
-      args.videoPath,
-      args.thumbnailPercentage,
-    );
+    // Determine timestamp based on mode
+    int? timeMs;
+    if (!args.useFastMode) {
+      // Custom mode: calculate timestamp from percentage
+      final int timestampSeconds =
+          await _calculateTimestampFromPercentageIsolate(
+        args.videoPath,
+        args.thumbnailPercentage,
+      );
+      timeMs = timestampSeconds * 1000;
+      debugPrint(
+        'VideoThumbnail (Isolate): [Custom Mode] Using ${timestampSeconds}s (${args.thumbnailPercentage.toInt()}%)',
+      );
+    } else {
+      // Fast mode: let the package decide (usually first frame or system default)
+      timeMs = 0;
+      debugPrint(
+        'VideoThumbnail (Isolate): [Fast Mode] Using system default timestamp',
+      );
+    }
 
-    // DISABLED: Native Windows plugin causes crashes
-    // Skip native generation in isolate
-    debugPrint(
-      'VideoThumbnail (Isolate): Using fallback method only (native disabled)',
-    );
-
-    // Fallback to VideoThumbnail package
+    // Use VideoThumbnail package (works on Android, iOS, macOS, Linux)
     try {
       final thumbnailFile = await VideoThumbnail.thumbnailFile(
         video: args.absoluteVideoPath,
@@ -216,7 +285,7 @@ Future<String?> _generateThumbnailIsolate(_ThumbnailIsolateArgs args) async {
         quality: args.quality,
         maxHeight: args.maxSize,
         maxWidth: args.maxSize,
-        timeMs: timestampSeconds * 1000,
+        timeMs: timeMs,
       );
 
       if (thumbnailFile != null) {
@@ -269,6 +338,14 @@ class VideoThumbnailHelper {
   static Stream<String> get onThumbnailReady =>
       _thumbnailReadyController.stream;
 
+  /// Stream to notify about generation status for a specific video
+  /// Emits a ThumbnailGenerationStatus with video path and status info
+  static final StreamController<ThumbnailGenerationStatus>
+      _generationStatusController =
+      StreamController<ThumbnailGenerationStatus>.broadcast();
+  static Stream<ThumbnailGenerationStatus> get onGenerationStatus =>
+      _generationStatusController.stream;
+
   // Method to notify listeners that cache has changed
   static void _notifyCacheChanged() {
     _cacheChangedController.add(null);
@@ -278,6 +355,7 @@ class VideoThumbnailHelper {
   static void dispose() {
     _cacheChangedController.close();
     _thumbnailReadyController.close();
+    _generationStatusController.close();
   }
 
   // Track which paths have been logged to avoid spamming logs
@@ -289,15 +367,6 @@ class VideoThumbnailHelper {
 
   static final _processingQueue = <_ThumbnailRequest>[];
   static final _pendingQueue = <_ThumbnailRequest>[];
-
-  // Reduce maximum concurrent processes to prevent system overload
-  // Use slightly higher concurrency on Windows but keep it safe
-  static int get _maxConcurrentProcesses {
-    if (!Platform.isWindows) return 1;
-    return min(4, Platform.numberOfProcessors);
-  }
-
-  // Add throttling for native Windows thumbnail operations
 
   static bool _isProcessingQueue = false;
 
@@ -311,10 +380,10 @@ class VideoThumbnailHelper {
   // PERFORMANCE: Further reduced cache size for better memory management on desktop
   static const int _maxFileCacheSize = 150; // Further reduced from 300
 
-  // Increase quality for better thumbnails (was 70)
-  static const int thumbnailQuality = 90;
-  // Increase size for sharper thumbnails (was 200)
-  static const int maxThumbnailSize = 300;
+  // PERFORMANCE: Balanced quality for good appearance
+  static const int thumbnailQuality = 75;
+  // Moderate size for good quality thumbnails
+  static const int maxThumbnailSize = 240;
 
   static bool get _isWindows => Platform.isWindows;
 
@@ -331,6 +400,14 @@ class VideoThumbnailHelper {
   static final UserPreferences _userPrefs = UserPreferences.instance;
   static bool _userPrefsInitialized = false;
   static double _thumbnailPercentage = 10.0;
+  static ThumbnailMode _thumbnailMode = ThumbnailMode.custom;
+  static int _maxConcurrency = 8;
+
+  /// Get current thumbnail mode
+  static ThumbnailMode get currentMode => _thumbnailMode;
+
+  /// Get current max concurrency setting
+  static int get maxConcurrency => _maxConcurrency;
 
   // Add method to refresh percentage from preferences
   static Future<void> refreshThumbnailPercentage() async {
@@ -344,19 +421,79 @@ class VideoThumbnailHelper {
       final oldPercentage = _thumbnailPercentage;
       _thumbnailPercentage = percentage.toDouble();
 
+      // Also refresh thumbnail mode
+      final modeString = await _userPrefs.getThumbnailMode();
+      final oldMode = _thumbnailMode;
+      _thumbnailMode =
+          modeString == 'fast' ? ThumbnailMode.fast : ThumbnailMode.custom;
+
       debugPrint(
-        'VideoThumbnail: Refreshed thumbnail percentage from $oldPercentage% to $_thumbnailPercentage%',
+        'VideoThumbnail: Refreshed settings - percentage: $oldPercentage% -> $_thumbnailPercentage%, mode: ${oldMode.name} -> ${_thumbnailMode.name}',
       );
 
-      // Clear cache if percentage changed significantly to regenerate thumbnails
-      if ((oldPercentage - _thumbnailPercentage).abs() > 5.0) {
+      // Clear cache if percentage changed significantly or mode changed to regenerate thumbnails
+      final modeChanged = oldMode != _thumbnailMode;
+      final percentageChanged =
+          (oldPercentage - _thumbnailPercentage).abs() > 5.0;
+
+      if (modeChanged ||
+          (percentageChanged && _thumbnailMode == ThumbnailMode.custom)) {
         debugPrint(
-          'VideoThumbnail: Percentage changed significantly, clearing cache to regenerate thumbnails',
+          'VideoThumbnail: Settings changed significantly, clearing cache to regenerate thumbnails',
         );
         await clearCache();
       }
     } catch (e) {
-      debugPrint('VideoThumbnail: Error refreshing thumbnail percentage: $e');
+      debugPrint('VideoThumbnail: Error refreshing thumbnail settings: $e');
+    }
+  }
+
+  /// Refresh thumbnail mode from preferences
+  static Future<void> refreshThumbnailMode() async {
+    try {
+      if (!_userPrefsInitialized) {
+        await _userPrefs.init();
+        _userPrefsInitialized = true;
+      }
+
+      final modeString = await _userPrefs.getThumbnailMode();
+      final oldMode = _thumbnailMode;
+      _thumbnailMode =
+          modeString == 'fast' ? ThumbnailMode.fast : ThumbnailMode.custom;
+
+      debugPrint(
+        'VideoThumbnail: Refreshed thumbnail mode from ${oldMode.name} to ${_thumbnailMode.name}',
+      );
+
+      // Clear cache if mode changed to regenerate thumbnails
+      if (oldMode != _thumbnailMode) {
+        debugPrint(
+          'VideoThumbnail: Mode changed, clearing cache to regenerate thumbnails',
+        );
+        await clearCache();
+      }
+    } catch (e) {
+      debugPrint('VideoThumbnail: Error refreshing thumbnail mode: $e');
+    }
+  }
+
+  /// Refresh max concurrency from preferences
+  static Future<void> refreshMaxConcurrency() async {
+    try {
+      if (!_userPrefsInitialized) {
+        await _userPrefs.init();
+        _userPrefsInitialized = true;
+      }
+
+      final concurrency = await _userPrefs.getMaxThumbnailConcurrency();
+      final oldConcurrency = _maxConcurrency;
+      _maxConcurrency = concurrency;
+
+      debugPrint(
+        'VideoThumbnail: Refreshed max concurrency from $oldConcurrency to $_maxConcurrency',
+      );
+    } catch (e) {
+      debugPrint('VideoThumbnail: Error refreshing max concurrency: $e');
     }
   }
 
@@ -440,9 +577,19 @@ class VideoThumbnailHelper {
           await _userPrefs.init();
           final percentage = await _userPrefs.getVideoThumbnailPercentage();
           _thumbnailPercentage = percentage.toDouble();
+
+          // Also load thumbnail mode
+          final modeString = await _userPrefs.getThumbnailMode();
+          _thumbnailMode =
+              modeString == 'fast' ? ThumbnailMode.fast : ThumbnailMode.custom;
+
+          // Also load max concurrency
+          final concurrency = await _userPrefs.getMaxThumbnailConcurrency();
+          _maxConcurrency = concurrency;
+
           _userPrefsInitialized = true;
           _log(
-            'VideoThumbnail: UserPreferences initialized. Thumbnail percentage: $_thumbnailPercentage%',
+            'VideoThumbnail: UserPreferences initialized. Percentage: $_thumbnailPercentage%, Mode: ${_thumbnailMode.name}, Concurrency: $_maxConcurrency',
           );
         } catch (e) {
           _log(
@@ -450,6 +597,8 @@ class VideoThumbnailHelper {
             forceShow: true,
           );
           _thumbnailPercentage = 10.0;
+          _thumbnailMode = ThumbnailMode.custom;
+          _maxConcurrency = 8;
         }
       }
 
@@ -489,6 +638,12 @@ class VideoThumbnailHelper {
       normalized = normalized.toLowerCase();
     }
     return normalized;
+  }
+
+  /// Get the normalized cache key for a video path
+  /// Used for comparing paths in thumbnail ready events
+  static String getNormalizedPath(String videoPath) {
+    return _cacheKeyForPath(videoPath);
   }
 
   static String _cacheKeyForPath(String value) {
@@ -679,62 +834,49 @@ class VideoThumbnailHelper {
           break;
         }
 
-        // Pull a batch up to the concurrency limit
-        final batchSize = _maxConcurrentProcesses.clamp(1, 8);
-        final currentBatch = <_ThumbnailRequest>[];
-        while (currentBatch.length < batchSize && _pendingQueue.isNotEmpty) {
-          currentBatch.add(_pendingQueue.removeAt(0));
-        }
+        // IMPORTANT: Process ONE request at a time to maintain strict
+        // top-to-bottom order based on the user's sort selection.
+        // The queue is priority-sorted (proactiveGenerateAll assigns
+        // decreasing priorities by list position), so processing
+        // sequentially guarantees thumbnails appear in sort order.
+        final request = _pendingQueue.removeAt(0);
 
-        // Track processing requests for cancellation awareness
-        _processingQueue.addAll(currentBatch);
+        // Track processing request for cancellation awareness
+        _processingQueue.add(request);
 
-        // Launch batch with slight staggering to reduce spikes
-        final futures = <Future<void>>[];
-        for (var i = 0; i < currentBatch.length; i++) {
-          final request = currentBatch[i];
-          futures.add(() async {
-            try {
-              // Stagger start a little between tasks
-              if (i > 0) {
-                await Future.delayed(Duration(milliseconds: 6 * i));
-              }
+        try {
+          final result = await _generateThumbnailInternal(
+            request.videoPath,
+            forceRegenerate: request.forceRegenerate,
+            quality: request.quality,
+            thumbnailSize: request.thumbnailSize,
+          );
 
-              final result = await _generateThumbnailInternal(
-                request.videoPath,
-                forceRegenerate: request.forceRegenerate,
-                quality: request.quality,
-                thumbnailSize: request.thumbnailSize,
-              );
-
-              if (result != null) {
-                _fileCache[request.videoPath] = result;
-                if (!request.completer.isCompleted) {
-                  request.completer.complete(result);
-                }
-              } else {
-                if (!request.completer.isCompleted) {
-                  request.completer.complete(null);
-                }
-              }
-            } catch (e) {
-              debugPrint(
-                'VideoThumbnail: Error processing request for ${request.videoPath}: $e',
-              );
-              if (!request.completer.isCompleted) {
-                request.completer.complete(null);
-              }
-            } finally {
-              _processingQueue.remove(request);
+          if (result != null) {
+            _fileCache[request.videoPath] = result;
+            if (!request.completer.isCompleted) {
+              request.completer.complete(result);
             }
-          }());
+          } else {
+            if (!request.completer.isCompleted) {
+              request.completer.complete(null);
+            }
+          }
+        } catch (e) {
+          debugPrint(
+            'VideoThumbnail: Error processing request for ${request.videoPath}: $e',
+          );
+          if (!request.completer.isCompleted) {
+            request.completer.complete(null);
+          }
+        } finally {
+          _processingQueue.remove(request);
         }
 
-        // Wait for this batch to complete
-        await Future.wait(futures);
-
-        // Short delay between batches to avoid IO/CPU spikes
-        await Future.delayed(const Duration(milliseconds: 12));
+        // Yield to event loop between items
+        if (_pendingQueue.isNotEmpty) {
+          await Future.delayed(Duration.zero);
+        }
       }
     } finally {
       _isProcessingQueue = false;
@@ -912,6 +1054,21 @@ class VideoThumbnailHelper {
           );
         }
 
+        // Emit status for non-Windows platforms
+        final mode = _thumbnailMode;
+        try {
+          _generationStatusController.add(ThumbnailGenerationStatus(
+            videoPath: videoPath,
+            isGenerating: true,
+            mode: mode,
+            positionPercent:
+                mode == ThumbnailMode.custom ? percentage.toInt() : null,
+            statusMessage: mode == ThumbnailMode.fast
+                ? 'Fast mode'
+                : '${percentage.toInt()}%',
+          ));
+        } catch (_) {}
+
         final args = _ThumbnailIsolateArgs(
           videoPath: videoPath,
           cacheFilename: cacheFilename,
@@ -922,6 +1079,7 @@ class VideoThumbnailHelper {
           isWindows: _isWindows,
           rootIsolateToken: rootToken,
           forceRegenerate: forceRegenerate,
+          useFastMode: mode == ThumbnailMode.fast,
         );
 
         try {
@@ -1011,72 +1169,122 @@ class VideoThumbnailHelper {
         } catch (_) {}
       }
 
-      final bool useFastMode = maxSize <= 200 && quality <= 60;
-      final int? timestampSeconds = useFastMode
-          ? null
-          : await _calculateTimestampFromPercentageIsolate(
-              videoPath,
-              percentage.toDouble(),
-            );
+      String? nativePath;
+      final mode = _thumbnailMode;
 
-      // Use native Windows thumbnail provider (fastest method)
-      _log('VideoThumbnail: Using FcNativeVideoThumbnail for $videoPath');
-      try {
-        String? nativePath;
-        if (useFastMode) {
-          _log(
-            'VideoThumbnail: Using shell thumbnail for fast mode on $videoPath',
-          );
+      if (mode == ThumbnailMode.fast) {
+        // Fast mode: use OS shell thumbnail (Windows shell cache)
+        _log(
+            'VideoThumbnail: [Fast Mode] Using shell thumbnail for $videoPath');
+
+        // Emit status for fast mode
+        try {
+          _generationStatusController.add(ThumbnailGenerationStatus(
+            videoPath: videoPath,
+            isGenerating: true,
+            mode: ThumbnailMode.fast,
+            statusMessage: 'Fast mode',
+          ));
+        } catch (_) {}
+
+        try {
           nativePath = await FcNativeVideoThumbnail.generateThumbnail(
             videoPath: absoluteVideoPath,
             outputPath: thumbnailPath,
             width: maxSize,
             format: 'jpg',
-            timeSeconds: null,
+            timeSeconds: null, // Use Windows shell cache
             quality: quality,
           );
 
-          if (nativePath == null) {
-            _log(
-              'VideoThumbnail: Shell thumbnail failed, falling back to timestamp extraction for $videoPath',
-            );
+          if (nativePath != null) {
+            final file = File(nativePath);
+            if (await file.exists() && await file.length() > 0) {
+              _log(
+                  'VideoThumbnail: [Fast Mode] Shell thumbnail successful for $videoPath');
+              return nativePath;
+            }
+          }
+        } catch (e) {
+          _log(
+              'VideoThumbnail: [Fast Mode] Shell thumbnail failed for $videoPath: $e');
+        }
+      } else {
+        // Custom mode: use FFmpeg with user-configured timestamp percentage
+        // Using optimized single-pass extraction that gets duration + thumbnail in one file open
+        _log(
+            'VideoThumbnail: [Custom Mode] Extracting at ${percentage}% of video for $videoPath');
+
+        // Emit status for custom mode with position info
+        try {
+          _generationStatusController.add(ThumbnailGenerationStatus(
+            videoPath: videoPath,
+            isGenerating: true,
+            mode: ThumbnailMode.custom,
+            positionPercent: percentage,
+            statusMessage: '${percentage}%',
+          ));
+        } catch (_) {}
+
+        try {
+          // Use the optimized single-pass method that opens the file ONCE
+          // This is ~2x faster than separate getVideoDuration + generateThumbnail calls
+          nativePath =
+              await FcNativeVideoThumbnail.generateThumbnailAtPercentage(
+            videoPath: absoluteVideoPath,
+            outputPath: thumbnailPath,
+            percentage: percentage.toDouble(),
+            width: maxSize,
+            format: 'jpg',
+            quality: quality,
+          );
+
+          if (nativePath != null) {
+            final file = File(nativePath);
+            if (await file.exists() && await file.length() > 0) {
+              _log(
+                  'VideoThumbnail: [Custom Mode] Extraction successful at ${percentage}% for $videoPath');
+              return nativePath;
+            }
+          }
+        } catch (e) {
+          _log(
+              'VideoThumbnail: [Custom Mode] Extraction failed for $videoPath: $e');
+        }
+
+        // Fallback to shell thumbnail only if custom mode extraction failed
+        if (nativePath == null) {
+          _log(
+            'VideoThumbnail: [Custom Mode] Falling back to shell thumbnail for $videoPath',
+          );
+          try {
             nativePath = await FcNativeVideoThumbnail.generateThumbnail(
               videoPath: absoluteVideoPath,
               outputPath: thumbnailPath,
               width: maxSize,
               format: 'jpg',
-              timeSeconds: 1,
+              timeSeconds: null,
               quality: quality,
             );
+          } catch (e) {
+            _log(
+                'VideoThumbnail: Shell thumbnail also failed for $videoPath: $e');
           }
-        } else {
-          nativePath = await FcNativeVideoThumbnail.generateThumbnail(
-            videoPath: absoluteVideoPath,
-            outputPath: thumbnailPath,
-            width: maxSize,
-            format: 'jpg',
-            timeSeconds: timestampSeconds,
-            quality: quality,
-          );
-        }
 
-        if (nativePath != null) {
-          final file = File(nativePath);
-          if (await file.exists() && await file.length() > 0) {
-            _log('VideoThumbnail: Native generation successful for $videoPath');
-            return nativePath;
+          if (nativePath != null) {
+            final file = File(nativePath);
+            if (await file.exists() && await file.length() > 0) {
+              _log(
+                  'VideoThumbnail: Thumbnail generation successful for $videoPath');
+              return nativePath;
+            }
+          } else {
+            _log(
+              'VideoThumbnail: Thumbnail generation returned null for $videoPath',
+              forceShow: true,
+            );
           }
-        } else {
-          _log(
-            'VideoThumbnail: Native thumbnail generation returned null for $videoPath',
-            forceShow: true,
-          );
         }
-      } catch (e, stackTrace) {
-        _log(
-          'VideoThumbnail: Native thumbnail error for $videoPath: $e\n$stackTrace',
-          forceShow: true,
-        );
       }
 
       return null;
@@ -1546,7 +1754,6 @@ class VideoThumbnailHelper {
     _log('VideoThumbnail: Clearing cache...', forceShow: true);
 
     // Set a flag to prevent new thumbnail requests during cache clearing
-    final bool wasProcessing = _isProcessingQueue;
     _isProcessingQueue = true;
     _shouldStopProcessing = true;
 
@@ -1658,8 +1865,12 @@ class VideoThumbnailHelper {
       // Notify listeners that cache has been cleared
       _notifyCacheChanged();
     } finally {
-      // Reset processing flags and allow new requests
-      _isProcessingQueue = wasProcessing;
+      // BUGFIX: Always reset to false so new requests can be processed.
+      // Previously restored from wasProcessing which could leave the flag
+      // permanently true if the queue was running when clearCache was called,
+      // because _processQueue's finally block already set it to false but
+      // this finally block would overwrite it back to true.
+      _isProcessingQueue = false;
       _shouldStopProcessing = false;
     }
   }
@@ -1684,6 +1895,75 @@ class VideoThumbnailHelper {
 
     await _cleanupOldTempFiles();
     _log('VideoThumbnail: Cache trimming complete.');
+  }
+
+  /// Proactively generate thumbnails for ALL video files in a directory
+  /// Priority is based on list position - top items get highest priority
+  /// This ensures thumbnails are generated even for off-screen items
+  static Future<void> proactiveGenerateAll(
+    List<String> videoPaths, {
+    required String directoryPath,
+  }) async {
+    if (!_cacheInitialized) {
+      await initializeCache();
+    }
+
+    if (videoPaths.isEmpty) return;
+
+    _log(
+      'VideoThumbnail: Proactively generating ${videoPaths.length} thumbnails for $directoryPath',
+    );
+
+    // Clear pending queue to prioritize new directory
+    _pendingQueue.clear();
+
+    // Add ALL videos to queue with decreasing priority based on position
+    // Priority decreases by 1 for each position, ensuring top items are processed first
+    for (var i = 0; i < videoPaths.length; i++) {
+      final path = videoPaths[i];
+
+      // Check if we're still in the same directory
+      if (_currentDirectory != directoryPath) {
+        _log(
+          'VideoThumbnail: Directory changed, stopping proactive generation',
+        );
+        break;
+      }
+
+      // Calculate priority: first 20 items get visible priority,
+      // next 40 get prefetch priority, rest get default priority
+      // Within each group, earlier items get higher priority
+      int priority;
+      if (i < 20) {
+        priority = _visiblePriority - i; // 100, 99, 98, ...
+      } else if (i < 60) {
+        priority = _prefetchPriority + (60 - i); // Decreasing from 60 to 21
+      } else {
+        priority = _defaultPriority; // 0 for all others
+      }
+
+      // Skip if already cached
+      final cached = await getFromCache(path);
+      if (cached != null) {
+        continue;
+      }
+
+      _requestThumbnail(
+        path,
+        priority: priority,
+        quality: thumbnailQuality,
+        thumbnailSize: maxThumbnailSize,
+      );
+
+      // Small yield every 10 items to prevent blocking
+      if (i % 10 == 9) {
+        await Future.delayed(Duration.zero);
+      }
+    }
+
+    _log(
+      'VideoThumbnail: Queued ${_pendingQueue.length} thumbnails for generation',
+    );
   }
 
   /// Tối ưu việc tải nhiều thumbnail cùng một lúc với hàng đợi ưu tiên
@@ -1760,6 +2040,15 @@ class VideoThumbnailHelper {
   /// Check if a thumbnail generation was already attempted
   static bool wasAttempted(String videoPath) {
     return _attemptedPaths.contains(_cacheKeyForPath(videoPath));
+  }
+
+  /// Check if a video path is already queued (pending or processing)
+  /// Used by widgets to avoid re-requesting with a different priority
+  /// which would disrupt the sort-order based generation sequence
+  static bool isPathQueued(String videoPath) {
+    final cacheKey = _cacheKeyForPath(videoPath);
+    return _pendingQueue.any((req) => req.videoPath == cacheKey) ||
+        _processingQueue.any((req) => req.videoPath == cacheKey);
   }
 
   /// Restart thumbnail generation for items that come back into viewport

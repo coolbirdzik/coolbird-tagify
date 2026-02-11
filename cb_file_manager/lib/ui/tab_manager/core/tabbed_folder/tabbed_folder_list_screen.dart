@@ -5,7 +5,6 @@ import 'package:cb_file_manager/ui/components/common/shared_action_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:cb_file_manager/helpers/core/user_preferences.dart';
-import 'package:remixicon/remixicon.dart' as remix;
 import 'package:cb_file_manager/ui/widgets/thumbnail_loader.dart';
 import 'package:cb_file_manager/ui/widgets/app_progress_indicator.dart';
 import 'package:cb_file_manager/ui/utils/file_type_utils.dart';
@@ -505,22 +504,21 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen>
       );
     } else if (selectionState.selectedFilePaths.isNotEmpty ||
         selectionState.selectedFolderPaths.isNotEmpty) {
-      // Copy all selected items
+      // Copy all selected items at once
       final allPaths = [
         ...selectionState.selectedFilePaths,
         ...selectionState.selectedFolderPaths,
       ];
-      for (final path in allPaths) {
-        final entity =
-            FileSystemEntity.typeSync(path) == FileSystemEntityType.directory
-                ? Directory(path)
-                : File(path);
-        FileOperationsHandler.copyToClipboard(
-          context: context,
-          entity: entity,
-          folderListBloc: _folderListBloc,
-        );
-      }
+      final entities = allPaths.map((path) {
+        return FileSystemEntity.typeSync(path) == FileSystemEntityType.directory
+            ? Directory(path) as FileSystemEntity
+            : File(path) as FileSystemEntity;
+      }).toList();
+      FileOperationsHandler.copyFilesToClipboard(
+        context: context,
+        entities: entities,
+        folderListBloc: _folderListBloc,
+      );
     }
   }
 
@@ -542,22 +540,21 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen>
       );
     } else if (selectionState.selectedFilePaths.isNotEmpty ||
         selectionState.selectedFolderPaths.isNotEmpty) {
-      // Cut all selected items
+      // Cut all selected items at once
       final allPaths = [
         ...selectionState.selectedFilePaths,
         ...selectionState.selectedFolderPaths,
       ];
-      for (final path in allPaths) {
-        final entity =
-            FileSystemEntity.typeSync(path) == FileSystemEntityType.directory
-                ? Directory(path)
-                : File(path);
-        FileOperationsHandler.cutToClipboard(
-          context: context,
-          entity: entity,
-          folderListBloc: _folderListBloc,
-        );
-      }
+      final entities = allPaths.map((path) {
+        return FileSystemEntity.typeSync(path) == FileSystemEntityType.directory
+            ? Directory(path) as FileSystemEntity
+            : File(path) as FileSystemEntity;
+      }).toList();
+      FileOperationsHandler.cutFilesToClipboard(
+        context: context,
+        entities: entities,
+        folderListBloc: _folderListBloc,
+      );
     }
   }
 
@@ -869,10 +866,6 @@ class _TabbedFolderListScreenState extends State<TabbedFolderListScreen>
           isNetworkPath: isNetworkPath, // Pass network flag
         ),
         actions: _getAppBarActions(),
-        floatingActionButton: FloatingActionButton(
-          onPressed: _toggleSelectionMode,
-          child: const Icon(remix.Remix.checkbox_line),
-        ),
       );
     });
   }

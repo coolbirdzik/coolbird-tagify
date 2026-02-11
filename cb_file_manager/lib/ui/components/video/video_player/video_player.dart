@@ -327,7 +327,12 @@ class _VideoPlayerState extends _VideoPlayerVolumeHost
   bool _isLoading = true;
   bool _hasError = false;
   bool _isFullScreen = false;
+  bool _isDesktopFullScreenToggleInProgress = false;
+  bool _desktopWasMaximizedBeforeFullScreen = false;
+  bool? _desktopWasResizableBeforeFullScreen;
+  Rect? _desktopBoundsBeforeFullScreen;
   bool _isPlaying = false;
+  @override
   bool _isMuted = false;
   String _errorMessage = '';
   double _savedVolume = 70.0;
@@ -424,7 +429,6 @@ class _VideoPlayerState extends _VideoPlayerVolumeHost
   bool _vlcPendingRestoreApplied = false;
 
   Map<String, dynamic>? _videoMetadata;
-
 
   // Fast forward/rewind state (long press on mobile, hold arrow on desktop)
   bool _isFastSeeking = false;
@@ -1357,8 +1361,7 @@ class _VideoPlayerState extends _VideoPlayerVolumeHost
           Positioned.fill(
             child: _buildVideoWidget(),
           ),
-          if (widget.showControls && _showControls)
-            _buildCustomControls(),
+          if (widget.showControls && _showControls) _buildCustomControls(),
           if (_showSpeedIndicator && _currentStream != null)
             _buildSpeedIndicatorOverlay(),
           _buildFastSeekGestureOverlay(),
@@ -1694,8 +1697,7 @@ class _VideoPlayerState extends _VideoPlayerVolumeHost
               },
             ),
           ),
-          if (widget.showControls && _showControls)
-            _buildCustomControls(),
+          if (widget.showControls && _showControls) _buildCustomControls(),
           _buildFastSeekGestureOverlay(),
           _buildFastSeekIndicator(),
         ],
@@ -1722,9 +1724,7 @@ class _VideoPlayerState extends _VideoPlayerVolumeHost
             ),
           ),
         ),
-        if (widget.showControls &&
-            !_isAndroidPip &&
-            _showControls)
+        if (widget.showControls && !_isAndroidPip && _showControls)
           _buildCustomControls(),
         _buildFastSeekGestureOverlay(),
         _buildFastSeekIndicator(),
@@ -2121,14 +2121,59 @@ class _VideoPlayerState extends _VideoPlayerVolumeHost
 
     if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
       // Desktop platforms - use window_manager
+      if (_isDesktopFullScreenToggleInProgress) return;
+      _isDesktopFullScreenToggleInProgress = true;
       try {
+        if (Platform.isWindows) {
+          const channel = MethodChannel('cb_file_manager/window_utils');
+          final entering = !_isFullScreen;
+          await channel.invokeMethod('setNativeFullScreen', {
+            'isFullScreen': entering,
+          });
+
+          setState(() {
+            _isFullScreen = entering;
+            _showControls = true;
+            _startHideControlsTimer();
+          });
+          widget.onFullScreenChanged?.call();
+          return;
+        }
+
         bool isFullScreen = await windowManager.isFullScreen();
         if (isFullScreen) {
           await windowManager.setFullScreen(false);
-          await windowManager.setResizable(true);
+
+          // Allow platform-side size refresh to settle before restoring bounds.
+          await Future<void>.delayed(const Duration(milliseconds: 60));
+
+          if (_desktopWasResizableBeforeFullScreen != null) {
+            await windowManager
+                .setResizable(_desktopWasResizableBeforeFullScreen!);
+          } else {
+            await windowManager.setResizable(true);
+          }
+
+          if (_desktopWasMaximizedBeforeFullScreen) {
+            await windowManager.maximize();
+          } else if (_desktopBoundsBeforeFullScreen != null) {
+            await windowManager.setBounds(_desktopBoundsBeforeFullScreen!);
+          }
+
+          _desktopWasMaximizedBeforeFullScreen = false;
+          _desktopWasResizableBeforeFullScreen = null;
+          _desktopBoundsBeforeFullScreen = null;
         } else {
+          _desktopWasMaximizedBeforeFullScreen =
+              await windowManager.isMaximized();
+          _desktopWasResizableBeforeFullScreen =
+              await windowManager.isResizable();
+          _desktopBoundsBeforeFullScreen = await windowManager.getBounds();
+
           await windowManager.setFullScreen(true);
         }
+
+        await windowManager.focus();
         setState(() {
           _isFullScreen = !isFullScreen;
           _showControls = true;
@@ -2137,6 +2182,8 @@ class _VideoPlayerState extends _VideoPlayerVolumeHost
         widget.onFullScreenChanged?.call();
       } catch (e) {
         debugPrint('Error toggling fullscreen: $e');
+      } finally {
+        _isDesktopFullScreenToggleInProgress = false;
       }
     } else {
       // Mobile platforms - use system chrome
@@ -2690,52 +2737,22 @@ class _VideoPlayerState extends _VideoPlayerVolumeHost
                 colors: [Color(0x00000000), Color(0xB3000000)],
               ),
             ),
-            child: Row(
-              children: [
-                // Play / Pause
-                _buildPlayPauseButton(),
-                const SizedBox(width: 8),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final fullScreenButton = widget.allowFullScreen
+                    ? VideoPlayerControlButton(
+                        icon: _isFullScreen
+                            ? Icons.fullscreen_exit
+                            : Icons.fullscreen,
+                        onPressed: _toggleFullScreen,
+                        enabled: true,
+                        tooltip: _isFullScreen
+                            ? 'Exit fullscreen'
+                            : 'Enter fullscreen',
+                      )
+                    : null;
 
-                // Current time
-                if (_useVlcControls)
-                  ValueListenableBuilder<VlcPlayerValue>(
-                    valueListenable: _vlcController!,
-                    builder: (context, v, _) {
-                      return Text(
-                        VideoPlayerUtils.formatDuration(v.position),
-                        style: const TextStyle(
-                            color: Colors.white70, fontSize: 12),
-                      );
-                    },
-                  )
-                else if (_useExoControls)
-                  ValueListenableBuilder<exo.VideoPlayerValue>(
-                    valueListenable: _exoController!,
-                    builder: (context, v, _) {
-                      return Text(
-                        VideoPlayerUtils.formatDuration(v.position),
-                        style: const TextStyle(
-                            color: Colors.white70, fontSize: 12),
-                      );
-                    },
-                  )
-                else
-                  StreamBuilder<Duration>(
-                    stream: _player!.stream.position,
-                    builder: (context, snapshot) {
-                      final p = snapshot.data ?? Duration.zero;
-                      return Text(
-                        VideoPlayerUtils.formatDuration(p),
-                        style: const TextStyle(
-                            color: Colors.white70, fontSize: 12),
-                      );
-                    },
-                  ),
-
-                const SizedBox(width: 8),
-
-                // Slider
-                Expanded(
+                final seekSlider = Expanded(
                   child: _useVlcControls
                       ? ValueListenableBuilder<VlcPlayerValue>(
                           valueListenable: _vlcController!,
@@ -2849,58 +2866,115 @@ class _VideoPlayerState extends _VideoPlayerVolumeHost
                                 );
                               },
                             ),
-                ),
+                );
 
-                const SizedBox(width: 8),
+                final width = constraints.maxWidth;
+                if (width < 520) {
+                  return Row(
+                    children: [
+                      _buildPlayPauseButton(),
+                      const SizedBox(width: 8),
+                      seekSlider,
+                      if (fullScreenButton != null) ...[
+                        const SizedBox(width: 8),
+                        fullScreenButton,
+                      ],
+                    ],
+                  );
+                }
 
-                // Duration
-                _useVlcControls
-                    ? ValueListenableBuilder<VlcPlayerValue>(
+                final showSecondaryActions = width >= 760;
+
+                return Row(
+                  children: [
+                    // Play / Pause
+                    _buildPlayPauseButton(),
+                    const SizedBox(width: 8),
+
+                    // Current time
+                    if (_useVlcControls)
+                      ValueListenableBuilder<VlcPlayerValue>(
                         valueListenable: _vlcController!,
                         builder: (context, v, _) {
-                          final dur = v.duration.inMilliseconds <= 0
-                              ? '--:--'
-                              : VideoPlayerUtils.formatDuration(v.duration);
                           return Text(
-                            dur,
+                            VideoPlayerUtils.formatDuration(v.position),
                             style: const TextStyle(
                                 color: Colors.white70, fontSize: 12),
                           );
                         },
                       )
-                    : _useExoControls
-                        ? ValueListenableBuilder<exo.VideoPlayerValue>(
-                            valueListenable: _exoController!,
+                    else if (_useExoControls)
+                      ValueListenableBuilder<exo.VideoPlayerValue>(
+                        valueListenable: _exoController!,
+                        builder: (context, v, _) {
+                          return Text(
+                            VideoPlayerUtils.formatDuration(v.position),
+                            style: const TextStyle(
+                                color: Colors.white70, fontSize: 12),
+                          );
+                        },
+                      )
+                    else
+                      StreamBuilder<Duration>(
+                        stream: _player!.stream.position,
+                        builder: (context, snapshot) {
+                          final p = snapshot.data ?? Duration.zero;
+                          return Text(
+                            VideoPlayerUtils.formatDuration(p),
+                            style: const TextStyle(
+                                color: Colors.white70, fontSize: 12),
+                          );
+                        },
+                      ),
+
+                    const SizedBox(width: 8),
+                    seekSlider,
+                    const SizedBox(width: 8),
+
+                    // Duration
+                    _useVlcControls
+                        ? ValueListenableBuilder<VlcPlayerValue>(
+                            valueListenable: _vlcController!,
                             builder: (context, v, _) {
+                              final dur = v.duration.inMilliseconds <= 0
+                                  ? '--:--'
+                                  : VideoPlayerUtils.formatDuration(v.duration);
                               return Text(
-                                VideoPlayerUtils.formatDuration(v.duration),
+                                dur,
                                 style: const TextStyle(
                                     color: Colors.white70, fontSize: 12),
                               );
                             },
                           )
-                        : Text(
-                            VideoPlayerUtils.formatDuration(
-                                _player!.state.duration),
-                            style: const TextStyle(
-                                color: Colors.white70, fontSize: 12),
-                          ),
+                        : _useExoControls
+                            ? ValueListenableBuilder<exo.VideoPlayerValue>(
+                                valueListenable: _exoController!,
+                                builder: (context, v, _) {
+                                  return Text(
+                                    VideoPlayerUtils.formatDuration(v.duration),
+                                    style: const TextStyle(
+                                        color: Colors.white70, fontSize: 12),
+                                  );
+                                },
+                              )
+                            : Text(
+                                VideoPlayerUtils.formatDuration(
+                                    _player!.state.duration),
+                                style: const TextStyle(
+                                    color: Colors.white70, fontSize: 12),
+                              ),
 
-                const SizedBox(width: 8),
-                if (widget.allowMuting) _buildVolumeControl(),
-                const SizedBox(width: 4),
-                _buildAdvancedControlsMenu(),
-                if (widget.allowFullScreen)
-                  VideoPlayerControlButton(
-                    icon: _isFullScreen
-                        ? Icons.fullscreen_exit
-                        : Icons.fullscreen,
-                    onPressed: _toggleFullScreen,
-                    enabled: true,
-                    tooltip:
-                        _isFullScreen ? 'Exit fullscreen' : 'Enter fullscreen',
-                  ),
-              ],
+                    const SizedBox(width: 8),
+                    if (showSecondaryActions && widget.allowMuting)
+                      _buildVolumeControl(),
+                    if (showSecondaryActions) ...[
+                      const SizedBox(width: 4),
+                      _buildAdvancedControlsMenu(),
+                    ],
+                    if (fullScreenButton != null) fullScreenButton,
+                  ],
+                );
+              },
             ),
           ),
         ),

@@ -301,7 +301,8 @@ class _NetworkBrowserScreenState extends State<NetworkBrowserScreen>
     controller.currentGridSize = _gridZoomLevel;
     controller.currentPath = _currentPath;
 
-    debugPrint('NetworkBrowserScreen: Mobile actions controller registered for tab ${widget.tabId}');
+    debugPrint(
+        'NetworkBrowserScreen: Mobile actions controller registered for tab ${widget.tabId}');
   }
 
   // Helper methods
@@ -373,7 +374,8 @@ class _NetworkBrowserScreenState extends State<NetworkBrowserScreen>
 
       // Update mobile controller
       if (!isDesktopPlatform) {
-        MobileFileActionsController.forTab(widget.tabId).currentGridSize = zoomLevel;
+        MobileFileActionsController.forTab(widget.tabId).currentGridSize =
+            zoomLevel;
       }
     } catch (e) {
       // Reduced debug logging
@@ -424,7 +426,8 @@ class _NetworkBrowserScreenState extends State<NetworkBrowserScreen>
 
     // Update mobile controller
     if (!isDesktopPlatform) {
-      MobileFileActionsController.forTab(widget.tabId).currentViewMode = _viewMode;
+      MobileFileActionsController.forTab(widget.tabId).currentViewMode =
+          _viewMode;
     }
   }
 
@@ -438,7 +441,8 @@ class _NetworkBrowserScreenState extends State<NetworkBrowserScreen>
 
     // Update mobile controller
     if (!isDesktopPlatform) {
-      MobileFileActionsController.forTab(widget.tabId).currentViewMode = _viewMode;
+      MobileFileActionsController.forTab(widget.tabId).currentViewMode =
+          _viewMode;
     }
 
     debugPrint('NetworkBrowserScreen: View mode changed to $_viewMode');
@@ -526,9 +530,10 @@ class _NetworkBrowserScreenState extends State<NetworkBrowserScreen>
     _scheduleNetworkDirectoryLoad();
 
     final pathParts = path.split('/');
-    final lastPart =
-        pathParts.lastWhere((part) => part.isNotEmpty, orElse: () => AppLocalizations.of(context)!.networkTab);
-    final tabName = lastPart.isEmpty ? AppLocalizations.of(context)!.networkTab : lastPart;
+    final lastPart = pathParts.lastWhere((part) => part.isNotEmpty,
+        orElse: () => AppLocalizations.of(context)!.networkTab);
+    final tabName =
+        lastPart.isEmpty ? AppLocalizations.of(context)!.networkTab : lastPart;
 
     context.read<TabManagerBloc>().add(UpdateTabName(widget.tabId, tabName));
   }
@@ -697,7 +702,8 @@ class _NetworkBrowserScreenState extends State<NetworkBrowserScreen>
             icon: const Icon(Icons.close),
             onPressed: _clearSelection,
           ),
-          Text(AppLocalizations.of(context)!.itemsSelected(selectionState.selectedCount)),
+          Text(AppLocalizations.of(context)!
+              .itemsSelected(selectionState.selectedCount)),
           const Spacer(),
           IconButton(
             icon: const Icon(Icons.select_all),
@@ -737,7 +743,8 @@ class _NetworkBrowserScreenState extends State<NetworkBrowserScreen>
               borderSide: BorderSide.none,
             ),
             filled: true,
-            fillColor: Theme.of(context).colorScheme.surface.withValues(alpha: 0.8),
+            fillColor:
+                Theme.of(context).colorScheme.surface.withValues(alpha: 0.8),
             contentPadding: const EdgeInsets.symmetric(horizontal: 12),
             prefixIcon: const Icon(Icons.search, size: 20),
             suffixIcon: IconButton(
@@ -770,7 +777,10 @@ class _NetworkBrowserScreenState extends State<NetworkBrowserScreen>
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.1),
+                color: Theme.of(context)
+                    .colorScheme
+                    .surface
+                    .withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
@@ -809,7 +819,9 @@ class _NetworkBrowserScreenState extends State<NetworkBrowserScreen>
         state.currentPath != null && state.currentPath != _currentPath;
 
     final bool shouldShowSkeleton = !state.hasError &&
-        (_isNavigationPending || (state.isLoading && !state.hasContent) || isStatePathOutOfSync);
+        (_isNavigationPending ||
+            (state.isLoading && !state.hasContent) ||
+            isStatePathOutOfSync);
 
     Widget content;
 
@@ -916,8 +928,7 @@ class _NetworkBrowserScreenState extends State<NetworkBrowserScreen>
                             const SizedBox(
                               width: 16,
                               height: 16,
-                              child:
-                                  CircularProgressIndicator(strokeWidth: 2),
+                              child: CircularProgressIndicator(strokeWidth: 2),
                             ),
                             const SizedBox(width: 8),
                             Text(
@@ -964,10 +975,12 @@ class _NetworkBrowserScreenState extends State<NetworkBrowserScreen>
       context,
       mode: GridSizeMode.columns,
     );
-    final crossAxisCount = _gridZoomLevel.clamp(
-      UserPreferences.minGridZoomLevel,
-      maxZoom,
-    ).toInt();
+    final crossAxisCount = _gridZoomLevel
+        .clamp(
+          UserPreferences.minGridZoomLevel,
+          maxZoom,
+        )
+        .toInt();
     return GridView.builder(
       padding: const EdgeInsets.all(8.0),
       physics: const ClampingScrollPhysics(),
@@ -1107,9 +1120,8 @@ class _NetworkBrowserScreenState extends State<NetworkBrowserScreen>
       context,
       mode: GridSizeMode.columns,
     );
-    final clamped = newZoomLevel
-        .clamp(UserPreferences.minGridZoomLevel, maxZoom)
-        .toInt();
+    final clamped =
+        newZoomLevel.clamp(UserPreferences.minGridZoomLevel, maxZoom).toInt();
     _saveGridZoomSetting(clamped);
   }
 
@@ -1173,6 +1185,7 @@ class _NetworkBrowserScreenState extends State<NetworkBrowserScreen>
 
   Widget _buildFloatingActionButton(SelectionState selectionState) {
     return FloatingActionButton(
+      heroTag: null, // Disable hero animation to avoid conflicts
       onPressed: _refreshFileList,
       child: const Icon(Icons.refresh),
     );

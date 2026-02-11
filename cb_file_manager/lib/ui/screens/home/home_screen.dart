@@ -612,58 +612,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   void _openNewTab() async {
     if (!mounted) return;
 
-    try {
-      final tabBloc = context.read<TabManagerBloc>();
-
-      // Check platform and create appropriate new tab
-      if (Platform.isWindows) {
-        // For Windows, create tab with empty path to show drive picker
-        tabBloc.add(AddTab(path: '', name: context.tr.drivesTab));
-      } else if (Platform.isAndroid || Platform.isIOS) {
-        // For mobile, try to get storage locations
-        try {
-          final storageLocations = await getAllStorageLocations();
-          if (!mounted) return;
-
-          if (storageLocations.isNotEmpty) {
-            final firstStorage = storageLocations.first;
-            final tabBloc = context.read<TabManagerBloc>();
-            tabBloc.add(AddTab(
-              path: firstStorage.path,
-              name: _getStorageDisplayName(firstStorage.path),
-            ));
-          } else {
-            // Fallback for mobile
-            final tabBloc = context.read<TabManagerBloc>();
-            tabBloc.add(AddTab(path: '', name: context.tr.browseTab));
-          }
-        } catch (e) {
-          if (!mounted) return;
-          final tabBloc = context.read<TabManagerBloc>();
-          tabBloc.add(AddTab(path: '', name: context.tr.browseTab));
-        }
-      } else {
-        // For other platforms (Linux, macOS), use documents directory
-        try {
-          final directory = await getApplicationDocumentsDirectory();
-          if (!mounted) return;
-
-          final tabBloc = context.read<TabManagerBloc>();
-          tabBloc
-              .add(AddTab(path: directory.path, name: context.tr.documentsTab));
-        } catch (e) {
-          if (!mounted) return;
-          final tabBloc = context.read<TabManagerBloc>();
-          tabBloc.add(
-              AddTab(path: Directory.current.path, name: context.tr.homeTab));
-        }
-      }
-    } catch (e) {
-      // Last resort fallback
-      if (!mounted) return;
-      final tabBloc = context.read<TabManagerBloc>();
-      tabBloc.add(AddTab(path: '', name: context.tr.browseTab));
-    }
+    // Always open new tab with home page
+    final tabBloc = context.read<TabManagerBloc>();
+    tabBloc.add(AddTab(path: '#home', name: context.tr.homeTab));
   }
 
   String _getStorageDisplayName(String path) {

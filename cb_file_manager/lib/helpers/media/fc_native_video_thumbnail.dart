@@ -17,12 +17,6 @@ class FcNativeVideoThumbnail {
   /// Flag to track initialization status
   static bool _initialized = false;
 
-  /// Prevents multiple concurrent native operations
-  static bool _operationInProgress = false;
-
-  /// Semaphore to control access to native operations
-  static final _operationSemaphore = Completer<void>()..complete();
-
   /// Maximum time to wait for a native operation (increased for 4K videos)
   static const Duration _operationTimeout = Duration(seconds: 30);
 
@@ -105,101 +99,68 @@ class FcNativeVideoThumbnail {
       final directory = path.dirname(outputPath);
       await Directory(directory).create(recursive: true);
 
-      // Check if another operation is already in progress
-      if (_operationInProgress) {
+      // PERFORMANCE: Removed _operationInProgress lock to allow parallel operations
+      // Native C++ plugin already handles thread pool internally
+
+      // Call the native method with a timeout and proper error handling
+      bool? result;
+      try {
+        // Wrap platform channel call in try-catch to handle BackgroundIsolateBinaryMessenger errors
+        result = await _channel.invokeMethod<bool>('getVideoThumbnail', {
+          'srcFile': videoPath,
+          'destFile': outputPath,
+          'width': width,
+          'format': format.toLowerCase() == 'png' ? 'png' : 'jpg',
+          'timeSeconds': timeSeconds, // Pass the timestamp to native code
+          'quality': quality, // Pass quality setting for JPEG format
+        }).timeout(_operationTimeout, onTimeout: () {
+          debugPrint(
+              'FcNativeVideoThumbnail: Native operation timed out for $videoPath');
+          return false;
+        });
+      } on MissingPluginException catch (e) {
         debugPrint(
-            'FcNativeVideoThumbnail: Another operation in progress, waiting...');
-        // Create a new semaphore if the current one is completed
-        if (_operationSemaphore.isCompleted) {
-          var oldSemaphore = _operationSemaphore;
-          await oldSemaphore.future;
-        } else {
-          // Wait for the current operation to complete
-          try {
-            await _operationSemaphore.future.timeout(_operationTimeout);
-          } catch (e) {
-            debugPrint(
-                'FcNativeVideoThumbnail: Timed out waiting for previous operation');
-            return null;
-          }
-        }
+            'FcNativeVideoThumbnail: Plugin not available: ${e.message}');
+        return null;
+      } on PlatformException catch (e) {
+        // Handle specific platform exception
+        debugPrint(
+            'FcNativeVideoThumbnail: Platform error for $videoPath: ${e.message}');
+        return null;
+      } catch (e) {
+        // Handle any other exceptions from the platform channel
+        debugPrint('FcNativeVideoThumbnail: Channel error: $e');
+        return null;
       }
 
-      // Create a new semaphore for the current operation
-      var currentSemaphore = Completer<void>();
-      _operationInProgress = true;
+      // Check if result is null (can happen with BackgroundIsolateBinaryMessenger issues)
+      if (result == null) {
+        debugPrint('FcNativeVideoThumbnail: Null result from platform channel');
+        return null;
+      }
 
-      try {
-        // Call the native method with a timeout and proper error handling
-        bool? result;
-        try {
-          // Add small delay to allow UI thread to update
-          await Future.delayed(const Duration(milliseconds: 10));
-
-          // Wrap platform channel call in try-catch to handle BackgroundIsolateBinaryMessenger errors
-          result = await _channel.invokeMethod<bool>('getVideoThumbnail', {
-            'srcFile': videoPath,
-            'destFile': outputPath,
-            'width': width,
-            'format': format.toLowerCase() == 'png' ? 'png' : 'jpg',
-            'timeSeconds': timeSeconds, // Pass the timestamp to native code
-            'quality': quality, // Pass quality setting for JPEG format
-          }).timeout(_operationTimeout, onTimeout: () {
-            debugPrint(
-                'FcNativeVideoThumbnail: Native operation timed out for $videoPath');
-            return false;
-          });
-        } on MissingPluginException catch (e) {
+      if (result == true) {
+        // Verify the thumbnail was created (async)
+        final outputFile = File(outputPath);
+        if (await outputFile.exists() && await outputFile.length() > 0) {
+          // Use async exists() and length()
           debugPrint(
-              'FcNativeVideoThumbnail: Plugin not available: ${e.message}');
-          return null;
-        } on PlatformException catch (e) {
-          // Handle specific platform exception
-          debugPrint(
-              'FcNativeVideoThumbnail: Platform error for $videoPath: ${e.message}');
-          return null;
-        } catch (e) {
-          // Handle any other exceptions from the platform channel
-          debugPrint('FcNativeVideoThumbnail: Channel error: $e');
-          return null;
-        }
-
-        // Check if result is null (can happen with BackgroundIsolateBinaryMessenger issues)
-        if (result == null) {
-          debugPrint(
-              'FcNativeVideoThumbnail: Null result from platform channel');
-          return null;
-        }
-
-        if (result == true) {
-          // Add small delay before file verification to allow UI updates
-          await Future.delayed(const Duration(milliseconds: 10));
-
-          // Verify the thumbnail was created (async)
-          final outputFile = File(outputPath);
-          if (await outputFile.exists() && await outputFile.length() > 0) {
-            // Use async exists() and length()
-            debugPrint(
-                'FcNativeVideoThumbnail: Successfully generated thumbnail at $outputPath');
-            return outputPath;
-          } else {
-            debugPrint(
-                'FcNativeVideoThumbnail: File reported as created but doesn\'t exist or is empty at $outputPath');
-            // Attempt to delete potentially corrupt file
-            try {
-              if (await outputFile.exists()) await outputFile.delete();
-            } catch (_) {}
-            return null;
-          }
+              'FcNativeVideoThumbnail: Successfully generated thumbnail at $outputPath');
+          return outputPath;
         } else {
-          // Failed extraction but not an error - common with some video files
           debugPrint(
-              'FcNativeVideoThumbnail: Could not extract thumbnail from video $videoPath (native call returned false)');
+              'FcNativeVideoThumbnail: File reported as created but doesn\'t exist or is empty at $outputPath');
+          // Attempt to delete potentially corrupt file
+          try {
+            if (await outputFile.exists()) await outputFile.delete();
+          } catch (_) {}
           return null;
         }
-      } finally {
-        _operationInProgress = false;
-        currentSemaphore.complete();
+      } else {
+        // Failed extraction but not an error - common with some video files
+        debugPrint(
+            'FcNativeVideoThumbnail: Could not extract thumbnail from video $videoPath (native call returned false)');
+        return null;
       }
     } catch (e, stack) {
       // Catch any remaining exceptions
@@ -315,5 +276,134 @@ class FcNativeVideoThumbnail {
       priority: 10,
       isVisible: true,
     );
+  }
+
+  /// Get video duration in seconds using FFmpeg native library
+  /// Returns the duration in seconds, or -1 if failed
+  /// This is much faster than spawning ffprobe.exe process
+  static Future<double> getVideoDuration(String videoPath) async {
+    if (!isWindows) {
+      return -1.0;
+    }
+
+    // Ensure the plugin is initialized
+    if (!_initialized) {
+      final initResult = await initialize();
+      if (!initResult) return -1.0;
+    }
+
+    try {
+      final result = await _channel.invokeMethod<double>(
+        'getVideoDuration',
+        {'srcFile': videoPath},
+      );
+      return result ?? -1.0;
+    } catch (e) {
+      debugPrint('FcNativeVideoThumbnail: Error getting video duration: $e');
+      return -1.0;
+    }
+  }
+
+  /// Generate thumbnail at a percentage of video duration (optimized single-pass)
+  ///
+  /// This is the FASTEST method for custom mode thumbnail generation because it:
+  /// 1. Opens the video file ONCE (not twice like getVideoDuration + generateThumbnail)
+  /// 2. Gets duration and extracts thumbnail in a single operation
+  /// 3. Uses optimized FFmpeg probe settings for faster file analysis
+  /// 4. Uses multi-threaded decoding for faster frame extraction
+  /// 5. Uses fast bilinear scaling for quicker image processing
+  ///
+  /// - [videoPath]: Path to the video file
+  /// - [outputPath]: Where to save the thumbnail
+  /// - [percentage]: Position in video as percentage (0.0 to 100.0)
+  /// - [width]: Width of the thumbnail (0 = use original width)
+  /// - [format]: Image format, either 'png' or 'jpg'
+  /// - [quality]: Image quality for JPEG format (1-100, default 95)
+  ///
+  /// Returns the path to the generated thumbnail if successful, null otherwise
+  static Future<String?> generateThumbnailAtPercentage({
+    required String videoPath,
+    required String outputPath,
+    required double percentage,
+    int width = 1024,
+    String format = 'jpg',
+    int quality = 95,
+  }) async {
+    if (!isWindows) {
+      debugPrint(
+          'FcNativeVideoThumbnail: Not running on Windows, cannot generate native thumbnail');
+      return null;
+    }
+
+    // Ensure the plugin is initialized
+    if (!_initialized) {
+      final initResult = await initialize();
+      if (!initResult) return null;
+    }
+
+    try {
+      // Basic validation
+      if (videoPath.isEmpty || outputPath.isEmpty) {
+        debugPrint('FcNativeVideoThumbnail: Invalid video or output path');
+        return null;
+      }
+
+      // Validate video file exists (async)
+      final videoFile = File(videoPath);
+      if (!await videoFile.exists()) {
+        debugPrint(
+            'FcNativeVideoThumbnail: Video file does not exist: $videoPath');
+        return null;
+      }
+
+      // Create parent directory if it doesn't exist
+      final directory = path.dirname(outputPath);
+      await Directory(directory).create(recursive: true);
+
+      // Call the optimized native method
+      String? result;
+      try {
+        result = await _channel.invokeMethod<String>(
+          'generateThumbnailAtPercentage',
+          {
+            'srcFile': videoPath,
+            'destFile': outputPath,
+            'width': width,
+            'format': format.toLowerCase() == 'png' ? 'png' : 'jpg',
+            'percentage': percentage,
+            'quality': quality,
+          },
+        ).timeout(_operationTimeout, onTimeout: () {
+          debugPrint(
+              'FcNativeVideoThumbnail: Optimized operation timed out for $videoPath');
+          return null;
+        });
+      } on MissingPluginException catch (e) {
+        debugPrint(
+            'FcNativeVideoThumbnail: Plugin not available: ${e.message}');
+        return null;
+      } on PlatformException catch (e) {
+        debugPrint(
+            'FcNativeVideoThumbnail: Platform error for $videoPath: ${e.message}');
+        return null;
+      } catch (e) {
+        debugPrint('FcNativeVideoThumbnail: Channel error: $e');
+        return null;
+      }
+
+      if (result != null && result.isNotEmpty) {
+        // Verify the thumbnail was created (async)
+        final outputFile = File(result);
+        if (await outputFile.exists() && await outputFile.length() > 0) {
+          return result;
+        }
+      }
+
+      return null;
+    } catch (e, stack) {
+      debugPrint(
+          'FcNativeVideoThumbnail: Error generating thumbnail at percentage for $videoPath: $e\n$stack');
+      return null;
+    }
   }
 }

@@ -190,16 +190,16 @@ void main(List<String> args) async {
         // Apply the window options
         await windowManager.waitUntilReadyToShow(windowOptions);
 
-        // For Windows, start maximized but allow toggling
+        // Windows: the native runner starts hidden and Dart controls when to
+        // show the window. This prevents a visible flash when applying window
+        // options (e.g. hidden title bar) and then changing the window state.
         if (Platform.isWindows) {
           // Enable resizing so the window can be un-maximized
           await windowManager.setResizable(true);
 
-          // Ensure the window is shown first
-          await windowManager.show();
-
-          // Start maximized initially
+          // Maximize before showing to avoid a normal->maximized transition flash.
           await windowManager.maximize();
+          await windowManager.show();
 
           // Configure additional window properties
           await windowManager.setPreventClose(false);

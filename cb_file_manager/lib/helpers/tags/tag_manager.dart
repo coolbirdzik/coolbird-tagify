@@ -7,6 +7,7 @@ import 'package:cb_file_manager/models/database/database_manager.dart';
 import 'package:cb_file_manager/helpers/core/user_preferences.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
+import 'package:cb_file_manager/utils/app_logger.dart';
 
 /// A utility class for managing file tags globally
 ///
@@ -310,6 +311,78 @@ class TagManager {
     } catch (e) {
       return [];
     }
+  }
+
+  /// Gets tags for multiple files at once (batch loading for performance)
+  ///
+  /// This method is much more efficient than calling getTags() for each file
+  /// because it only reads the global tags file once.
+  ///
+  /// Returns a map of file paths to their tags
+  static Future<Map<String, List<String>>> getTagsForFiles(
+      List<String> filePaths) async {
+    if (filePaths.isEmpty) return {};
+
+    final stopwatch = Stopwatch()..start();
+    final result = <String, List<String>>{};
+    final uncachedPaths = <String>[];
+
+    // First, get all cached tags
+    for (final path in filePaths) {
+      if (_tagsCache.containsKey(path)) {
+        final tags = _tagsCache[path]!;
+        if (tags.isNotEmpty) {
+          result[path] = List.from(tags);
+        }
+      } else {
+        uncachedPaths.add(path);
+      }
+    }
+
+    AppLogger.perf(
+        '⏱️ [PERF] TagManager.getTagsForFiles: ${result.length} cached, ${uncachedPaths.length} uncached');
+
+    if (uncachedPaths.isEmpty) {
+      AppLogger.perf(
+          '⏱️ [PERF] TagManager.getTagsForFiles (all cached) took: ${stopwatch.elapsedMilliseconds}ms');
+      return result;
+    }
+
+    await initialize();
+
+    try {
+      if (_useObjectBox && _databaseManager != null) {
+        // Use ObjectBox - still need to query one by one, but database is fast
+        for (final path in uncachedPaths) {
+          final tags = await _databaseManager!.getTagsForFile(path);
+          _tagsCache[path] = tags;
+          if (tags.isNotEmpty) {
+            result[path] = tags;
+          }
+        }
+      } else {
+        // Use JSON file - load once and get all tags
+        final tagsData = await _loadGlobalTags();
+
+        for (final path in uncachedPaths) {
+          if (tagsData.containsKey(path)) {
+            final tags = List<String>.from(tagsData[path]);
+            _tagsCache[path] = tags;
+            if (tags.isNotEmpty) {
+              result[path] = tags;
+            }
+          } else {
+            _tagsCache[path] = [];
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Error in getTagsForFiles: $e');
+    }
+
+    AppLogger.perf(
+        '⏱️ [PERF] TagManager.getTagsForFiles for ${filePaths.length} files took: ${stopwatch.elapsedMilliseconds}ms');
+    return result;
   }
 
   /// List to keep track of recently used tags with timestamps

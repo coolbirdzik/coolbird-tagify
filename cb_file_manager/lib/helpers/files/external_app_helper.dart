@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'windows_app_icon.dart';
 import 'dart:ui' as ui;
 import 'package:cb_file_manager/ui/utils/file_type_utils.dart';
+import '../core/user_preferences.dart';
 
 class AppInfo {
   final String packageName;
@@ -249,8 +250,7 @@ class ExternalAppHelper {
       }
 
       // Prefer: scan registry by file format (OpenWithList + App Paths)
-      final scanned =
-          await WindowsAppIcon.getAppsForExtension(extension);
+      final scanned = await WindowsAppIcon.getAppsForExtension(extension);
       if (scanned.isNotEmpty) {
         for (final e in scanned) {
           final path = e['path'] ?? '';
@@ -400,10 +400,34 @@ class ExternalAppHelper {
         return true;
       }
       if (Platform.isAndroid) {
-        final r = await _channel.invokeMethod('openWithSystemDefault', {'filePath': filePath});
+        final r = await _channel
+            .invokeMethod('openWithSystemDefault', {'filePath': filePath});
         return r == true;
       }
       return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Open a video file with the user's preferred external app (if configured).
+  /// Returns true when a preferred app exists and launch succeeded.
+  static Future<bool> openWithPreferredVideoApp(String filePath) async {
+    try {
+      final prefs = UserPreferences.instance;
+      await prefs.init();
+      final preferred = await prefs.getPreferredVideoPlayerApp();
+      if (preferred == null ||
+          preferred.isEmpty ||
+          preferred == '__cb_video_player__') {
+        return false;
+      }
+
+      if (preferred == 'shell_open') {
+        return await openWithSystemDefault(filePath);
+      }
+
+      return await openFileWithApp(filePath, preferred);
     } catch (_) {
       return false;
     }

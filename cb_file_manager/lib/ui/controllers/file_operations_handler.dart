@@ -117,7 +117,8 @@ class FileOperationsHandler {
 
     final current = bloc.state;
     if (current.selectedFilePaths.length == snapshot.selectedFilePaths.length &&
-        current.selectedFolderPaths.length == snapshot.selectedFolderPaths.length &&
+        current.selectedFolderPaths.length ==
+            snapshot.selectedFolderPaths.length &&
         current.selectedFilePaths.containsAll(snapshot.selectedFilePaths) &&
         current.selectedFolderPaths.containsAll(snapshot.selectedFolderPaths) &&
         current.lastSelectedPath == snapshot.lastSelectedPath) {
@@ -198,9 +199,10 @@ class FileOperationsHandler {
         ? path.basename(filesToDelete.first)
         : path.basename(foldersToDelete.first);
 
-    debugPrint('FileOperationsHandler.handleDelete - permanent: $permanent, totalCount: $totalCount');
+    debugPrint(
+        'FileOperationsHandler.handleDelete - permanent: $permanent, totalCount: $totalCount');
     debugPrint('  First item: $firstItemName');
-    
+
     if (permanent) {
       // Show permanent delete dialog with keyboard support
       debugPrint('Showing permanent delete dialog');
@@ -215,7 +217,7 @@ class FileOperationsHandler {
           cancelText: localizations.cancel,
         ),
       );
-      
+
       debugPrint('Permanent delete dialog result: $confirmed');
 
       if (confirmed == true) {
@@ -258,7 +260,7 @@ class FileOperationsHandler {
           cancelText: localizations.cancel,
         ),
       );
-      
+
       debugPrint('Trash delete dialog result: $confirmed');
 
       if (confirmed == true) {
@@ -303,6 +305,23 @@ class FileOperationsHandler {
     );
   }
 
+  static void copyFilesToClipboard({
+    required BuildContext context,
+    required List<FileSystemEntity> entities,
+    FolderListBloc? folderListBloc,
+  }) {
+    if (entities.isEmpty) return;
+    final bloc = folderListBloc ?? context.read<FolderListBloc>();
+    final l10n = AppLocalizations.of(context)!;
+    bloc.add(CopyFiles(entities));
+    final message = entities.length == 1
+        ? l10n.copiedToClipboard(_entityBaseName(entities.first))
+        : '${entities.length} items copied to clipboard';
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
   static void cutToClipboard({
     required BuildContext context,
     required FileSystemEntity entity,
@@ -314,6 +333,23 @@ class FileOperationsHandler {
     bloc.add(CutFile(entity));
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(l10n.cutToClipboard(name))),
+    );
+  }
+
+  static void cutFilesToClipboard({
+    required BuildContext context,
+    required List<FileSystemEntity> entities,
+    FolderListBloc? folderListBloc,
+  }) {
+    if (entities.isEmpty) return;
+    final bloc = folderListBloc ?? context.read<FolderListBloc>();
+    final l10n = AppLocalizations.of(context)!;
+    bloc.add(CutFiles(entities));
+    final message = entities.length == 1
+        ? l10n.cutToClipboard(_entityBaseName(entities.first))
+        : '${entities.length} items cut to clipboard';
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
     );
   }
 
@@ -432,51 +468,62 @@ class FileOperationsHandler {
         context,
         selectionBloc: selectionBloc,
       );
-      final SelectionState selectionSnapshot =
-          (currentSelection == null || currentSelection.allSelectedPaths.isEmpty)
-              ? SelectionState(
-                  selectedFilePaths: <String>{file.path},
-                  selectedFolderPaths: const <String>{},
-                  isSelectionMode: true,
-                  lastSelectedPath: file.path,
-                )
-              : currentSelection;
-      // Default: use in-app player. Only use system default when user enabled it in Settings.
-      locator<UserPreferences>().getUseSystemDefaultForVideo().then((useSystem) {
-        if (useSystem) {
-          ExternalAppHelper.openWithSystemDefault(file.path).then((success) {
-            if (!success && context.mounted) {
-              showDialog(
-                context: context,
-                builder: (context) => OpenWithDialog(filePath: file.path),
-              );
-            }
-          });
-        } else {
-          if (context.mounted) {
-            Navigator.of(context, rootNavigator: true).push(
-              MaterialPageRoute(
-                fullscreenDialog: true,
-                builder: (_) => VideoPlayerFullScreen(file: file),
-              ),
-            ).then((_) {
-              _tryRestoreSelectionAfterViewer(
-                context,
-                snapshot: selectionSnapshot,
-                selectionBloc: selectionBloc,
-              );
+      final SelectionState selectionSnapshot = (currentSelection == null ||
+              currentSelection.allSelectedPaths.isEmpty)
+          ? SelectionState(
+              selectedFilePaths: <String>{file.path},
+              selectedFolderPaths: const <String>{},
+              isSelectionMode: true,
+              lastSelectedPath: file.path,
+            )
+          : currentSelection;
+      // Priority:
+      // 1) User-selected preferred external app for video (if set)
+      // 2) System default app when setting enabled
+      // 3) In-app player (default)
+      ExternalAppHelper.openWithPreferredVideoApp(file.path)
+          .then((openedPreferred) {
+        if (openedPreferred) return;
+
+        locator<UserPreferences>()
+            .getUseSystemDefaultForVideo()
+            .then((useSystem) {
+          if (useSystem) {
+            ExternalAppHelper.openWithSystemDefault(file.path).then((success) {
+              if (!success && context.mounted) {
+                showDialog(
+                  context: context,
+                  builder: (context) => OpenWithDialog(filePath: file.path),
+                );
+              }
             });
+          } else {
+            if (context.mounted) {
+              Navigator.of(context, rootNavigator: true)
+                  .push(
+                MaterialPageRoute(
+                  fullscreenDialog: true,
+                  builder: (_) => VideoPlayerFullScreen(file: file),
+                ),
+              )
+                  .then((_) {
+                _tryRestoreSelectionAfterViewer(
+                  context,
+                  snapshot: selectionSnapshot,
+                  selectionBloc: selectionBloc,
+                );
+              });
+            }
           }
-        }
+        });
       });
     } else if (isImage) {
       // Get all image files in the same directory for gallery navigation
       List<File> imageFiles = [];
       int initialIndex = 0;
 
-      final bool canUseFilteredImages =
-          currentFilter == 'image' &&
-              folderListBloc.state.filteredFiles.isNotEmpty;
+      final bool canUseFilteredImages = currentFilter == 'image' &&
+          folderListBloc.state.filteredFiles.isNotEmpty;
       final bool canUseFolderImages = currentFilter == null &&
           currentSearchTag == null &&
           folderListBloc.state.files.isNotEmpty;

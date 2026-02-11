@@ -115,6 +115,8 @@ class FolderListState extends Equatable {
   final bool isSearchByMedia; // Flag for search by media type
   final bool isGlobalSearch; // Flag for global tag searches
   final bool searchRecursive; // Flag for recursive search operations
+  final int
+      clipboardRevision; // Revision counter to trigger rebuild on clipboard changes
 
   FolderListState(
     String initialPath, {
@@ -141,6 +143,7 @@ class FolderListState extends Equatable {
     this.isSearchByMedia = false,
     this.isGlobalSearch = false,
     this.searchRecursive = false,
+    this.clipboardRevision = 0,
   })  : currentPath = Directory(initialPath),
         folders = folders ?? [],
         files = files ?? [],
@@ -186,6 +189,7 @@ class FolderListState extends Equatable {
     bool? isSearchByMedia,
     bool? isGlobalSearch,
     bool? searchRecursive,
+    int? clipboardRevision,
   }) {
     return FolderListState(
       currentPath?.path ?? this.currentPath.path,
@@ -203,8 +207,9 @@ class FolderListState extends Equatable {
       filteredFiles: filteredFiles ?? this.filteredFiles,
       fileTags: fileTags ?? this.fileTags,
       allUniqueTags: allUniqueTags ?? this.allUniqueTags,
-      currentFilter:
-          currentFilter == _unset ? this.currentFilter : currentFilter as String?,
+      currentFilter: currentFilter == _unset
+          ? this.currentFilter
+          : currentFilter as String?,
       currentSearchTag: currentSearchTag == _unset
           ? this.currentSearchTag
           : currentSearchTag as String?,
@@ -222,6 +227,7 @@ class FolderListState extends Equatable {
       isSearchByMedia: isSearchByMedia ?? this.isSearchByMedia,
       isGlobalSearch: isGlobalSearch ?? this.isGlobalSearch,
       searchRecursive: searchRecursive ?? this.searchRecursive,
+      clipboardRevision: clipboardRevision ?? this.clipboardRevision,
     );
   }
 
@@ -250,5 +256,8 @@ class FolderListState extends Equatable {
         isSearchByMedia,
         isGlobalSearch,
         searchRecursive,
+        // NOTE: clipboardRevision is intentionally excluded from props
+        // to prevent full rebuild when clipboard changes (copy/cut operations)
+        // Only items affected by cut should show visual feedback
       ];
 }

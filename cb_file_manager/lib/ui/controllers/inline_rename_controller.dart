@@ -129,7 +129,15 @@ class InlineRenameController extends ChangeNotifier {
   /// Cancel the current rename operation.
   void cancelRename() {
     final callback = _onCancelled;
-    _cleanup();
+
+    // Schedule cleanup for next frame to avoid disposing FocusNode
+    // while it's notifying listeners (which causes crash)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _cleanup();
+    });
+
+    // But clear the renaming path immediately so UI updates
+    _renamingPath = null;
     notifyListeners();
     callback?.call();
   }

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cb_file_manager/helpers/core/io_extensions.dart';
@@ -88,74 +89,9 @@ class _FolderGridItemState extends State<FolderGridItem> {
   @override
   Widget build(BuildContext context) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final bool isBeingCut = ItemInteractionStyle.isBeingCut(widget.folder.path);
 
-    // Flat layout for mobile without a label background.
-    if (!widget.isDesktopMode) {
-      return GestureDetector(
-        onSecondaryTapDown: (details) =>
-            _showFolderContextMenu(context, details.globalPosition),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(8.0),
-          child: Stack(
-            children: [
-              Column(
-                children: [
-                  // Thumbnail/Icon section
-                  Expanded(
-                    flex: 3,
-                    child: FolderThumbnail(folder: widget.folder),
-                  ),
-                  // Text section
-                  SizedBox(
-                    height: 40,
-                    width: double.infinity,
-                    child: Center(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
-                        child: _buildNameWidget(context, isDarkMode),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-
-              // Interaction overlay
-              Positioned.fill(
-                child: OptimizedInteractionLayer(
-                  onTap: () {
-                    // Navigate to folder on mobile
-                    widget.onNavigate(widget.folder.path);
-                  },
-                  onDoubleTap: () {
-                    if (widget.clearSelectionMode != null) {
-                      widget.clearSelectionMode!();
-                    }
-                    widget.onNavigate(widget.folder.path);
-                  },
-                  onLongPress: () => _showFolderContextMenu(context, null),
-                ),
-              ),
-
-              // Selected overlay tint (flat)
-              if (_visuallySelected)
-                IgnorePointer(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: ItemInteractionStyle.thumbnailOverlayColor(
-                        theme: Theme.of(context),
-                        isDesktopMode: widget.isDesktopMode,
-                        isSelected: true,
-                        isHovering: false,
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      );
-    }
-
+    // Colors for item background and thumbnail overlay (used by both mobile & desktop)
     final Color backgroundColor = ItemInteractionStyle.backgroundColor(
       theme: Theme.of(context),
       isDesktopMode: widget.isDesktopMode,
@@ -171,69 +107,293 @@ class _FolderGridItemState extends State<FolderGridItem> {
       isHovering: _isHovering,
     );
 
-    return GestureDetector(
-      onSecondaryTapDown: (details) =>
-          _showFolderContextMenu(context, details.globalPosition),
-      child: MouseRegion(
-        onEnter: (_) => setState(() => _isHovering = true),
-        onExit: (_) => setState(() => _isHovering = false),
-        cursor: SystemMouseCursors.click,
-        child: Container(
-          decoration: BoxDecoration(
-            color: backgroundColor,
-            borderRadius: BorderRadius.circular(8.0),
-          ),
-          child: Stack(
-            children: [
-              Column(
-                children: [
-                  // Thumbnail/Icon section
-                  Expanded(
-                    flex: 3,
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        FolderThumbnail(folder: widget.folder),
-                        if (thumbnailOverlayColor != Colors.transparent)
-                          IgnorePointer(
-                            child: Container(color: thumbnailOverlayColor),
+    // Flat layout for mobile without a label background.
+    if (!widget.isDesktopMode) {
+      return Opacity(
+        opacity: isBeingCut ? ItemInteractionStyle.cutOpacity : 1.0,
+        child: GestureDetector(
+          onSecondaryTapDown: (details) =>
+              _showFolderContextMenu(context, details.globalPosition),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final bool compactCard =
+                  constraints.maxHeight < 96 || constraints.maxWidth < 96;
+              final double textHeight = compactCard ? 30.0 : 40.0;
+              final double thumbPadding = compactCard ? 3.0 : 6.0;
+              final double thumbRadius = compactCard ? 6.0 : 8.0;
+              final double cardRadius = compactCard ? 5.0 : 6.0;
+              final double fontSize = compactCard ? 10.5 : 12.0;
+
+              return Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8.0),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(cardRadius),
+                  child: Stack(
+                    children: [
+                      Column(
+                        children: [
+                          // Thumbnail/Icon section — framed thumbnail + badge (mobile)
+                          Expanded(
+                            child: Padding(
+                              padding: EdgeInsets.all(thumbPadding),
+                              child: LayoutBuilder(
+                                builder: (context, thumbConstraints) {
+                                  final double shortEdge = math.min(
+                                    thumbConstraints.maxWidth,
+                                    thumbConstraints.maxHeight,
+                                  );
+                                  final bool showBadge = shortEdge >= 34.0;
+                                  final bool tinyThumb = shortEdge < 56.0;
+                                  final double badgeInset =
+                                      tinyThumb ? 2.0 : 6.0;
+                                  final double badgePadding =
+                                      tinyThumb ? 2.0 : 4.0;
+                                  final double badgeRadius =
+                                      tinyThumb ? 4.0 : 6.0;
+                                  final double badgeIconSize =
+                                      tinyThumb ? 10.0 : 14.0;
+
+                                  return Stack(
+                                    fit: StackFit.expand,
+                                    children: [
+                                      Container(
+                                        decoration: BoxDecoration(
+                                          borderRadius: BorderRadius.circular(
+                                              thumbRadius),
+                                          border: Border.all(
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .onSurface
+                                                .withValues(alpha: 0.12),
+                                            width: 1.0,
+                                          ),
+                                        ),
+                                        child: ClipRRect(
+                                          borderRadius: BorderRadius.circular(
+                                              thumbRadius),
+                                          child: FolderThumbnail(
+                                              folder: widget.folder),
+                                        ),
+                                      ),
+                                      if (thumbnailOverlayColor !=
+                                          Colors.transparent)
+                                        IgnorePointer(
+                                          child: Container(
+                                              color: thumbnailOverlayColor),
+                                        ),
+                                      if (showBadge)
+                                        Positioned(
+                                          top: badgeInset,
+                                          left: badgeInset,
+                                          child: Container(
+                                            padding:
+                                                EdgeInsets.all(badgePadding),
+                                            decoration: BoxDecoration(
+                                              color: Theme.of(context)
+                                                  .colorScheme
+                                                  .surface
+                                                  .withValues(alpha: 0.9),
+                                              borderRadius:
+                                                  BorderRadius.circular(
+                                                      badgeRadius),
+                                            ),
+                                            child: Icon(
+                                              Icons.folder,
+                                              size: badgeIconSize,
+                                              color: Colors.amber[600],
+                                            ),
+                                          ),
+                                        ),
+                                    ],
+                                  );
+                                },
+                              ),
+                            ),
                           ),
-                      ],
-                    ),
+                          // Text section
+                          SizedBox(
+                            height: textHeight,
+                            width: double.infinity,
+                            child: Center(
+                              child: Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 4),
+                                child: _buildNameWidget(
+                                  context,
+                                  isDarkMode,
+                                  fontSize: fontSize,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      // Interaction overlay
+                      Positioned.fill(
+                        child: OptimizedInteractionLayer(
+                          onTap: () {
+                            // Navigate to folder on mobile
+                            widget.onNavigate(widget.folder.path);
+                          },
+                          onDoubleTap: () {
+                            if (widget.clearSelectionMode != null) {
+                              widget.clearSelectionMode!();
+                            }
+                            widget.onNavigate(widget.folder.path);
+                          },
+                          onLongPress: () =>
+                              _showFolderContextMenu(context, null),
+                        ),
+                      ),
+
+                      // Selected overlay tint (flat)
+                      if (_visuallySelected)
+                        IgnorePointer(
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: ItemInteractionStyle.thumbnailOverlayColor(
+                                theme: Theme.of(context),
+                                isDesktopMode: widget.isDesktopMode,
+                                isSelected: true,
+                                isHovering: false,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
-                  // Text section
-                  SizedBox(
-                    height: 40,
-                    width: double.infinity,
-                    child: Center(
+                ),
+              );
+            },
+          ),
+        ),
+      );
+    }
+
+    return Opacity(
+      opacity: isBeingCut ? ItemInteractionStyle.cutOpacity : 1.0,
+      child: GestureDetector(
+        onSecondaryTapDown: (details) =>
+            _showFolderContextMenu(context, details.globalPosition),
+        child: MouseRegion(
+          onEnter: (_) => setState(() => _isHovering = true),
+          onExit: (_) => setState(() => _isHovering = false),
+          cursor: SystemMouseCursors.click,
+          child: Container(
+            decoration: BoxDecoration(
+              color: backgroundColor,
+              borderRadius: BorderRadius.circular(8.0),
+            ),
+            child: Stack(
+              children: [
+                Column(
+                  children: [
+                    // Thumbnail/Icon section — subtle framed thumbnail + folder badge
+                    Expanded(
+                      flex: 2,
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
-                        child: _buildNameWidget(context, isDarkMode),
+                        padding: const EdgeInsets.all(6.0),
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            // Framed thumbnail to imply "folder" without outlining whole card
+                            Container(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(8.0),
+                                border: Border.all(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurface
+                                      .withValues(alpha: 0.12),
+                                  width: 1.0,
+                                ),
+                                // Slight background so folder thumbnails read as containers
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .surface
+                                    .withValues(alpha: 0.02),
+                              ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(8.0),
+                                child: FolderThumbnail(folder: widget.folder),
+                              ),
+                            ),
+
+                            // Subtle overlay for selection/hover
+                            if (thumbnailOverlayColor != Colors.transparent)
+                              IgnorePointer(
+                                child: Container(color: thumbnailOverlayColor),
+                              ),
+
+                            // Small folder badge to make it visually a folder
+                            Positioned(
+                              top: 6,
+                              left: 6,
+                              child: Container(
+                                padding: const EdgeInsets.all(4.0),
+                                decoration: BoxDecoration(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .surface
+                                      .withValues(alpha: 0.9),
+                                  borderRadius: BorderRadius.circular(6.0),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color:
+                                          Colors.black.withValues(alpha: 0.06),
+                                      blurRadius: 6,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                child: Icon(
+                                  Icons.folder,
+                                  size: 14,
+                                  color: Colors.amber[600],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                ],
-              ),
-              Positioned.fill(
-                child: OptimizedInteractionLayer(
-                  onTap: () {
-                    if (widget.isDesktopMode &&
-                        widget.toggleFolderSelection != null) {
-                      _handleFolderSelection();
-                    } else {
-                      widget.onNavigate(widget.folder.path);
-                    }
-                  },
-                  onDoubleTap: () {
-                    if (widget.clearSelectionMode != null) {
-                      widget.clearSelectionMode!();
-                    }
-                    widget.onNavigate(widget.folder.path);
-                  },
-                  onLongPress: () => _showFolderContextMenu(context, null),
+                    // Text section
+                    SizedBox(
+                      height: 40,
+                      width: double.infinity,
+                      child: Center(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          child: _buildNameWidget(context, isDarkMode),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-            ],
+                Positioned.fill(
+                  child: OptimizedInteractionLayer(
+                    onTap: () {
+                      if (widget.isDesktopMode &&
+                          widget.toggleFolderSelection != null) {
+                        _handleFolderSelection();
+                      } else {
+                        widget.onNavigate(widget.folder.path);
+                      }
+                    },
+                    onDoubleTap: () {
+                      if (widget.clearSelectionMode != null) {
+                        widget.clearSelectionMode!();
+                      }
+                      widget.onNavigate(widget.folder.path);
+                    },
+                    onLongPress: () => _showFolderContextMenu(context, null),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -272,7 +432,11 @@ class _FolderGridItemState extends State<FolderGridItem> {
     );
   }
 
-  Widget _buildNameWidget(BuildContext context, bool isDarkMode) {
+  Widget _buildNameWidget(
+    BuildContext context,
+    bool isDarkMode, {
+    double fontSize = 12.0,
+  }) {
     // Check if this item is being renamed inline (desktop only)
     final renameController = InlineRenameScope.maybeOf(context);
     final isBeingRenamed = renameController != null &&
@@ -284,7 +448,7 @@ class _FolderGridItemState extends State<FolderGridItem> {
       maxLines: 2,
       overflow: TextOverflow.ellipsis,
       style: TextStyle(
-        fontSize: 12,
+        fontSize: fontSize,
         color: isDarkMode ? Colors.white : Colors.black87,
         fontWeight: _visuallySelected ? FontWeight.bold : FontWeight.w500,
       ),
@@ -302,7 +466,7 @@ class _FolderGridItemState extends State<FolderGridItem> {
               onCommit: () => renameController.commitRename(context),
               onCancel: () => renameController.cancelRename(),
               textStyle: TextStyle(
-                fontSize: 12,
+                fontSize: fontSize,
                 color: isDarkMode ? Colors.white : Colors.black87,
                 fontWeight:
                     _visuallySelected ? FontWeight.bold : FontWeight.w500,

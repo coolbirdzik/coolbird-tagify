@@ -644,14 +644,36 @@ class VietnameseLocalizations implements AppLocalizations {
   @override
   String get videoThumbnails => 'Hình thu nhỏ video';
   @override
+  String get thumbnailMode => 'Chế độ tạo';
+  @override
+  String get thumbnailModeFast => 'Nhanh';
+  @override
+  String get thumbnailModeCustom => 'Tùy chỉnh';
+  @override
+  String get thumbnailModeFastDescription =>
+      'Dùng phương thức có sẵn của HĐH. Nhanh hơn nhưng vị trí cố định.';
+  @override
+  String get thumbnailModeCustomDescription =>
+      'Dùng FFmpeg để trích xuất tại vị trí cụ thể. Chậm hơn nhưng kiểm soát tốt hơn.';
+  @override
   String get thumbnailPosition => 'Vị trí hình thu nhỏ:';
+  @override
+  String get generatingAtPosition => 'Đang trích xuất tại';
+  @override
+  String get generatingFast => 'Chế độ nhanh';
+  @override
+  String get maxConcurrency => 'Số tác vụ song song';
+  @override
+  String get maxConcurrencyDescription =>
+      'Giá trị cao tạo thumbnail nhanh hơn nhưng tốn nhiều CPU hơn';
   @override
   String get percentOfVideo => 'phần trăm của video';
   @override
   String get thumbnailDescription =>
       'Đặt vị trí trong video (tính bằng phần trăm tổng thời lượng) nơi hình thu nhỏ sẽ được trích xuất';
   @override
-  String get useSystemDefaultForVideo => 'Dùng ứng dụng mặc định của hệ thống cho video';
+  String get useSystemDefaultForVideo =>
+      'Dùng ứng dụng mặc định của hệ thống cho video';
   @override
   String get useSystemDefaultForVideoDescription =>
       'Bật: chạm video mở bằng app mặc định (vd. VLC). Tắt: dùng trình phát trong app.';
@@ -749,7 +771,8 @@ class VietnameseLocalizations implements AppLocalizations {
   @override
   String get errorLoadingImage => 'Lỗi khi tải hình ảnh';
   @override
-  String errorLoadingImageWithError(String error) => 'Lỗi khi tải hình ảnh: $error';
+  String errorLoadingImageWithError(String error) =>
+      'Lỗi khi tải hình ảnh: $error';
   @override
   String get failedToDisplayImage => 'Không thể hiển thị hình ảnh';
   @override
@@ -781,8 +804,8 @@ class VietnameseLocalizations implements AppLocalizations {
   @override
   String get invalidThumbnailFile => 'Vui lòng chọn file ảnh hoặc video';
   @override
-  String get noMediaFilesFound => 'Không tìm thấy ảnh hoặc video trong thư mục này';
-
+  String get noMediaFilesFound =>
+      'Không tìm thấy ảnh hoặc video trong thư mục này';
 
   // Video actions
   @override
@@ -1305,8 +1328,7 @@ class VietnameseLocalizations implements AppLocalizations {
   @override
   String get emptyTrashButton => 'LÀM TRỐNG THÙNG RÁC';
   @override
-  String permanentlyDeleteItemsTitle(int count) =>
-      'Xóa vĩnh viễn $count mục?';
+  String permanentlyDeleteItemsTitle(int count) => 'Xóa vĩnh viễn $count mục?';
   @override
   String get confirmPermanentlyDeleteThese =>
       'Hành động này không thể hoàn tác. Bạn có chắc chắn muốn xóa vĩnh viễn các mục này?';
@@ -1326,8 +1348,7 @@ class VietnameseLocalizations implements AppLocalizations {
   @override
   String failedToDeleteItemsCount(int count) => 'Không thể xóa $count mục';
   @override
-  String errorDeletingItemWithError(String error) =>
-      'Lỗi khi xóa mục: $error';
+  String errorDeletingItemWithError(String error) => 'Lỗi khi xóa mục: $error';
   @override
   String get trashEmptiedSuccess => 'Đã làm trống thùng rác thành công';
   @override
@@ -1372,8 +1393,7 @@ class VietnameseLocalizations implements AppLocalizations {
   @override
   String get trashIsEmpty => 'Thùng rác trống';
   @override
-  String get itemsDeletedWillAppearHere =>
-      'Các mục bạn xóa sẽ hiển thị ở đây';
+  String get itemsDeletedWillAppearHere => 'Các mục bạn xóa sẽ hiển thị ở đây';
   @override
   String originalLocation(String path) => 'Vị trí gốc: $path';
   @override
@@ -1628,15 +1648,14 @@ class VietnameseLocalizations implements AppLocalizations {
   @override
   String get availableServices => 'Dịch vụ có sẵn';
   @override
-  String get noActiveNetworkConnections => 'Không có kết nối mạng đang hoạt động';
+  String get noActiveNetworkConnections =>
+      'Không có kết nối mạng đang hoạt động';
   @override
-  String get useAddButtonToAddConnection =>
-      'Dùng nút (+) để thêm kết nối mới';
+  String get useAddButtonToAddConnection => 'Dùng nút (+) để thêm kết nối mới';
   @override
   String get unknownConnection => 'Kết nối không xác định';
   @override
-  String serviceTypeConnection(String serviceName) =>
-      'Kết nối $serviceName';
+  String serviceTypeConnection(String serviceName) => 'Kết nối $serviceName';
   @override
   String get noServicesAvailable => 'Không có dịch vụ nào';
   @override
@@ -1697,8 +1716,7 @@ class VietnameseLocalizations implements AppLocalizations {
   @override
   String get rootShare => 'Chia sẻ gốc';
   @override
-  String foundDevicesCount(int count) =>
-      'Tìm thấy $count thiết bị';
+  String foundDevicesCount(int count) => 'Tìm thấy $count thiết bị';
   @override
   String get noWebdavConnections => 'Không có kết nối WebDAV.';
   @override
@@ -1726,8 +1744,7 @@ class VietnameseLocalizations implements AppLocalizations {
   @override
   String get addSampleWebdavConnection => 'Thêm kết nối WebDAV mẫu';
   @override
-  String get sampleConnectionAddedSuccess =>
-      'Đã thêm kết nối mẫu thành công';
+  String get sampleConnectionAddedSuccess => 'Đã thêm kết nối mẫu thành công';
   @override
   String get failedToAddSampleConnection => 'Thêm kết nối mẫu thất bại';
   @override
@@ -2135,7 +2152,8 @@ class VietnameseLocalizations implements AppLocalizations {
   @override
   String get folderPropertyContent => 'Nội dung';
   @override
-  String get folderPropertySizeDirectChildren => 'Kích thước (thư mục con trực tiếp)';
+  String get folderPropertySizeDirectChildren =>
+      'Kích thước (thư mục con trực tiếp)';
   @override
   String get networkServiceNotAvailable => 'Dịch vụ mạng không khả dụng';
   @override

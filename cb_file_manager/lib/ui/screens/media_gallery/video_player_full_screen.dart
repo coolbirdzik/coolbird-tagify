@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as pathlib;
+import 'package:window_manager/window_manager.dart';
 
 import 'package:cb_file_manager/ui/components/video/video_player/video_info_dialog.dart';
 import 'package:cb_file_manager/ui/components/video/video_player/video_player.dart';
@@ -94,6 +95,24 @@ class _VideoPlayerFullScreenState extends State<VideoPlayerFullScreen> {
 
   @override
   void dispose() {
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      () async {
+        try {
+          if (Platform.isWindows) {
+            const channel = MethodChannel('cb_file_manager/window_utils');
+            await channel.invokeMethod('setNativeFullScreen', {
+              'isFullScreen': false,
+            });
+          } else {
+            final isFs = await windowManager.isFullScreen();
+            if (isFs) {
+              await windowManager.setFullScreen(false);
+            }
+          }
+        } catch (_) {}
+      }();
+    }
+
     // Restore system UI when leaving video player
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual,
         overlays: [SystemUiOverlay.top, SystemUiOverlay.bottom]);
@@ -181,6 +200,10 @@ class _VideoPlayerFullScreenState extends State<VideoPlayerFullScreen> {
       onKeyEvent: (node, event) {
         if (event is KeyDownEvent &&
             event.logicalKey == LogicalKeyboardKey.escape) {
+          if (_isFullScreen) {
+            // Let the inner VideoPlayer handle ESC to exit fullscreen first.
+            return KeyEventResult.ignored;
+          }
           Navigator.of(context).maybePop();
           return KeyEventResult.handled;
         }

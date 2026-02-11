@@ -22,11 +22,20 @@ class _VideoPlayerMenuTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final ic = iconColor ?? Colors.white;
     final tc = titleColor ?? Colors.white;
-    return ListTile(
-      leading: Icon(icon, color: ic, size: 20),
-      title: Text(title, style: TextStyle(color: tc)),
-      dense: true,
-      contentPadding: EdgeInsets.zero,
+    return Row(
+      children: [
+        Icon(icon, color: ic, size: 20),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            title,
+            style: TextStyle(color: tc),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            softWrap: false,
+          ),
+        ),
+      ],
     );
   }
 }

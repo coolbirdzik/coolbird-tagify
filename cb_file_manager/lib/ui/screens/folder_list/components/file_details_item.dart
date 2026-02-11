@@ -150,6 +150,7 @@ class _FileDetailsItemState extends State<FileDetailsItem> {
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
+    final bool isBeingCut = ItemInteractionStyle.isBeingCut(widget.file.path);
 
     // Calculate colors based on selection state
     final Color itemBackgroundColor = ItemInteractionStyle.backgroundColor(
@@ -168,209 +169,215 @@ class _FileDetailsItemState extends State<FileDetailsItem> {
     final IconData fileIcon = FileTypeRegistry.getIcon(fileExtension);
     final Color iconColor = FileTypeRegistry.getColor(fileExtension);
 
-    return GestureDetector(
-      onSecondaryTapUp: (details) =>
-          _showFileContextMenu(context, details.globalPosition),
-      child: MouseRegion(
-        onEnter: (_) => setState(() => _isHovering = true),
-        onExit: (_) => setState(() => _isHovering = false),
-        cursor: SystemMouseCursors.click,
-        child: Stack(
-          children: [
-            Container(
-              decoration: boxDecoration,
-              child: Row(
-                children: [
-                  // Name column (always visible)
-                  Expanded(
-                    flex: 3,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12.0, vertical: 10.0),
-                      child: Row(
-                        children: [
-                          // Use a dedicated widget for file icon with a key to prevent rebuilds
-                          _OptimizedFileIcon(
-                            key: _thumbnailKey,
-                            file: widget.file,
-                            isVideo: isVideo,
-                            isImage: isImage,
-                            icon: fileIcon,
-                            color: iconColor,
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: _buildNameWidget(context),
-                          ),
-
-                          // Show file tags if available and enabled
-                          if (widget.showFileTags &&
-                              (widget.state.fileTags[widget.file.path]
-                                      ?.isNotEmpty ??
-                                  false))
-                            Padding(
-                              padding: const EdgeInsets.only(left: 4.0),
-                              child: Icon(
-                                remix.Remix.bookmark_line,
-                                size: 16,
-                                color: Theme.of(context).colorScheme.secondary,
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                  // Type column
-                  if (widget.columnVisibility.type)
+    return Opacity(
+      opacity: isBeingCut ? ItemInteractionStyle.cutOpacity : 1.0,
+      child: GestureDetector(
+        onSecondaryTapUp: (details) =>
+            _showFileContextMenu(context, details.globalPosition),
+        child: MouseRegion(
+          onEnter: (_) => setState(() => _isHovering = true),
+          onExit: (_) => setState(() => _isHovering = false),
+          cursor: SystemMouseCursors.click,
+          child: Stack(
+            children: [
+              Container(
+                decoration: boxDecoration,
+                child: Row(
+                  children: [
+                    // Name column (always visible)
                     Expanded(
-                      flex: 2,
+                      flex: 3,
                       child: Container(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 12.0, vertical: 10.0),
-                        child: Text(
-                          _getFileTypeLabel(fileExtension),
-                          overflow: TextOverflow.ellipsis,
+                        child: Row(
+                          children: [
+                            // Use a dedicated widget for file icon with a key to prevent rebuilds
+                            _OptimizedFileIcon(
+                              key: _thumbnailKey,
+                              file: widget.file,
+                              isVideo: isVideo,
+                              isImage: isImage,
+                              icon: fileIcon,
+                              color: iconColor,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _buildNameWidget(context),
+                            ),
+
+                            // Show file tags if available and enabled
+                            if (widget.showFileTags &&
+                                (widget.state.fileTags[widget.file.path]
+                                        ?.isNotEmpty ??
+                                    false))
+                              Padding(
+                                padding: const EdgeInsets.only(left: 4.0),
+                                child: Icon(
+                                  remix.Remix.bookmark_line,
+                                  size: 16,
+                                  color:
+                                      Theme.of(context).colorScheme.secondary,
+                                ),
+                              ),
+                          ],
                         ),
                       ),
                     ),
 
-                  // Size column (prefer WebDAV metadata)
-                  if (widget.columnVisibility.size)
-                    Expanded(
-                      flex: 1,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12.0, vertical: 10.0),
-                        child: Builder(builder: (context) {
-                          String text = 'Loading...';
-                          final svc =
-                              StreamingHelper.instance.currentNetworkService;
-                          if (svc is WebDAVService) {
-                            final remotePath =
-                                svc.getRemotePathFromLocal(widget.file.path);
-                            if (remotePath != null) {
-                              final meta = svc.getMeta(remotePath);
+                    // Type column
+                    if (widget.columnVisibility.type)
+                      Expanded(
+                        flex: 2,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12.0, vertical: 10.0),
+                          child: Text(
+                            _getFileTypeLabel(fileExtension),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
+
+                    // Size column (prefer WebDAV metadata)
+                    if (widget.columnVisibility.size)
+                      Expanded(
+                        flex: 1,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12.0, vertical: 10.0),
+                          child: Builder(builder: (context) {
+                            String text = 'Loading...';
+                            final svc =
+                                StreamingHelper.instance.currentNetworkService;
+                            if (svc is WebDAVService) {
+                              final remotePath =
+                                  svc.getRemotePathFromLocal(widget.file.path);
+                              if (remotePath != null) {
+                                final meta = svc.getMeta(remotePath);
+                                if (meta != null && meta.size >= 0) {
+                                  text = _formatFileSize(meta.size);
+                                }
+                              }
+                            } else if (svc is FTPService) {
+                              final meta = svc.getMeta(widget.file.path);
                               if (meta != null && meta.size >= 0) {
                                 text = _formatFileSize(meta.size);
                               }
                             }
-                          } else if (svc is FTPService) {
-                            final meta = svc.getMeta(widget.file.path);
-                            if (meta != null && meta.size >= 0) {
-                              text = _formatFileSize(meta.size);
+                            if (text == 'Loading...' && _fileStat != null) {
+                              text = _formatFileSize(_fileStat!.size);
                             }
-                          }
-                          if (text == 'Loading...' && _fileStat != null) {
-                            text = _formatFileSize(_fileStat!.size);
-                          }
-                          return Text(text, overflow: TextOverflow.ellipsis);
-                        }),
+                            return Text(text, overflow: TextOverflow.ellipsis);
+                          }),
+                        ),
                       ),
-                    ),
 
-                  // Date modified column (prefer WebDAV metadata)
-                  if (widget.columnVisibility.dateModified)
-                    Expanded(
-                      flex: 2,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12.0, vertical: 10.0),
-                        child: Builder(builder: (context) {
-                          String text = 'Loading...';
-                          final svc =
-                              StreamingHelper.instance.currentNetworkService;
-                          if (svc is WebDAVService) {
-                            final remotePath =
-                                svc.getRemotePathFromLocal(widget.file.path);
-                            if (remotePath != null) {
-                              final meta = svc.getMeta(remotePath);
+                    // Date modified column (prefer WebDAV metadata)
+                    if (widget.columnVisibility.dateModified)
+                      Expanded(
+                        flex: 2,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12.0, vertical: 10.0),
+                          child: Builder(builder: (context) {
+                            String text = 'Loading...';
+                            final svc =
+                                StreamingHelper.instance.currentNetworkService;
+                            if (svc is WebDAVService) {
+                              final remotePath =
+                                  svc.getRemotePathFromLocal(widget.file.path);
+                              if (remotePath != null) {
+                                final meta = svc.getMeta(remotePath);
+                                if (meta != null) {
+                                  text =
+                                      meta.modified.toString().split('.').first;
+                                }
+                              }
+                            } else if (svc is FTPService) {
+                              final meta = svc.getMeta(widget.file.path);
                               if (meta != null) {
-                                text =
-                                    meta.modified.toString().split('.').first;
+                                final dt = meta.modified ?? DateTime.now();
+                                text = dt.toString().split('.').first;
                               }
                             }
-                          } else if (svc is FTPService) {
-                            final meta = svc.getMeta(widget.file.path);
-                            if (meta != null) {
-                              final dt = meta.modified ?? DateTime.now();
-                              text = dt.toString().split('.').first;
+                            if (text == 'Loading...' && _fileStat != null) {
+                              text = _fileStat!.modified
+                                  .toString()
+                                  .split('.')
+                                  .first;
                             }
-                          }
-                          if (text == 'Loading...' && _fileStat != null) {
-                            text =
-                                _fileStat!.modified.toString().split('.').first;
-                          }
-                          return Text(text, overflow: TextOverflow.ellipsis);
-                        }),
-                      ),
-                    ),
-
-                  // Date created column (fallback to FileStat)
-                  if (widget.columnVisibility.dateCreated)
-                    Expanded(
-                      flex: 2,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12.0, vertical: 10.0),
-                        child: Text(
-                          _fileStat != null
-                              ? _fileStat!.changed.toString().split('.').first
-                              : 'Loading...',
-                          overflow: TextOverflow.ellipsis,
+                            return Text(text, overflow: TextOverflow.ellipsis);
+                          }),
                         ),
                       ),
-                    ),
 
-                  // Attributes column
-                  if (widget.columnVisibility.attributes)
-                    Expanded(
-                      flex: 1,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12.0, vertical: 10.0),
-                        child: Text(
-                          _getAttributes(_fileStat),
-                          overflow: TextOverflow.ellipsis,
+                    // Date created column (fallback to FileStat)
+                    if (widget.columnVisibility.dateCreated)
+                      Expanded(
+                        flex: 2,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12.0, vertical: 10.0),
+                          child: Text(
+                            _fileStat != null
+                                ? _fileStat!.changed.toString().split('.').first
+                                : 'Loading...',
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       ),
-                    ),
-                ],
+
+                    // Attributes column
+                    if (widget.columnVisibility.attributes)
+                      Expanded(
+                        flex: 1,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12.0, vertical: 10.0),
+                          child: Text(
+                            _getAttributes(_fileStat),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
-            ),
-            // Add optimized interaction layer on top
-            Positioned.fill(
-              child: OptimizedInteractionLayer(
-                onTap: () {
-                  if (widget.isDesktopMode) {
-                    _handleFileSelection();
-                  } else if (widget.onTap != null) {
-                    widget.onTap!(widget.file, false);
-                  }
-                },
-                onDoubleTap: widget.isDesktopMode && widget.onTap != null
-                    ? () {
-                        widget.onTap!(widget.file, true);
-                      }
-                    : null,
-                onLongPress: widget.isDesktopMode
-                    ? () {
-                        if (!_visuallySelected) {
-                          _handleFileSelection();
+              // Add optimized interaction layer on top
+              Positioned.fill(
+                child: OptimizedInteractionLayer(
+                  onTap: () {
+                    if (widget.isDesktopMode) {
+                      _handleFileSelection();
+                    } else if (widget.onTap != null) {
+                      widget.onTap!(widget.file, false);
+                    }
+                  },
+                  onDoubleTap: widget.isDesktopMode && widget.onTap != null
+                      ? () {
+                          widget.onTap!(widget.file, true);
                         }
-                      }
-                    : null,
-                onLongPressStart: !widget.isDesktopMode
-                    ? (d) {
-                        HapticFeedback.mediumImpact();
-                        _showFileContextMenu(context, d.globalPosition);
-                      }
-                    : null,
-                onSecondaryTapUp: (details) =>
-                    _showFileContextMenu(context, details.globalPosition),
+                      : null,
+                  onLongPress: widget.isDesktopMode
+                      ? () {
+                          if (!_visuallySelected) {
+                            _handleFileSelection();
+                          }
+                        }
+                      : null,
+                  onLongPressStart: !widget.isDesktopMode
+                      ? (d) {
+                          HapticFeedback.mediumImpact();
+                          _showFileContextMenu(context, d.globalPosition);
+                        }
+                      : null,
+                  onSecondaryTapUp: (details) =>
+                      _showFileContextMenu(context, details.globalPosition),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

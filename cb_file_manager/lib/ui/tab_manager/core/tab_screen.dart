@@ -551,6 +551,8 @@ class _TabScreenState extends State<TabScreen> with TickerProviderStateMixin {
                       ),
                       floatingActionButton: state.tabs.isEmpty
                           ? FloatingActionButton(
+                              heroTag:
+                                  null, // Disable hero animation to avoid conflicts
                               onPressed: _handleAddNewTab,
                               tooltip: context.tr.newFolder,
                               elevation: 2,
@@ -624,8 +626,9 @@ class _TabScreenState extends State<TabScreen> with TickerProviderStateMixin {
       Widget content;
 
       if (tab.path.startsWith('#')) {
-        content = SystemScreenRouter.routeSystemPath(context, tab.path, tab.id) ??
-            Container();
+        content =
+            SystemScreenRouter.routeSystemPath(context, tab.path, tab.id) ??
+                Container();
       } else {
         content = TabbedFolderListScreen(
           key: ValueKey(tab.id),
@@ -650,74 +653,9 @@ class _TabScreenState extends State<TabScreen> with TickerProviderStateMixin {
   }
 
   Future<void> _handleAddNewTab() async {
-    try {
-      // Nếu là Windows, tạo tab với path rỗng để hiển thị drive picker trong view
-      if (Platform.isWindows) {
-        context.read<TabManagerBloc>().add(AddTab(path: '', name: 'Drives'));
-        return;
-      }
-
-      // Xử lý cho mobile (Android/iOS) - tự động browse đến bộ nhớ đầu tiên và thư mục root
-      if (Platform.isAndroid || Platform.isIOS) {
-        try {
-          // Import the filesystem utils to get storage locations
-          final storageLocations = await getAllStorageLocations();
-
-          if (storageLocations.isNotEmpty) {
-            // Lấy bộ nhớ đầu tiên trong danh sách
-            final firstStorage = storageLocations.first;
-            final storagePath = firstStorage.path;
-
-            if (mounted) {
-              final bloc = context.read<TabManagerBloc>();
-              // Tạo tab với đường dẫn đến bộ nhớ đầu tiên (root directory)
-              bloc.add(AddTab(
-                  path: storagePath,
-                  name: _getStorageDisplayName(storagePath)));
-
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (mounted) {
-                  setState(() {});
-                }
-              });
-            }
-          } else {
-            // Fallback nếu không tìm thấy storage locations
-            _createFallbackTab();
-          }
-        } catch (e) {
-          debugPrint("Error getting storage locations: $e");
-          _createFallbackTab();
-        }
-        return;
-      }
-
-      // Xử lý cho các hệ điều hành khác (Linux, macOS)
-      try {
-        final directory = await getApplicationDocumentsDirectory();
-
-        if (mounted) {
-          final bloc = context.read<TabManagerBloc>();
-          bloc.add(AddTab(path: directory.path, name: 'Documents'));
-
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) {
-              setState(() {});
-            }
-          });
-        }
-      } catch (e) {
-        // Fallback - try to use current directory
-        if (mounted) {
-          final fallbackPath = Directory.current.path;
-          context
-              .read<TabManagerBloc>()
-              .add(AddTab(path: fallbackPath, name: 'Home'));
-        }
-      }
-    } catch (e) {
-      // Last resort - try to display something
-      _createFallbackTab();
+    // Always create new tab with home page
+    if (mounted) {
+      context.read<TabManagerBloc>().add(AddTab(path: '#home', name: context.tr.homeTab));
     }
   }
 
@@ -725,7 +663,7 @@ class _TabScreenState extends State<TabScreen> with TickerProviderStateMixin {
   void _createFallbackTab() {
     if (mounted) {
       try {
-        context.read<TabManagerBloc>().add(AddTab(path: '', name: 'Browse'));
+        context.read<TabManagerBloc>().add(AddTab(path: '#home', name: context.tr.homeTab));
       } catch (e) {
         debugPrint("Failed to create fallback tab: $e");
       }

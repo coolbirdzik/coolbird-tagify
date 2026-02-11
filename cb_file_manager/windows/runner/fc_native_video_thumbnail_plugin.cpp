@@ -1,4 +1,5 @@
 #include "fc_native_video_thumbnail_plugin.h"
+#include "ffmpeg_thumbnail_helper.h"
 // This must be included before many other Windows headers.
 #include <atlimage.h>
 #include <comdef.h>
@@ -27,6 +28,7 @@
 #include <filesystem>
 #include <fstream>
 #include <algorithm>
+#include <thread>
 
 const std::string kGetThumbnailFailedExtraction = "Failed extraction";
 
@@ -1111,6 +1113,113 @@ namespace fc_native_video_thumbnail
         SetFocusedThumbnail(*focused_file);
       }
       result->Success(flutter::EncodableValue(true));
+    }
+    else if (method_call.method_name().compare("getVideoDuration") == 0)
+    {
+      const auto *src_file = std::get_if<std::string>(ValueOrNull(args, "srcFile"));
+      if (src_file && !src_file->empty())
+      {
+        // Run FFmpeg operation on background thread to avoid blocking UI
+        std::string filePath = *src_file;
+        auto result_ptr = std::move(result);
+
+        std::thread([filePath, result_ptr = std::move(result_ptr)]() mutable
+                    {
+          std::wstring widePath = Utf16FromUtf8(filePath);
+          double duration = FFmpegThumbnailHelper::GetVideoDuration(widePath.c_str());
+          
+          // Post result back to main thread
+          result_ptr->Success(flutter::EncodableValue(duration)); })
+            .detach();
+      }
+      else
+      {
+        result->Success(flutter::EncodableValue(-1.0));
+      }
+    }
+    else if (method_call.method_name().compare("generateThumbnailAtPercentage") == 0)
+    {
+      // Fast combined method: gets duration and extracts thumbnail in one file open
+      const auto *src_file = std::get_if<std::string>(ValueOrNull(args, "srcFile"));
+      const auto *dest_file = std::get_if<std::string>(ValueOrNull(args, "destFile"));
+      const auto *format_val = std::get_if<std::string>(ValueOrNull(args, "format"));
+
+      // Handle width - could be int32_t or int64_t from Dart
+      int width = 0;
+      if (auto *width_i32 = std::get_if<int32_t>(ValueOrNull(args, "width")))
+      {
+        width = *width_i32;
+      }
+      else if (auto *width_i64 = std::get_if<int64_t>(ValueOrNull(args, "width")))
+      {
+        width = static_cast<int>(*width_i64);
+      }
+
+      // Handle quality - could be int32_t or int64_t from Dart
+      int quality = 95;
+      if (auto *quality_i32 = std::get_if<int32_t>(ValueOrNull(args, "quality")))
+      {
+        quality = *quality_i32;
+      }
+      else if (auto *quality_i64 = std::get_if<int64_t>(ValueOrNull(args, "quality")))
+      {
+        quality = static_cast<int>(*quality_i64);
+      }
+
+      // Handle percentage - could be double or int from Dart (e.g., 30.0 might come as 30)
+      double percentage = 30.0;
+      if (auto *pct_dbl = std::get_if<double>(ValueOrNull(args, "percentage")))
+      {
+        percentage = *pct_dbl;
+      }
+      else if (auto *pct_i32 = std::get_if<int32_t>(ValueOrNull(args, "percentage")))
+      {
+        percentage = static_cast<double>(*pct_i32);
+      }
+      else if (auto *pct_i64 = std::get_if<int64_t>(ValueOrNull(args, "percentage")))
+      {
+        percentage = static_cast<double>(*pct_i64);
+      }
+
+      if (src_file && dest_file && !src_file->empty() && !dest_file->empty())
+      {
+        std::string srcPath = *src_file;
+        std::string destPath = *dest_file;
+        std::string format = format_val ? *format_val : "jpg";
+
+        auto result_ptr = std::move(result);
+
+        // Run on background thread for non-blocking operation
+        std::thread([srcPath, destPath, width, format, percentage, quality,
+                     result_ptr = std::move(result_ptr)]() mutable
+                    {
+          std::wstring wideSrc = Utf16FromUtf8(srcPath);
+          std::wstring wideDest = Utf16FromUtf8(destPath);
+
+          GUID formatGuid = (format == "png") ? Gdiplus::ImageFormatPNG : Gdiplus::ImageFormatJPEG;
+
+          std::string error = FFmpegThumbnailHelper::ExtractThumbnailAtPercentage(
+              wideSrc.c_str(),
+              wideDest.c_str(),
+              width,
+              formatGuid,
+              percentage,
+              quality);
+
+          if (error.empty())
+          {
+            result_ptr->Success(flutter::EncodableValue(destPath));
+          }
+          else
+          {
+            result_ptr->Success(flutter::EncodableValue());  // null on error
+          } })
+            .detach();
+      }
+      else
+      {
+        result->Success(flutter::EncodableValue()); // null on invalid args
+      }
     }
     else
     {

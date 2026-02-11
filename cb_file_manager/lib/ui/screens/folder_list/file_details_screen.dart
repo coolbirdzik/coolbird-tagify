@@ -235,15 +235,17 @@ class _FileDetailsScreenState extends State<FileDetailsScreen> {
                               color: textColor),
                           title: Text(localizations.openWith,
                               style: TextStyle(color: textColor)),
-                          onTap: _showOpenWithDialog,
+                          onTap: () => _showOpenWithDialog(),
                         ),
                         const Divider(height: 1),
                         ListTile(
-                          leading: Icon(remix.Remix.apps_line,
-                              color: textColor),
+                          leading:
+                              Icon(remix.Remix.apps_line, color: textColor),
                           title: Text(localizations.chooseDefaultApp,
                               style: TextStyle(color: textColor)),
-                          onTap: _showOpenWithDialog,
+                          onTap: () => _showOpenWithDialog(
+                            saveAsDefaultOnSelect: true,
+                          ),
                         ),
                         const Divider(height: 1),
                         ListTile(
@@ -602,10 +604,13 @@ class _FileDetailsScreenState extends State<FileDetailsScreen> {
     );
   }
 
-  void _showOpenWithDialog() {
+  void _showOpenWithDialog({bool saveAsDefaultOnSelect = false}) {
     showDialog(
       context: context,
-      builder: (context) => OpenWithDialog(filePath: widget.file.path),
+      builder: (context) => OpenWithDialog(
+        filePath: widget.file.path,
+        saveAsDefaultOnSelect: saveAsDefaultOnSelect,
+      ),
     );
   }
 }

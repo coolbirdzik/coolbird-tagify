@@ -254,26 +254,34 @@ class _FileItemState extends State<FileItem> {
     } else {
       // Video: default in-app player; only system default when user enabled in Settings
       if (isVideo) {
-        locator<UserPreferences>().getUseSystemDefaultForVideo().then((useSystem) {
-          if (useSystem) {
-            ExternalAppHelper.openWithSystemDefault(widget.file.path).then((success) {
-              if (!success && mounted) {
-                showDialog(
-                    context: context,
-                    builder: (dialogContext) =>
-                        OpenWithDialog(filePath: widget.file.path));
+        ExternalAppHelper.openWithPreferredVideoApp(widget.file.path)
+            .then((openedPreferred) {
+          if (openedPreferred) return;
+
+          locator<UserPreferences>()
+              .getUseSystemDefaultForVideo()
+              .then((useSystem) {
+            if (useSystem) {
+              ExternalAppHelper.openWithSystemDefault(widget.file.path)
+                  .then((success) {
+                if (!success && mounted) {
+                  showDialog(
+                      context: context,
+                      builder: (dialogContext) =>
+                          OpenWithDialog(filePath: widget.file.path));
+                }
+              });
+            } else {
+              if (mounted) {
+                Navigator.of(context, rootNavigator: true).push(
+                  MaterialPageRoute(
+                    fullscreenDialog: true,
+                    builder: (_) => VideoPlayerFullScreen(file: widget.file),
+                  ),
+                );
               }
-            });
-          } else {
-            if (mounted) {
-              Navigator.of(context, rootNavigator: true).push(
-                MaterialPageRoute(
-                  fullscreenDialog: true,
-                  builder: (_) => VideoPlayerFullScreen(file: widget.file),
-                ),
-              );
             }
-          }
+          });
         });
       } else if (isImage) {
         if (!context.mounted) return;
@@ -367,6 +375,7 @@ class _FileItemState extends State<FileItem> {
   Widget build(BuildContext context) {
     final bool isVideo = FileTypeUtils.isVideoFile(widget.file.path);
     final bool isImage = FileTypeUtils.isImageFile(widget.file.path);
+    final bool isBeingCut = ItemInteractionStyle.isBeingCut(widget.file.path);
 
     // Use ValueListenableBuilder for hover and selection state to avoid full rebuilds
     return ValueListenableBuilder<bool>(
@@ -383,101 +392,105 @@ class _FileItemState extends State<FileItem> {
             );
 
             return RepaintBoundary(
-              child: MouseRegion(
-                onEnter: (_) => _isHoveringNotifier.value = true,
-                onExit: (_) => _isHoveringNotifier.value = false,
-                cursor: SystemMouseCursors.click,
-                child: Container(
-                  margin: EdgeInsets.symmetric(
-                      horizontal: widget.isDesktopMode ? 8.0 : 0,
-                      vertical: widget.isDesktopMode ? 4.0 : 0),
-                  decoration: BoxDecoration(
-                    color: backgroundColor,
-                    borderRadius: widget.isDesktopMode
-                        ? BorderRadius.circular(12)
-                        : BorderRadius.zero,
-                  ),
-                  child: Stack(
-                    children: [
-                      // File content that doesn't need to rebuild on selection changes
-                      RepaintBoundary(
-                        key: ValueKey('content_${widget.file.path}'),
-                        child: _FileItemContent(
-                          file: widget.file,
-                          fileTags: _fileTags,
-                          state: widget.state,
-                          showDeleteTagDialog: widget.showDeleteTagDialog,
-                          showAddTagToFileDialog: widget.showAddTagToFileDialog,
-                          removeTagDirectly: _removeTagDirectly,
-                          showFileTags: widget.showFileTags,
+              child: Opacity(
+                opacity: isBeingCut ? ItemInteractionStyle.cutOpacity : 1.0,
+                child: MouseRegion(
+                  onEnter: (_) => _isHoveringNotifier.value = true,
+                  onExit: (_) => _isHoveringNotifier.value = false,
+                  cursor: SystemMouseCursors.click,
+                  child: Container(
+                    margin: EdgeInsets.symmetric(
+                        horizontal: widget.isDesktopMode ? 8.0 : 0,
+                        vertical: widget.isDesktopMode ? 4.0 : 0),
+                    decoration: BoxDecoration(
+                      color: backgroundColor,
+                      borderRadius: widget.isDesktopMode
+                          ? BorderRadius.circular(12)
+                          : BorderRadius.zero,
+                    ),
+                    child: Stack(
+                      children: [
+                        // File content that doesn't need to rebuild on selection changes
+                        RepaintBoundary(
+                          key: ValueKey('content_${widget.file.path}'),
+                          child: _FileItemContent(
+                            file: widget.file,
+                            fileTags: _fileTags,
+                            state: widget.state,
+                            showDeleteTagDialog: widget.showDeleteTagDialog,
+                            showAddTagToFileDialog:
+                                widget.showAddTagToFileDialog,
+                            removeTagDirectly: _removeTagDirectly,
+                            showFileTags: widget.showFileTags,
+                          ),
                         ),
-                      ),
-                      // Interactive layer cho icon (select)
-                      Positioned(
-                        left: 0,
-                        top: 0,
-                        bottom: 0,
-                        width: 80, // Vùng icon + padding
-                        child: OptimizedInteractionLayer(
-                          onTap: () {
-                            // Click vào icon sẽ select item
-                            _handleSelection();
-                          },
-                          onLongPress: () {
-                            if (!widget.isSelectionMode) {
-                              widget.toggleFileSelection(widget.file.path,
-                                  shiftSelect: false, ctrlSelect: false);
-                            }
-                          },
-                        ),
-                      ),
-                      // Interactive layer cho tên (open)
-                      Positioned(
-                        left: 80,
-                        top: 0,
-                        right: 0,
-                        bottom: 0,
-                        child: OptimizedInteractionLayer(
-                          onTap: () {
-                            if (widget.isDesktopMode) {
-                              _handleSelection();
-                              return;
-                            }
-                            _openFile(isVideo, isImage);
-                          },
-                          onDoubleTap: widget.isDesktopMode
-                              ? () => _openFile(isVideo, isImage)
-                              : null,
-                          onSecondaryTapUp: (details) {
-                            _showContextMenu(context, details.globalPosition);
-                          },
-                          onLongPressStart: !widget.isDesktopMode
-                              ? (d) {
-                                  HapticFeedback.mediumImpact();
-                                  _showContextMenu(context, d.globalPosition);
-                                }
-                              : null,
-                        ),
-                      ),
-                      // Selection indicator - only rebuilds when selection changes
-                      if (isSelected && !widget.isDesktopMode)
+                        // Interactive layer cho icon (select)
                         Positioned(
                           left: 0,
                           top: 0,
                           bottom: 0,
-                          width: 3,
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.primary,
-                              borderRadius: widget.isDesktopMode
-                                  ? const BorderRadius.horizontal(
-                                      left: Radius.circular(12),
-                                    )
-                                  : BorderRadius.zero,
-                            ),
+                          width: 80, // Vùng icon + padding
+                          child: OptimizedInteractionLayer(
+                            onTap: () {
+                              // Click vào icon sẽ select item
+                              _handleSelection();
+                            },
+                            onLongPress: () {
+                              if (!widget.isSelectionMode) {
+                                widget.toggleFileSelection(widget.file.path,
+                                    shiftSelect: false, ctrlSelect: false);
+                              }
+                            },
                           ),
                         ),
-                    ],
+                        // Interactive layer cho tên (open)
+                        Positioned(
+                          left: 80,
+                          top: 0,
+                          right: 0,
+                          bottom: 0,
+                          child: OptimizedInteractionLayer(
+                            onTap: () {
+                              if (widget.isDesktopMode) {
+                                _handleSelection();
+                                return;
+                              }
+                              _openFile(isVideo, isImage);
+                            },
+                            onDoubleTap: widget.isDesktopMode
+                                ? () => _openFile(isVideo, isImage)
+                                : null,
+                            onSecondaryTapUp: (details) {
+                              _showContextMenu(context, details.globalPosition);
+                            },
+                            onLongPressStart: !widget.isDesktopMode
+                                ? (d) {
+                                    HapticFeedback.mediumImpact();
+                                    _showContextMenu(context, d.globalPosition);
+                                  }
+                                : null,
+                          ),
+                        ),
+                        // Selection indicator - only rebuilds when selection changes
+                        if (isSelected && !widget.isDesktopMode)
+                          Positioned(
+                            left: 0,
+                            top: 0,
+                            bottom: 0,
+                            width: 3,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.primary,
+                                borderRadius: widget.isDesktopMode
+                                    ? const BorderRadius.horizontal(
+                                        left: Radius.circular(12),
+                                      )
+                                    : BorderRadius.zero,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
               ),

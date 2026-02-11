@@ -51,7 +51,8 @@ class _NetworkConnectionScreenState extends State<NetworkConnectionScreen> {
                   const Icon(remix.Remix.alert_line,
                       size: 48, color: Colors.red),
                   const SizedBox(height: 16),
-                  Text(l10n.errorWithMessage(state.errorMessage ?? l10n.unknownError)),
+                  Text(l10n.errorWithMessage(
+                      state.errorMessage ?? l10n.unknownError)),
                   const SizedBox(height: 16),
                   ElevatedButton(
                     onPressed: () => context
@@ -99,6 +100,7 @@ class _NetworkConnectionScreenState extends State<NetworkConnectionScreen> {
         },
       ),
       floatingActionButton: FloatingActionButton(
+        heroTag: null, // Disable hero animation to avoid conflicts
         onPressed: () => _showConnectionDialog(context),
         tooltip: l10n.addConnection,
         child: const Icon(remix.Remix.add_line),
@@ -115,7 +117,8 @@ class _NetworkConnectionScreenState extends State<NetworkConnectionScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(remix.Remix.wifi_off_line, size: 48, color: Colors.grey),
+              const Icon(remix.Remix.wifi_off_line,
+                  size: 48, color: Colors.grey),
               const SizedBox(height: 16),
               Text(
                 l10n.noActiveNetworkConnections,
@@ -276,8 +279,7 @@ class _NetworkConnectionScreenState extends State<NetworkConnectionScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              AppLocalizations.of(context)!
-                  .errorWithMessage(e.toString()),
+              AppLocalizations.of(context)!.errorWithMessage(e.toString()),
             ),
           ),
         );

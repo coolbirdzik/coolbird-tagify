@@ -116,11 +116,21 @@ class _FileGridItemState extends State<FileGridItem> {
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final String fileName = path.basename(widget.file.path);
+    final bool isBeingCut = ItemInteractionStyle.isBeingCut(widget.file.path);
+
+    // Check if this item is being renamed inline (desktop only)
+    final renameController = InlineRenameScope.maybeOf(context);
+    final isBeingRenamed = renameController != null &&
+        renameController.renamingPath == widget.file.path;
+
+    // Don't show selected background when renaming to avoid color conflict
+    // with text selection color
+    final bool showAsSelected = widget.isSelected && !isBeingRenamed;
 
     final Color cardBackgroundColor = ItemInteractionStyle.backgroundColor(
       theme: theme,
       isDesktopMode: widget.isDesktopMode,
-      isSelected: widget.isSelected,
+      isSelected: showAsSelected,
       isHovering: _isHovering,
     );
 
@@ -128,140 +138,150 @@ class _FileGridItemState extends State<FileGridItem> {
         ItemInteractionStyle.thumbnailOverlayColor(
       theme: theme,
       isDesktopMode: widget.isDesktopMode,
-      isSelected: widget.isSelected,
+      isSelected: showAsSelected,
       isHovering: _isHovering,
     );
 
     return RepaintBoundary(
-      child: MouseRegion(
-        onEnter: (_) {
-          if (!widget.isDesktopMode) return;
-          if (_isHovering) return;
-          setState(() => _isHovering = true);
-        },
-        onExit: (_) {
-          if (!widget.isDesktopMode) return;
-          if (!_isHovering) return;
-          setState(() => _isHovering = false);
-        },
-        cursor: SystemMouseCursors.click,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 120),
-          curve: Curves.easeOut,
-          decoration: BoxDecoration(
-            color: cardBackgroundColor,
-            borderRadius: BorderRadius.circular(8.0),
-          ),
-          child: Column(
-            children: [
-              Expanded(
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(8.0),
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      ThumbnailOnly(
-                        key: ValueKey('thumb-only-${widget.file.path}'),
-                        file: widget.file,
-                        iconSize: 48.0,
-                      ),
-                      if (thumbnailOverlayColor != Colors.transparent)
-                        IgnorePointer(
-                          child: Container(color: thumbnailOverlayColor),
+      child: Opacity(
+        opacity: isBeingCut ? ItemInteractionStyle.cutOpacity : 1.0,
+        child: MouseRegion(
+          onEnter: (_) {
+            if (!widget.isDesktopMode) return;
+            if (_isHovering) return;
+            setState(() => _isHovering = true);
+          },
+          onExit: (_) {
+            if (!widget.isDesktopMode) return;
+            if (!_isHovering) return;
+            setState(() => _isHovering = false);
+          },
+          cursor: SystemMouseCursors.click,
+          child: Container(
+            decoration: BoxDecoration(
+              color: cardBackgroundColor,
+              borderRadius: BorderRadius.circular(8.0),
+            ),
+            child: Column(
+              children: [
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8.0),
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        ThumbnailOnly(
+                          key: ValueKey('thumb-only-${widget.file.path}'),
+                          file: widget.file,
+                          iconSize: 48.0,
                         ),
-                      Positioned.fill(
-                        child: OptimizedInteractionLayer(
-                          onTap: () {
-                            final keyboard = HardwareKeyboard.instance;
-                            final bool isShiftPressed = keyboard.isShiftPressed;
-                            final bool isCtrlPressed =
-                                keyboard.isControlPressed ||
-                                    keyboard.isMetaPressed;
-                            final bool isVideo =
-                                FileTypeUtils.isVideoFile(widget.file.path);
+                        if (thumbnailOverlayColor != Colors.transparent)
+                          IgnorePointer(
+                            child: Container(color: thumbnailOverlayColor),
+                          ),
+                        Positioned.fill(
+                          child: OptimizedInteractionLayer(
+                            onTap: () {
+                              final keyboard = HardwareKeyboard.instance;
+                              final bool isShiftPressed =
+                                  keyboard.isShiftPressed;
+                              final bool isCtrlPressed =
+                                  keyboard.isControlPressed ||
+                                      keyboard.isMetaPressed;
+                              final bool isVideo =
+                                  FileTypeUtils.isVideoFile(widget.file.path);
 
-                            if (widget.isDesktopMode) {
-                              widget.toggleFileSelection(
-                                widget.file.path,
-                                shiftSelect: isShiftPressed,
-                                ctrlSelect: isCtrlPressed,
+                              if (widget.isDesktopMode) {
+                                widget.toggleFileSelection(
+                                  widget.file.path,
+                                  shiftSelect: isShiftPressed,
+                                  ctrlSelect: isCtrlPressed,
+                                );
+                                return;
+                              }
+
+                              if (widget.isSelectionMode) {
+                                widget.toggleFileSelection(
+                                  widget.file.path,
+                                  shiftSelect: isShiftPressed,
+                                  ctrlSelect: isCtrlPressed,
+                                );
+                                return;
+                              }
+
+                              widget.onFileTap
+                                  ?.call(widget.file as File, isVideo);
+                            },
+                            onDoubleTap: () {
+                              if (widget.isDesktopMode &&
+                                  widget.toggleSelectionMode != null) {
+                                widget.toggleSelectionMode();
+                              }
+                              widget.onFileTap?.call(
+                                widget.file as File,
+                                FileTypeUtils.isVideoFile(widget.file.path),
                               );
-                              return;
-                            }
-
-                            if (widget.isSelectionMode) {
-                              widget.toggleFileSelection(
-                                widget.file.path,
-                                shiftSelect: isShiftPressed,
-                                ctrlSelect: isCtrlPressed,
-                              );
-                              return;
-                            }
-
-                            widget.onFileTap
-                                ?.call(widget.file as File, isVideo);
-                          },
-                          onDoubleTap: () {
-                            if (widget.isDesktopMode &&
-                                widget.toggleSelectionMode != null) {
-                              widget.toggleSelectionMode();
-                            }
-                            widget.onFileTap?.call(
-                              widget.file as File,
-                              FileTypeUtils.isVideoFile(widget.file.path),
-                            );
-                          },
-                          onSecondaryTapUp: (details) {
-                            _showContextMenu(context, details.globalPosition);
-                          },
-                          onLongPress: widget.isDesktopMode
-                              ? () {
-                                  HapticFeedback.mediumImpact();
-                                  widget.toggleFileSelection(widget.file.path);
-                                  if (!widget.isSelectionMode) {
-                                    widget.toggleSelectionMode();
+                            },
+                            onSecondaryTapUp: (details) {
+                              _showContextMenu(context, details.globalPosition);
+                            },
+                            onLongPress: widget.isDesktopMode
+                                ? () {
+                                    HapticFeedback.mediumImpact();
+                                    widget
+                                        .toggleFileSelection(widget.file.path);
+                                    if (!widget.isSelectionMode) {
+                                      widget.toggleSelectionMode();
+                                    }
                                   }
-                                }
-                              : null,
-                          onLongPressStart: !widget.isDesktopMode
-                              ? (d) {
-                                  HapticFeedback.mediumImpact();
-                                  _showContextMenu(context, d.globalPosition);
-                                }
-                              : null,
+                                : null,
+                            onLongPressStart: !widget.isDesktopMode
+                                ? (d) {
+                                    HapticFeedback.mediumImpact();
+                                    _showContextMenu(context, d.globalPosition);
+                                  }
+                                : null,
+                          ),
                         ),
-                      ),
-                      if (widget.isSelected && !widget.isDesktopMode)
-                        IgnorePointer(
-                          child: Align(
-                            alignment: Alignment.topRight,
-                            child: Padding(
-                              padding: const EdgeInsets.all(4.0),
-                              child: Icon(
-                                remix.Remix.checkbox_circle_line,
-                                color: theme.primaryColor,
-                                size: 24,
+                        if (widget.isSelected && !widget.isDesktopMode)
+                          IgnorePointer(
+                            child: Align(
+                              alignment: Alignment.topRight,
+                              child: Padding(
+                                padding: const EdgeInsets.all(4.0),
+                                child: Icon(
+                                  remix.Remix.checkbox_circle_line,
+                                  color: theme.primaryColor,
+                                  size: 24,
+                                ),
                               ),
                             ),
                           ),
-                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding:
+                      const EdgeInsets.only(top: 4.0, left: 4.0, right: 4.0),
+                  child: Column(
+                    children: [
+                      _buildNameWidget(
+                        context,
+                        theme,
+                        fileName,
+                        isBeingRenamed,
+                        renameController,
+                      ),
+                      if (widget.showFileTags && widget.state != null) ...[
+                        const SizedBox(height: 2),
+                        _buildTagsDisplay(context),
+                      ],
                     ],
                   ),
                 ),
-              ),
-              Padding(
-                padding: const EdgeInsets.only(top: 4.0, left: 4.0, right: 4.0),
-                child: Column(
-                  children: [
-                    _buildNameWidget(context, theme, fileName),
-                    if (widget.showFileTags && widget.state != null) ...[
-                      const SizedBox(height: 2),
-                      _buildTagsDisplay(context),
-                    ],
-                  ],
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -269,12 +289,12 @@ class _FileGridItemState extends State<FileGridItem> {
   }
 
   Widget _buildNameWidget(
-      BuildContext context, ThemeData theme, String fileName) {
-    // Check if this item is being renamed inline (desktop only)
-    final renameController = InlineRenameScope.maybeOf(context);
-    final isBeingRenamed = renameController != null &&
-        renameController.renamingPath == widget.file.path;
-
+    BuildContext context,
+    ThemeData theme,
+    String fileName,
+    bool isBeingRenamed,
+    InlineRenameController? renameController,
+  ) {
     final textWidget = Text(
       fileName,
       style: theme.textTheme.bodySmall?.copyWith(fontSize: 12),
@@ -283,7 +303,9 @@ class _FileGridItemState extends State<FileGridItem> {
       overflow: TextOverflow.ellipsis,
     );
 
-    if (isBeingRenamed && renameController.textController != null) {
+    if (isBeingRenamed &&
+        renameController != null &&
+        renameController.textController != null) {
       return Stack(
         children: [
           // Invisible text for layout sizing

@@ -6,7 +6,7 @@ import 'package:visibility_detector/visibility_detector.dart';
 import 'package:cb_file_manager/helpers/media/video_thumbnail_helper.dart';
 import 'package:cb_file_manager/helpers/network/network_thumbnail_helper.dart';
 import 'package:cb_file_manager/ui/widgets/lazy_video_thumbnail.dart';
-import 'package:cb_file_manager/ui/components/common/skeleton.dart';
+import 'package:cb_file_manager/ui/utils/scroll_velocity_notifier.dart';
 import 'package:remixicon/remixicon.dart' as remix;
 
 /// Memory pool để tái sử dụng image objects và giảm memory fragmentation
@@ -276,27 +276,22 @@ class _ThumbnailLoaderState extends State<ThumbnailLoader>
   StreamSubscription? _cacheChangedSubscription;
   StreamSubscription? _thumbnailReadySubscription;
   bool _widgetMounted = true;
-  bool _showLoadingOverlay = false;
   Timer? _loadTimer;
   Timer? _delayedLoadTimer;
   Timer? _refreshTimer;
   Timer? _visibilityDebounceTimer;
-  Timer? _loadingOverlayTimer;
   String? _networkThumbnailPath; // Store the generated thumbnail path
+  bool _isScrollingFast = false; // Track if user is scrolling fast
+  int _thumbnailVersion = 0; // Track thumbnail version to force rebuild
 
-  // PERFORMANCE: Debounce visibility changes - wait until scroll stops
+  // PERFORMANCE: Increased debounce to reduce lag during fast scrolling
+  // Only load thumbnails when item has been visible for a significant time
   static const Duration _visibilityDebounceDuration =
-      Duration(milliseconds: 100); // Quick response after scroll stops
+      Duration(milliseconds: 500); // Increased from 200ms to 500ms
 
   // PERFORMANCE: Delay before starting thumbnail load to prioritize file list display
   static const Duration _thumbnailLoadDelay =
-      Duration(milliseconds: 400); // Wait for file list to render first
-
-  // PERFORMANCE: Adaptive filter quality based on scrolling state
-  bool _isScrolling = false;
-  Timer? _scrollStopTimer;
-  static const Duration _scrollStopDelay = Duration(milliseconds: 150);
-  static const Duration _loadingOverlayDelay = Duration(milliseconds: 120);
+      Duration(milliseconds: 150); // Reduced for faster thumbnail display
 
   // Viewport-based loading priority system
   static final List<String> _loadingQueue = [];
@@ -315,10 +310,11 @@ class _ThumbnailLoaderState extends State<ThumbnailLoader>
   // Limit how many thumbnails can be loaded at once per screen
   static int _activeLoaders = 0;
   static const int _maxActiveLoaders =
-      6; // Giới hạn loader đồng thời để giảm drop frame
+      4; // Reduced to minimize lag during fast scrolling
 
   @override
-  bool get wantKeepAlive => true;
+  bool get wantKeepAlive =>
+      false; // Changed from true to false to reduce memory pressure
 
   @override
   void initState() {
@@ -326,6 +322,9 @@ class _ThumbnailLoaderState extends State<ThumbnailLoader>
     _widgetMounted = true;
     WidgetsBinding.instance.addObserver(this);
     _isLoadingNotifier.addListener(_handleLoadingChanged);
+
+    // Listen to scroll velocity changes
+    ScrollVelocityNotifier.instance.addListener(_onScrollVelocityChanged);
 
     // Listen for cache changes
     _cacheChangedSubscription = VideoThumbnailHelper.onCacheChanged.listen((_) {
@@ -354,22 +353,28 @@ class _ThumbnailLoaderState extends State<ThumbnailLoader>
       }
     });
 
-    // Check cache first before loading
+    // Check cache first - only use cached result, don't trigger load
+    // Actual loading is deferred to VisibilityDetector to avoid blocking scroll
     final cachedPath = _cache.getCachedThumbnailPath(widget.filePath);
     if (cachedPath != null) {
       _networkThumbnailPath = cachedPath;
       _isLoadingNotifier.value = false;
       _hasErrorNotifier.value = false;
-    } else {
-      // Schedule load after frame is built - don't wait for VisibilityDetector
-      // as it may not fire for already-visible widgets
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (_widgetMounted && mounted && _networkThumbnailPath == null) {
-          _scheduleLoadWithDelay();
-        }
-      });
     }
+    // If no cache, do nothing here - VisibilityDetector will trigger load
+    // when the widget is actually visible on screen
     _handleLoadingChanged();
+  }
+
+  void _onScrollVelocityChanged() {
+    final isFast = ScrollVelocityNotifier.instance.isScrollingFast;
+    if (_isScrollingFast != isFast) {
+      _isScrollingFast = isFast;
+      if (isFast) {
+        // Cancel pending loads when scrolling fast
+        _cancelPendingLoad();
+      }
+    }
   }
 
   void _scheduleLoad() {
@@ -455,6 +460,7 @@ class _ThumbnailLoaderState extends State<ThumbnailLoader>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    ScrollVelocityNotifier.instance.removeListener(_onScrollVelocityChanged);
     _cacheChangedSubscription?.cancel();
     _thumbnailReadySubscription?.cancel();
     _isLoadingNotifier.removeListener(_handleLoadingChanged);
@@ -465,8 +471,6 @@ class _ThumbnailLoaderState extends State<ThumbnailLoader>
     _delayedLoadTimer?.cancel();
     _refreshTimer?.cancel();
     _visibilityDebounceTimer?.cancel();
-    _scrollStopTimer?.cancel();
-    _loadingOverlayTimer?.cancel();
 
     // Clear retry tracking for this path
     _failedAttempts.remove(widget.filePath);
@@ -589,7 +593,7 @@ class _ThumbnailLoaderState extends State<ThumbnailLoader>
         // Reduce work on mobile and limit concurrency
         final bool isMobile = Platform.isAndroid || Platform.isIOS;
         final int genSize = isMobile ? 128 : 256;
-        final int limit = isMobile ? 3 : _maxActiveLoaders;
+        final int limit = isMobile ? 2 : _maxActiveLoaders;
         if (_activeLoaders >= limit) {
           // Back off briefly and retry via scheduler
           await Future.delayed(const Duration(milliseconds: 120));
@@ -638,24 +642,34 @@ class _ThumbnailLoaderState extends State<ThumbnailLoader>
         onVisibilityChanged: (info) {
           if (!_widgetMounted) return;
 
-          // PERFORMANCE: Detect scrolling for adaptive quality
-          _markScrolling();
+          // PERFORMANCE: Skip loading during fast scrolling
+          if (ScrollVelocityNotifier.instance.isScrollingFast) {
+            _visibilityDebounceTimer?.cancel();
+            _cancelPendingLoad();
+            return;
+          }
 
           // PERFORMANCE: Debounce visibility changes to prevent excessive operations during scrolling
           _visibilityDebounceTimer?.cancel();
 
-          // Chỉ load khi visible fraction > 20% để tránh load quá sớm
-          if (info.visibleFraction > 0.2) {
+          // Increased threshold: only load when visible fraction > 80% to avoid loading too early
+          if (info.visibleFraction > 0.8) {
             // Debounce becoming visible to avoid loading during fast scrolling
             _visibilityDebounceTimer = Timer(_visibilityDebounceDuration, () {
               if (!_widgetMounted) return;
 
+              // Double-check scroll velocity before loading
+              if (ScrollVelocityNotifier.instance.isScrollingFast) {
+                return;
+              }
+
               // Became visible
               NetworkThumbnailHelper().markVisible(widget.filePath);
 
-              // Nếu chưa tải thumbnail, bắt đầu tải với delay để tránh spam
+              // Only load thumbnail if not already loading and not scrolling fast
               if (_networkThumbnailPath == null &&
-                  !_cache.isGeneratingThumbnail(widget.filePath)) {
+                  !_cache.isGeneratingThumbnail(widget.filePath) &&
+                  !ScrollVelocityNotifier.instance.isScrollingFast) {
                 _scheduleLoadWithDelay();
               }
             });
@@ -677,35 +691,9 @@ class _ThumbnailLoaderState extends State<ThumbnailLoader>
 
               // Use a separate ValueListenableBuilder only for loading state
               // to minimize rebuilds when only loading state changes
-              return ValueListenableBuilder<bool>(
-                valueListenable: _isLoadingNotifier,
-                builder: (context, isLoading, _) {
-                  final bool showSkeleton = isLoading &&
-                      widget.showLoadingIndicator &&
-                      _showLoadingOverlay;
-                  return Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      // Main content - wrap in RepaintBoundary
-                      RepaintBoundary(child: _buildThumbnailContent()),
-
-                      // Skeleton loading overlay - static for better performance
-                      if (showSkeleton)
-                        RepaintBoundary(
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: Colors.grey[800]?.withValues(alpha: 0.8),
-                              borderRadius: widget.borderRadius,
-                            ),
-                            child: Center(
-                              child: _buildSkeletonLoader(),
-                            ),
-                          ),
-                        ),
-                    ],
-                  );
-                },
-              );
+              // Directly show content - no skeleton overlay to avoid
+              // setState spam and shimmer animation overhead during scrolling
+              return RepaintBoundary(child: _buildThumbnailContent());
             },
           ),
         ),
@@ -714,31 +702,9 @@ class _ThumbnailLoaderState extends State<ThumbnailLoader>
   }
 
   void _handleLoadingChanged() {
-    if (!_widgetMounted || !mounted) return;
-
-    if (_isLoadingNotifier.value) {
-      _loadingOverlayTimer?.cancel();
-      if (_showLoadingOverlay) {
-        setState(() {
-          _showLoadingOverlay = false;
-        });
-      }
-      _loadingOverlayTimer = Timer(_loadingOverlayDelay, () {
-        if (!_widgetMounted || !mounted) return;
-        if (_isLoadingNotifier.value && !_showLoadingOverlay) {
-          setState(() {
-            _showLoadingOverlay = true;
-          });
-        }
-      });
-    } else {
-      _loadingOverlayTimer?.cancel();
-      if (_showLoadingOverlay) {
-        setState(() {
-          _showLoadingOverlay = false;
-        });
-      }
-    }
+    // No-op: removed setState-based overlay toggling that caused
+    // excessive rebuilds during scrolling. The ValueListenableBuilder
+    // handles loading state changes without needing setState.
   }
 
   Widget _buildThumbnailContent() {
@@ -751,31 +717,10 @@ class _ThumbnailLoaderState extends State<ThumbnailLoader>
     }
   }
 
-  // PERFORMANCE: Mark that scrolling is happening and reset timer
-  void _markScrolling() {
-    if (!_isScrolling) {
-      setState(() => _isScrolling = true);
-    }
-
-    _scrollStopTimer?.cancel();
-    _scrollStopTimer = Timer(_scrollStopDelay, () {
-      if (mounted) {
-        setState(() => _isScrolling = false);
-      }
-    });
-  }
-
-  // PERFORMANCE: Get adaptive filter quality based on scroll state
-  FilterQuality _getAdaptiveFilterQuality() {
-    // Use low quality during scrolling for better performance
-    if (_isScrolling) {
-      return FilterQuality.low;
-    }
-
-    // Use higher quality when stopped
-    final bool isMobile = Platform.isAndroid || Platform.isIOS;
-    return isMobile ? FilterQuality.medium : FilterQuality.high;
-  }
+  // Thumbnails are small enough that low quality is sufficient
+  // Removed _markScrolling() which was calling setState() on every scroll frame
+  // causing massive rebuild cascade across all visible widgets
+  static const FilterQuality _thumbnailFilterQuality = FilterQuality.low;
 
   Widget _buildVideoThumbnail() {
     // For SMB videos, we need special handling
@@ -789,10 +734,12 @@ class _ThumbnailLoaderState extends State<ThumbnailLoader>
         // PERFORMANCE: Use adaptive filter quality based on scrolling state
         return Image.file(
           File(thumbnailPath),
+          key: ValueKey(
+              'thumb-img-${widget.filePath}-${thumbnailPath.hashCode}-$_thumbnailVersion'),
           width: widget.width,
           height: widget.height,
           fit: widget.fit,
-          filterQuality: _getAdaptiveFilterQuality(),
+          filterQuality: _thumbnailFilterQuality,
           errorBuilder: (context, error, stackTrace) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (_widgetMounted) {
@@ -834,7 +781,7 @@ class _ThumbnailLoaderState extends State<ThumbnailLoader>
       if (!_cache.isGeneratingThumbnail(widget.filePath)) {
         _cache.markGeneratingThumbnail(widget.filePath);
         final bool isMobile = Platform.isAndroid || Platform.isIOS;
-        final int limit = isMobile ? 3 : _maxActiveLoaders;
+        final int limit = isMobile ? 2 : _maxActiveLoaders;
         if (_activeLoaders >= limit) {
           _cache.markThumbnailGenerated(widget.filePath);
           _scheduleLoad();
@@ -945,7 +892,7 @@ class _ThumbnailLoaderState extends State<ThumbnailLoader>
           width: widget.width,
           height: widget.height,
           fit: widget.fit,
-          filterQuality: _getAdaptiveFilterQuality(),
+          filterQuality: _thumbnailFilterQuality,
           cacheWidth: widget.width.isInfinite ? null : widget.width.toInt(),
           cacheHeight: widget.height.isInfinite ? null : widget.height.toInt(),
           errorBuilder: (context, error, stackTrace) {
@@ -976,7 +923,7 @@ class _ThumbnailLoaderState extends State<ThumbnailLoader>
         if (!_cache.isGeneratingThumbnail(widget.filePath)) {
           _cache.markGeneratingThumbnail(widget.filePath);
           final bool isMobile = Platform.isAndroid || Platform.isIOS;
-          final int limit = isMobile ? 3 : _maxActiveLoaders;
+          final int limit = isMobile ? 2 : _maxActiveLoaders;
           if (_activeLoaders >= limit) {
             _cache.markThumbnailGenerated(widget.filePath);
             _scheduleLoad();
@@ -1064,7 +1011,7 @@ class _ThumbnailLoaderState extends State<ThumbnailLoader>
       width: widget.width,
       height: widget.height,
       fit: widget.fit,
-      filterQuality: _getAdaptiveFilterQuality(),
+      filterQuality: _thumbnailFilterQuality,
       cacheWidth: widget.width.isInfinite ? null : widget.width.toInt(),
       cacheHeight: widget.height.isInfinite ? null : widget.height.toInt(),
       errorBuilder: (context, error, stackTrace) {
@@ -1118,14 +1065,5 @@ class _ThumbnailLoaderState extends State<ThumbnailLoader>
         ),
       );
     }
-  }
-
-  /// Build skeleton loader using unified ShimmerBox
-  Widget _buildSkeletonLoader() {
-    return ShimmerBox(
-      width: double.infinity,
-      height: double.infinity,
-      borderRadius: widget.borderRadius ?? BorderRadius.circular(8),
-    );
   }
 }

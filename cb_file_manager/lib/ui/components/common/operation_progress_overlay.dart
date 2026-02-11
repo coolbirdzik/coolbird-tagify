@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:cb_file_manager/config/languages/app_localizations.dart';
 import 'package:cb_file_manager/core/service_locator.dart';
@@ -7,6 +8,9 @@ import 'package:flutter/material.dart';
 
 class OperationProgressOverlay extends StatefulWidget {
   const OperationProgressOverlay({Key? key}) : super(key: key);
+
+  static bool get _isDesktop =>
+      Platform.isWindows || Platform.isLinux || Platform.isMacOS;
 
   @override
   State<OperationProgressOverlay> createState() =>
@@ -18,6 +22,7 @@ class _OperationProgressOverlayState extends State<OperationProgressOverlay> {
       locator<OperationProgressController>();
 
   Timer? _autoDismissTimer;
+  bool _isShowingDialog = false;
 
   @override
   void initState() {
@@ -35,6 +40,15 @@ class _OperationProgressOverlayState extends State<OperationProgressOverlay> {
   void _onChanged() {
     final active = _controller.active;
     _autoDismissTimer?.cancel();
+
+    // On desktop, show as a dialog window when operation starts
+    if (OperationProgressOverlay._isDesktop &&
+        active != null &&
+        active.isRunning &&
+        !_isShowingDialog) {
+      _showDesktopWindow();
+      return;
+    }
 
     if (active != null && active.isFinished) {
       // Auto-dismiss success after a short delay, keep errors until user dismisses.
@@ -54,9 +68,39 @@ class _OperationProgressOverlayState extends State<OperationProgressOverlay> {
     if (mounted) setState(() {});
   }
 
+  void _showDesktopWindow() {
+    if (_isShowingDialog) return;
+    _isShowingDialog = true;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        _isShowingDialog = false;
+        return;
+      }
+
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        barrierColor: Colors.transparent,
+        builder: (context) => _DesktopProgressWindow(
+          controller: _controller,
+        ),
+      ).then((_) {
+        _isShowingDialog = false;
+      });
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final active = _controller.active;
+
+    // On desktop, don't show the overlay (show window dialog instead)
+    if (OperationProgressOverlay._isDesktop) {
+      return const SizedBox.shrink();
+    }
+
+    // On mobile, show the bottom status bar overlay
     if (active == null) return const SizedBox.shrink();
 
     return Positioned(
@@ -177,6 +221,346 @@ class _OperationProgressStatusBar extends StatelessWidget {
                 icon: const Icon(Icons.close, size: 18),
               ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Desktop-style progress window shown as a dialog
+class _DesktopProgressWindow extends StatefulWidget {
+  final OperationProgressController controller;
+
+  const _DesktopProgressWindow({
+    required this.controller,
+  });
+
+  @override
+  State<_DesktopProgressWindow> createState() => _DesktopProgressWindowState();
+}
+
+class _DesktopProgressWindowState extends State<_DesktopProgressWindow> {
+  Timer? _autoDismissTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_onChanged);
+  }
+
+  @override
+  void dispose() {
+    _autoDismissTimer?.cancel();
+    widget.controller.removeListener(_onChanged);
+    super.dispose();
+  }
+
+  void _onChanged() {
+    final active = widget.controller.active;
+    _autoDismissTimer?.cancel();
+
+    // Close dialog if operation is dismissed
+    if (active == null) {
+      if (mounted && Navigator.canPop(context)) {
+        Navigator.of(context).pop();
+      }
+      return;
+    }
+
+    // Close dialog if user minimized it
+    if (active.isMinimized && !active.isRunning) {
+      if (mounted && Navigator.canPop(context)) {
+        Navigator.of(context).pop();
+      }
+      return;
+    }
+
+    if (active.isFinished) {
+      // Auto-dismiss success after a short delay
+      if (active.status == OperationProgressStatus.success) {
+        _autoDismissTimer = Timer(const Duration(seconds: 2), () {
+          if (!mounted) return;
+          final latest = widget.controller.active;
+          if (latest != null &&
+              latest.id == active.id &&
+              latest.status == OperationProgressStatus.success) {
+            if (Navigator.canPop(context)) {
+              Navigator.of(context).pop();
+            }
+            widget.controller.dismiss();
+          }
+        });
+      }
+    }
+
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final active = widget.controller.active;
+    if (active == null) {
+      return const SizedBox.shrink();
+    }
+
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      alignment: Alignment.bottomRight,
+      insetPadding: const EdgeInsets.all(20),
+      child: _ProgressWindowContent(
+        entry: active,
+        onMinimize: widget.controller.minimize,
+        onDismiss: () {
+          widget.controller.dismiss();
+          if (Navigator.canPop(context)) {
+            Navigator.of(context).pop();
+          }
+        },
+      ),
+    );
+  }
+}
+
+class _ProgressWindowContent extends StatelessWidget {
+  final OperationProgressEntry entry;
+  final VoidCallback onMinimize;
+  final VoidCallback onDismiss;
+
+  const _ProgressWindowContent({
+    required this.entry,
+    required this.onMinimize,
+    required this.onDismiss,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    final Color accent;
+    switch (entry.status) {
+      case OperationProgressStatus.running:
+        accent = theme.colorScheme.primary;
+        break;
+      case OperationProgressStatus.success:
+        accent = Colors.green;
+        break;
+      case OperationProgressStatus.error:
+        accent = theme.colorScheme.error;
+        break;
+    }
+
+    final label = entry.isRunning
+        ? (entry.isIndeterminate
+            ? l10n.processing
+            : '${entry.completed} / ${entry.total}')
+        : (entry.status == OperationProgressStatus.success
+            ? l10n.done
+            : l10n.errorTitle);
+
+    final IconData icon;
+    switch (entry.status) {
+      case OperationProgressStatus.running:
+        icon = Icons.sync;
+        break;
+      case OperationProgressStatus.success:
+        icon = Icons.check_circle_outline;
+        break;
+      case OperationProgressStatus.error:
+        icon = Icons.error_outline;
+        break;
+    }
+
+    return Material(
+      elevation: 10,
+      color: Colors.transparent,
+      shadowColor: Colors.black.withValues(alpha: 0.5),
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        width: 400,
+        constraints: const BoxConstraints(
+          minHeight: 120,
+          maxHeight: 180,
+        ),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF2D2D2D) : Colors.white,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isDark ? Colors.grey.shade800 : Colors.grey.shade300,
+            width: 1,
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Title bar
+            _WindowTitleBar(
+              title: entry.title,
+              onMinimize: onMinimize,
+              onClose: entry.isRunning ? null : onDismiss,
+            ),
+            // Content
+            Flexible(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(icon, size: 24, color: accent),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                label,
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              if (entry.detail != null) ...[
+                                const SizedBox(height: 4),
+                                Text(
+                                  entry.detail!,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        LinearProgressIndicator(
+                          value: entry.isIndeterminate
+                              ? null
+                              : entry.progressFraction,
+                          minHeight: 8,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        if (!entry.isIndeterminate) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            '${(entry.progressFraction * 100).toStringAsFixed(0)}%',
+                            textAlign: TextAlign.right,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _WindowTitleBar extends StatelessWidget {
+  final String title;
+  final VoidCallback onMinimize;
+  final VoidCallback? onClose;
+
+  const _WindowTitleBar({
+    required this.title,
+    required this.onMinimize,
+    this.onClose,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return Container(
+      height: 40,
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E1E1E) : Colors.grey.shade100,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
+      ),
+      child: Row(
+        children: [
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          // Minimize button
+          _TitleBarButton(
+            icon: Icons.minimize,
+            onPressed: onMinimize,
+            tooltip: 'Minimize',
+          ),
+          // Close button (only enabled when operation is finished)
+          _TitleBarButton(
+            icon: Icons.close,
+            onPressed: onClose,
+            tooltip: 'Close',
+            enabled: onClose != null,
+          ),
+          const SizedBox(width: 4),
+        ],
+      ),
+    );
+  }
+}
+
+class _TitleBarButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback? onPressed;
+  final String tooltip;
+  final bool enabled;
+
+  const _TitleBarButton({
+    required this.icon,
+    this.onPressed,
+    required this.tooltip,
+    this.enabled = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        onTap: enabled ? onPressed : null,
+        borderRadius: BorderRadius.circular(4),
+        child: Container(
+          width: 32,
+          height: 32,
+          alignment: Alignment.center,
+          child: Icon(
+            icon,
+            size: 16,
+            color: enabled
+                ? theme.colorScheme.onSurface
+                : theme.colorScheme.onSurface.withValues(alpha: 0.3),
+          ),
         ),
       ),
     );

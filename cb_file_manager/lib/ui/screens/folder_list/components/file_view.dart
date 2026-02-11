@@ -9,6 +9,7 @@ import 'package:flutter/services.dart'; // Import for HardwareKeyboard
 import 'package:remixicon/remixicon.dart' as remix;
 import 'package:cb_file_manager/helpers/core/user_preferences.dart';
 import 'package:cb_file_manager/ui/utils/grid_zoom_constraints.dart';
+import 'package:cb_file_manager/ui/utils/scroll_velocity_notifier.dart';
 
 import 'file_item.dart';
 import 'file_grid_item.dart';
@@ -18,7 +19,7 @@ import 'file_details_item.dart';
 import 'folder_details_item.dart';
 
 class FileView extends StatelessWidget {
-  static const double _gridSpacing = 8.0;
+  static const double _gridSpacing = 12.0;
   static const double _gridAspectRatio = 0.8;
   static const double _gridReferenceWidth = 960.0;
 
@@ -36,6 +37,7 @@ class FileView extends StatelessWidget {
         ((availableWidth + _gridSpacing) / (itemWidth + _gridSpacing)).floor();
     return math.max(1, raw);
   }
+
   final List<File> files;
   final List<Directory> folders;
   final FolderListState state;
@@ -102,14 +104,14 @@ class FileView extends StatelessWidget {
     final bool isMobile = Platform.isAndroid || Platform.isIOS;
     final bool isDesktop =
         Platform.isWindows || Platform.isMacOS || Platform.isLinux;
-    
+
     // Use actual platform detection instead of parameter
     final bool actualIsDesktop = isDesktop;
 
     return ListView.builder(
       // Optimized physics for desktop smooth scrolling
       physics: isDesktop
-          ? const FixedExtentScrollPhysics(
+          ? const ClampingScrollPhysics(
               parent: AlwaysScrollableScrollPhysics(),
             )
           : isMobile
@@ -117,8 +119,8 @@ class FileView extends StatelessWidget {
               : const ClampingScrollPhysics(
                   parent: AlwaysScrollableScrollPhysics(),
                 ),
-      // Increased cache for desktop smooth scrolling
-      cacheExtent: isDesktop ? 1500 : (isMobile ? 350 : 1200),
+      // PERFORMANCE: Reduced cacheExtent to minimize pre-building during fast scroll
+      cacheExtent: isDesktop ? 400 : (isMobile ? 200 : 300),
       addAutomaticKeepAlives: false,
       addRepaintBoundaries: true,
       addSemanticIndexes: false,
@@ -310,7 +312,7 @@ class FileView extends StatelessWidget {
         Expanded(
           child: ListView.builder(
             physics: isDesktop
-                ? const FixedExtentScrollPhysics(
+                ? const ClampingScrollPhysics(
                     parent: AlwaysScrollableScrollPhysics(),
                   )
                 : isMobile
@@ -318,7 +320,8 @@ class FileView extends StatelessWidget {
                     : const ClampingScrollPhysics(
                         parent: AlwaysScrollableScrollPhysics(),
                       ),
-            cacheExtent: isDesktop ? 1500 : (isMobile ? 350 : 1200),
+            // PERFORMANCE: Reduced cacheExtent to minimize pre-building during fast scroll
+            cacheExtent: isDesktop ? 400 : (isMobile ? 200 : 300),
             addAutomaticKeepAlives: false,
             addRepaintBoundaries: true,
             addSemanticIndexes: false,
@@ -427,8 +430,7 @@ class FileView extends StatelessWidget {
           final itemWidth = _gridItemWidthForZoom(effectiveZoom);
           final availableWidth =
               math.max(0.0, constraints.maxWidth - (_gridSpacing * 2));
-          final crossAxisCount =
-              _gridCrossAxisCount(availableWidth, itemWidth);
+          final crossAxisCount = _gridCrossAxisCount(availableWidth, itemWidth);
           final itemHeight = itemWidth / _gridAspectRatio;
           final folderIndexByPath = <String, int>{
             for (var i = 0; i < folders.length; i++) folders[i].path: i,
@@ -437,95 +439,98 @@ class FileView extends StatelessWidget {
             for (var i = 0; i < files.length; i++) files[i].path: i,
           };
 
-          return GridView.builder(
-            physics: isDesktop
-                ? const ClampingScrollPhysics(
-                    parent: AlwaysScrollableScrollPhysics(),
-                  )
-                : isMobile
-                    ? const ClampingScrollPhysics()
-                    : const ClampingScrollPhysics(
-                        parent: AlwaysScrollableScrollPhysics(),
-                      ),
-            cacheExtent: isDesktop ? 2500 : (isMobile ? 600 : 2000),
-            addAutomaticKeepAlives: false,
-            addRepaintBoundaries: true,
-            addSemanticIndexes: false,
-            findChildIndexCallback: (Key key) {
-              if (key is! ValueKey<String>) return null;
-              final value = key.value;
-              if (value.startsWith('folder-grid-')) {
-                final folderPath = value.substring('folder-grid-'.length);
-                final index = folderIndexByPath[folderPath];
-                return index;
-              }
-              if (value.startsWith('file-grid-')) {
-                final filePath = value.substring('file-grid-'.length);
-                final index = fileIndexByPath[filePath];
-                if (index == null) return null;
-                return folders.length + index;
-              }
-              return null;
-            },
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: crossAxisCount,
-              crossAxisSpacing: _gridSpacing,
-              mainAxisSpacing: _gridSpacing,
-              mainAxisExtent: itemHeight,
-            ),
-            padding: const EdgeInsets.all(8.0),
-            itemCount: folders.length + files.length,
-            itemBuilder: (context, index) {
-              // Generate a stable key to help Flutter optimize rendering
-              final String itemKey = index < folders.length
-                  ? 'folder-grid-${folders[index].path}'
-                  : 'file-grid-${files[index - folders.length].path}';
+          return ScrollVelocityListener(
+            child: GridView.builder(
+              physics: isDesktop
+                  ? const ClampingScrollPhysics(
+                      parent: AlwaysScrollableScrollPhysics(),
+                    )
+                  : isMobile
+                      ? const ClampingScrollPhysics()
+                      : const ClampingScrollPhysics(
+                          parent: AlwaysScrollableScrollPhysics(),
+                        ),
+              // Reduced cache extent to prevent pre-building too many widgets during fast scroll
+              cacheExtent: isDesktop ? 400 : (isMobile ? 200 : 300),
+              addAutomaticKeepAlives: false,
+              addRepaintBoundaries: true,
+              addSemanticIndexes: false,
+              findChildIndexCallback: (Key key) {
+                if (key is! ValueKey<String>) return null;
+                final value = key.value;
+                if (value.startsWith('folder-grid-')) {
+                  final folderPath = value.substring('folder-grid-'.length);
+                  final index = folderIndexByPath[folderPath];
+                  return index;
+                }
+                if (value.startsWith('file-grid-')) {
+                  final filePath = value.substring('file-grid-'.length);
+                  final index = fileIndexByPath[filePath];
+                  if (index == null) return null;
+                  return folders.length + index;
+                }
+                return null;
+              },
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: crossAxisCount,
+                crossAxisSpacing: _gridSpacing,
+                mainAxisSpacing: _gridSpacing,
+                mainAxisExtent: itemHeight,
+              ),
+              padding: const EdgeInsets.all(8.0),
+              itemCount: folders.length + files.length,
+              itemBuilder: (context, index) {
+                // Generate a stable key to help Flutter optimize rendering
+                final String itemKey = index < folders.length
+                    ? 'folder-grid-${folders[index].path}'
+                    : 'file-grid-${files[index - folders.length].path}';
 
-              // Use KeyedSubtree with a stable key to prevent unnecessary rebuilds
-              return KeyedSubtree(
-                key: ValueKey(itemKey),
-                child: RepaintBoundary(
-                  child: Align(
-                    alignment: Alignment.topCenter,
-                    child: SizedBox(
-                      width: itemWidth,
-                      height: itemHeight,
-                      child: index < folders.length
-                          ? FolderGridItem(
-                              key: ValueKey(
-                                  'folder-grid-item-${folders[index].path}'),
-                              folder: folders[index],
-                              onNavigate: onFolderTap ?? (_) {},
-                              isSelected:
-                                  selectedFiles.contains(folders[index].path),
-                              toggleFolderSelection: toggleFileSelection,
-                              isDesktopMode: isDesktopMode,
-                              lastSelectedPath: lastSelectedPath,
-                              clearSelectionMode: clearSelectionMode,
-                            )
-                          : FileGridItem(
-                              key: ValueKey(
-                                  'file-grid-item-${files[index - folders.length].path}'),
-                              file: files[index - folders.length],
-                              state: state,
-                              isSelected: selectedFiles.contains(
-                                  files[index - folders.length].path),
-                              toggleFileSelection: toggleFileSelection,
-                              toggleSelectionMode: toggleSelectionMode,
-                              isSelectionMode: isSelectionMode,
-                              onFileTap: onFileTap,
-                              isDesktopMode: isDesktopMode,
-                              lastSelectedPath: lastSelectedPath,
-                              onThumbnailGenerated: onThumbnailGenerated,
-                              showDeleteTagDialog: showDeleteTagDialog,
-                              showAddTagToFileDialog: showAddTagToFileDialog,
-                              showFileTags: showFileTags,
-                            ),
+                // Use KeyedSubtree with a stable key to prevent unnecessary rebuilds
+                return KeyedSubtree(
+                  key: ValueKey(itemKey),
+                  child: RepaintBoundary(
+                    child: Align(
+                      alignment: Alignment.topCenter,
+                      child: SizedBox(
+                        width: itemWidth,
+                        height: itemHeight,
+                        child: index < folders.length
+                            ? FolderGridItem(
+                                key: ValueKey(
+                                    'folder-grid-item-${folders[index].path}'),
+                                folder: folders[index],
+                                onNavigate: onFolderTap ?? (_) {},
+                                isSelected:
+                                    selectedFiles.contains(folders[index].path),
+                                toggleFolderSelection: toggleFileSelection,
+                                isDesktopMode: isDesktopMode,
+                                lastSelectedPath: lastSelectedPath,
+                                clearSelectionMode: clearSelectionMode,
+                              )
+                            : FileGridItem(
+                                key: ValueKey(
+                                    'file-grid-item-${files[index - folders.length].path}'),
+                                file: files[index - folders.length],
+                                state: state,
+                                isSelected: selectedFiles.contains(
+                                    files[index - folders.length].path),
+                                toggleFileSelection: toggleFileSelection,
+                                toggleSelectionMode: toggleSelectionMode,
+                                isSelectionMode: isSelectionMode,
+                                onFileTap: onFileTap,
+                                isDesktopMode: isDesktopMode,
+                                lastSelectedPath: lastSelectedPath,
+                                onThumbnailGenerated: onThumbnailGenerated,
+                                showDeleteTagDialog: showDeleteTagDialog,
+                                showAddTagToFileDialog: showAddTagToFileDialog,
+                                showFileTags: showFileTags,
+                              ),
+                      ),
                     ),
                   ),
-                ),
-              );
-            },
+                );
+              },
+            ),
           );
         },
       ),

@@ -384,7 +384,8 @@ class _VideoLibraryFilesScreenState extends State<VideoLibraryFilesScreen>
               decoration: InputDecoration(
                 hintText: l10n.searchByFilename,
                 hintStyle: TextStyle(
-                  color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                  color:
+                      theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                   fontSize: 14,
                 ),
                 border: InputBorder.none,
@@ -489,27 +490,32 @@ class _VideoLibraryFilesScreenState extends State<VideoLibraryFilesScreen>
   }
 
   void _openVideo(File file) {
-    // Default: in-app player. Only system default when user enabled in Settings.
-    _preferences.getUseSystemDefaultForVideo().then((useSystem) {
-      if (useSystem) {
-        ExternalAppHelper.openWithSystemDefault(file.path).then((success) {
-          if (!success && mounted) {
-            showDialog(
-              context: context,
-              builder: (context) => OpenWithDialog(filePath: file.path),
+    ExternalAppHelper.openWithPreferredVideoApp(file.path)
+        .then((openedPreferred) {
+      if (openedPreferred) return;
+
+      // Default: in-app player. Only system default when user enabled in Settings.
+      _preferences.getUseSystemDefaultForVideo().then((useSystem) {
+        if (useSystem) {
+          ExternalAppHelper.openWithSystemDefault(file.path).then((success) {
+            if (!success && mounted) {
+              showDialog(
+                context: context,
+                builder: (context) => OpenWithDialog(filePath: file.path),
+              );
+            }
+          });
+        } else {
+          if (mounted) {
+            Navigator.of(context, rootNavigator: true).push(
+              MaterialPageRoute(
+                fullscreenDialog: true,
+                builder: (_) => VideoPlayerFullScreen(file: file),
+              ),
             );
           }
-        });
-      } else {
-        if (mounted) {
-          Navigator.of(context, rootNavigator: true).push(
-            MaterialPageRoute(
-              fullscreenDialog: true,
-              builder: (_) => VideoPlayerFullScreen(file: file),
-            ),
-          );
         }
-      }
+      });
     });
   }
 
@@ -557,6 +563,7 @@ class _VideoLibraryFilesScreenState extends State<VideoLibraryFilesScreen>
         onSelectionModeToggled: toggleSelectionMode,
       ),
       floatingActionButton: FloatingActionButton(
+        heroTag: null, // Disable hero animation to avoid conflicts
         onPressed: toggleSelectionMode,
         child: const Icon(remix.Remix.checkbox_line),
       ),
@@ -600,8 +607,10 @@ class _VideoLibraryFilesScreenState extends State<VideoLibraryFilesScreen>
         Container(
           width: double.infinity,
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          color:
-              Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3),
+          color: Theme.of(context)
+              .colorScheme
+              .primaryContainer
+              .withValues(alpha: 0.3),
           child: Row(
             children: [
               const Icon(Icons.search, size: 18),

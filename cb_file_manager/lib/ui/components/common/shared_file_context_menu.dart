@@ -23,7 +23,11 @@ import '../../dialogs/folder_thumbnail_picker_dialog.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../screens/folder_list/folder_list_bloc.dart';
 import '../../screens/folder_list/folder_list_event.dart';
+import '../../screens/folder_list/folder_list_state.dart';
 import '../../../helpers/files/windows_shell_context_menu.dart';
+import '../../controllers/inline_rename_controller.dart';
+import '../../../core/service_locator.dart';
+import '../../../helpers/core/user_preferences.dart';
 
 /// A shared context menu for files
 ///
@@ -137,7 +141,8 @@ class SharedFileContextMenu extends StatelessWidget {
                           ],
                           if (webDavModified != null) ...[
                             const SizedBox(width: 12),
-                            const Icon(remix.Remix.calendar_event_line, size: 14),
+                            const Icon(remix.Remix.calendar_event_line,
+                                size: 14),
                             const SizedBox(width: 4),
                             Text(webDavModified,
                                 style: TextStyle(
@@ -170,14 +175,9 @@ class SharedFileContextMenu extends StatelessWidget {
               style:
                   TextStyle(color: isDarkMode ? Colors.white : Colors.black87),
             ),
-            onTap: () {
+            onTap: () async {
               Navigator.pop(context);
-              Navigator.of(context, rootNavigator: true).push(
-                MaterialPageRoute(
-                  fullscreenDialog: true,
-                  builder: (context) => VideoPlayerFullScreen(file: file),
-                ),
-              );
+              await _openVideoWithUserPreference(context, file);
             },
           ),
 
@@ -214,10 +214,10 @@ class SharedFileContextMenu extends StatelessWidget {
 
         ListTile(
           leading: const Icon(remix.Remix.external_link_line),
-            title: Text(
-              AppLocalizations.of(context)!.openWith,
-              style: TextStyle(color: isDarkMode ? Colors.white : Colors.black87),
-            ),
+          title: Text(
+            AppLocalizations.of(context)!.openWith,
+            style: TextStyle(color: isDarkMode ? Colors.white : Colors.black87),
+          ),
           onTap: () {
             Navigator.pop(context);
             showDialog(
@@ -236,7 +236,10 @@ class SharedFileContextMenu extends StatelessWidget {
             Navigator.pop(context);
             showDialog(
               context: context,
-              builder: (context) => OpenWithDialog(filePath: file.path),
+              builder: (context) => OpenWithDialog(
+                filePath: file.path,
+                saveAsDefaultOnSelect: true,
+              ),
             );
           },
         ),
@@ -263,14 +266,17 @@ class SharedFileContextMenu extends StatelessWidget {
                     .downloadFile(file.path, saveLocation);
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(AppLocalizations.of(context)!.downloadedTo(saveLocation))),
+                    SnackBar(
+                        content: Text(AppLocalizations.of(context)!
+                            .downloadedTo(saveLocation))),
                   );
                 }
               } catch (e) {
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                        content: Text(AppLocalizations.of(context)!.downloadFailed(e.toString())),
+                        content: Text(AppLocalizations.of(context)!
+                            .downloadFailed(e.toString())),
                         backgroundColor: Colors.red),
                   );
                 }
@@ -287,7 +293,8 @@ class SharedFileContextMenu extends StatelessWidget {
           ),
           onTap: () {
             Navigator.pop(context);
-            FileOperationsHandler.copyToClipboard(context: context, entity: file);
+            FileOperationsHandler.copyToClipboard(
+                context: context, entity: file);
           },
         ),
 
@@ -300,7 +307,8 @@ class SharedFileContextMenu extends StatelessWidget {
           ),
           onTap: () {
             Navigator.pop(context);
-            FileOperationsHandler.cutToClipboard(context: context, entity: file);
+            FileOperationsHandler.cutToClipboard(
+                context: context, entity: file);
           },
         ),
 
@@ -313,10 +321,7 @@ class SharedFileContextMenu extends StatelessWidget {
           ),
           onTap: () async {
             Navigator.pop(context);
-            await FileOperationsHandler.showRenameDialog(
-              context: context,
-              entity: file,
-            );
+            await _renameEntity(context: context, entity: file);
           },
         ),
 
@@ -383,8 +388,10 @@ class SharedFileContextMenu extends StatelessWidget {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(AppLocalizations.of(context)!.moveItemsToTrashConfirmation(1, AppLocalizations.of(context)!.file)),
-        content: Text(AppLocalizations.of(context)!.moveToTrashConfirmMessage(_basename(file))),
+        title: Text(AppLocalizations.of(context)!.moveItemsToTrashConfirmation(
+            1, AppLocalizations.of(context)!.file)),
+        content: Text(AppLocalizations.of(context)!
+            .moveToTrashConfirmMessage(_basename(file))),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -413,7 +420,8 @@ class SharedFileContextMenu extends StatelessWidget {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(AppLocalizations.of(context)!.movedToTrash(_basename(file))),
+            content: Text(
+                AppLocalizations.of(context)!.movedToTrash(_basename(file))),
             action: SnackBarAction(
               label: AppLocalizations.of(context)!.undo.toUpperCase(),
               onPressed: () async {
@@ -426,7 +434,9 @@ class SharedFileContextMenu extends StatelessWidget {
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(AppLocalizations.of(context)!.errorWithMessage(e.toString()))),
+          SnackBar(
+              content: Text(AppLocalizations.of(context)!
+                  .errorWithMessage(e.toString()))),
         );
       }
     }
@@ -499,9 +509,9 @@ class SharedFolderContextMenu extends StatelessWidget {
           leading: Icon(remix.Remix.folder_open_line,
               color: isDarkMode ? Colors.white70 : Colors.black87),
           title: Text(
-              AppLocalizations.of(context)!.openFolder,
-              style: TextStyle(color: isDarkMode ? Colors.white : Colors.black87),
-            ),
+            AppLocalizations.of(context)!.openFolder,
+            style: TextStyle(color: isDarkMode ? Colors.white : Colors.black87),
+          ),
           onTap: () {
             Navigator.pop(context);
             if (onNavigate != null) {
@@ -577,17 +587,14 @@ class SharedFolderContextMenu extends StatelessWidget {
           ),
           onTap: () async {
             Navigator.pop(context);
-            await FileOperationsHandler.showRenameDialog(
-              context: context,
-              entity: folder,
-            );
+            await _renameEntity(context: context, entity: folder);
           },
         ),
 
         // Tag management option
         ListTile(
           leading: const Icon(remix.Remix.bookmark_line, color: Colors.green),
-            title: Text(
+          title: Text(
             AppLocalizations.of(context)!.manageTags,
             style: TextStyle(color: isDarkMode ? Colors.white : Colors.black87),
           ),
@@ -635,13 +642,16 @@ class SharedFolderContextMenu extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                _infoRow(AppLocalizations.of(context)!.fileName, _basename(folder)),
+                _infoRow(
+                    AppLocalizations.of(context)!.fileName, _basename(folder)),
                 const Divider(),
                 _infoRow(AppLocalizations.of(context)!.filePath, folder.path),
                 const Divider(),
-                _infoRow(AppLocalizations.of(context)!.fileModified, stat.modified.toString().split('.')[0]),
+                _infoRow(AppLocalizations.of(context)!.fileModified,
+                    stat.modified.toString().split('.')[0]),
                 const Divider(),
-                _infoRow(AppLocalizations.of(context)!.fileAccessed, stat.accessed.toString().split('.')[0]),
+                _infoRow(AppLocalizations.of(context)!.fileAccessed,
+                    stat.accessed.toString().split('.')[0]),
               ],
             ),
           ),
@@ -656,7 +666,9 @@ class SharedFolderContextMenu extends StatelessWidget {
     }).catchError((error) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(AppLocalizations.of(context)!.errorGettingFolderProperties(error.toString()))),
+        SnackBar(
+            content: Text(AppLocalizations.of(context)!
+                .errorGettingFolderProperties(error.toString()))),
       );
     });
   }
@@ -747,57 +759,69 @@ void _showFileContextMenuDesktop({
       if (isVideo)
         PopupMenuItem(
           value: 'play_video',
-          child: _menuRow(AppLocalizations.of(context)!.playVideo, remix.Remix.play_circle_line),
+          child: _menuRow(AppLocalizations.of(context)!.playVideo,
+              remix.Remix.play_circle_line),
         ),
       if (isImage)
         PopupMenuItem(
           value: 'view_image',
-          child: _menuRow(AppLocalizations.of(context)!.viewImage, remix.Remix.image_line),
+          child: _menuRow(
+              AppLocalizations.of(context)!.viewImage, remix.Remix.image_line),
         ),
       PopupMenuItem(
         value: 'open',
-        child: _menuRow(AppLocalizations.of(context)!.open, remix.Remix.file_3_line),
+        child: _menuRow(
+            AppLocalizations.of(context)!.open, remix.Remix.file_3_line),
       ),
       PopupMenuItem(
         value: 'open_with',
-        child: _menuRow(AppLocalizations.of(context)!.openWith, remix.Remix.external_link_line),
+        child: _menuRow(AppLocalizations.of(context)!.openWith,
+            remix.Remix.external_link_line),
       ),
       PopupMenuItem(
         value: 'choose_default_app',
-        child: _menuRow(AppLocalizations.of(context)!.chooseDefaultApp, remix.Remix.apps_line),
+        child: _menuRow(AppLocalizations.of(context)!.chooseDefaultApp,
+            remix.Remix.apps_line),
       ),
       const PopupMenuDivider(),
       PopupMenuItem(
         value: 'copy',
-        child: _menuRow(AppLocalizations.of(context)!.copy, remix.Remix.file_copy_line),
+        child: _menuRow(
+            AppLocalizations.of(context)!.copy, remix.Remix.file_copy_line),
       ),
       PopupMenuItem(
         value: 'cut',
-        child: _menuRow(AppLocalizations.of(context)!.cut, remix.Remix.scissors_cut_line),
+        child: _menuRow(
+            AppLocalizations.of(context)!.cut, remix.Remix.scissors_cut_line),
       ),
       PopupMenuItem(
         value: 'rename',
-        child: _menuRow(AppLocalizations.of(context)!.rename, remix.Remix.edit_line),
+        child: _menuRow(
+            AppLocalizations.of(context)!.rename, remix.Remix.edit_line),
       ),
       PopupMenuItem(
         value: 'tags',
-        child: _menuRow(AppLocalizations.of(context)!.manageTags, remix.Remix.bookmark_line),
+        child: _menuRow(AppLocalizations.of(context)!.manageTags,
+            remix.Remix.bookmark_line),
       ),
       const PopupMenuDivider(),
       PopupMenuItem(
         value: 'properties',
-        child: _menuRow(AppLocalizations.of(context)!.properties, remix.Remix.information_line),
+        child: _menuRow(AppLocalizations.of(context)!.properties,
+            remix.Remix.information_line),
       ),
       PopupMenuItem(
         value: 'delete',
-        child: _menuRow(AppLocalizations.of(context)!.moveToTrash, remix.Remix.delete_bin_2_line,
-        color: Colors.red),
+        child: _menuRow(AppLocalizations.of(context)!.moveToTrash,
+            remix.Remix.delete_bin_2_line,
+            color: Colors.red),
       ),
       if (canShowShellMenu) ...[
         const PopupMenuDivider(),
         PopupMenuItem(
           value: 'more_options',
-          child: _menuRow(AppLocalizations.of(context)!.moreOptions, remix.Remix.more_2_line),
+          child: _menuRow(AppLocalizations.of(context)!.moreOptions,
+              remix.Remix.more_2_line),
         ),
       ],
     ],
@@ -805,12 +829,7 @@ void _showFileContextMenuDesktop({
     if (value == null) return;
     switch (value) {
       case 'play_video':
-        Navigator.of(context, rootNavigator: true).push(
-          MaterialPageRoute(
-            fullscreenDialog: true,
-            builder: (context) => VideoPlayerFullScreen(file: file),
-          ),
-        );
+        await _openVideoWithUserPreference(context, file);
         break;
       case 'view_image':
         Navigator.push(
@@ -823,10 +842,18 @@ void _showFileContextMenuDesktop({
         ExternalAppHelper.openFileWithApp(file.path, 'shell_open');
         break;
       case 'open_with':
-      case 'choose_default_app':
         showDialog(
           context: context,
           builder: (context) => OpenWithDialog(filePath: file.path),
+        );
+        break;
+      case 'choose_default_app':
+        showDialog(
+          context: context,
+          builder: (context) => OpenWithDialog(
+            filePath: file.path,
+            saveAsDefaultOnSelect: value == 'choose_default_app',
+          ),
         );
         break;
       case 'copy':
@@ -836,7 +863,7 @@ void _showFileContextMenuDesktop({
         FileOperationsHandler.cutToClipboard(context: context, entity: file);
         break;
       case 'rename':
-        await FileOperationsHandler.showRenameDialog(context: context, entity: file);
+        await _renameEntity(context: context, entity: file);
         break;
       case 'tags':
         if (showAddTagToFileDialog != null) {
@@ -906,6 +933,88 @@ String _fileBaseName(File file) {
   return file.path.split(Platform.pathSeparator).last;
 }
 
+Future<void> _renameEntity({
+  required BuildContext context,
+  required FileSystemEntity entity,
+}) async {
+  if (_tryStartInlineRename(context, entity)) {
+    return;
+  }
+
+  await FileOperationsHandler.showRenameDialog(
+    context: context,
+    entity: entity,
+  );
+}
+
+bool _tryStartInlineRename(BuildContext context, FileSystemEntity entity) {
+  final bool isDesktop =
+      Platform.isWindows || Platform.isLinux || Platform.isMacOS;
+  if (!isDesktop) {
+    return false;
+  }
+
+  final ViewMode? viewMode = () {
+    try {
+      return context.read<FolderListBloc>().state.viewMode;
+    } catch (_) {
+      return null;
+    }
+  }();
+  final bool supportsInlineRename = viewMode == ViewMode.grid ||
+      viewMode == ViewMode.gridPreview ||
+      viewMode == ViewMode.details;
+  if (!supportsInlineRename) {
+    return false;
+  }
+
+  final inlineRenameController = InlineRenameScope.maybeOf(context);
+  if (inlineRenameController == null) {
+    return false;
+  }
+
+  inlineRenameController.startRename(entity.path);
+  return true;
+}
+
+Future<void> _openVideoWithUserPreference(
+  BuildContext context,
+  File file,
+) async {
+  final NavigatorState navigator = Navigator.of(context, rootNavigator: true);
+
+  final openedPreferred =
+      await ExternalAppHelper.openWithPreferredVideoApp(file.path);
+  if (openedPreferred) return;
+
+  bool useSystemDefault = false;
+  try {
+    useSystemDefault =
+        await locator<UserPreferences>().getUseSystemDefaultForVideo();
+  } catch (_) {
+    useSystemDefault = false;
+  }
+
+  if (useSystemDefault) {
+    final opened = await ExternalAppHelper.openWithSystemDefault(file.path);
+    if (!opened && navigator.mounted) {
+      await showDialog<void>(
+        context: navigator.context,
+        builder: (_) => OpenWithDialog(filePath: file.path),
+      );
+    }
+    return;
+  }
+
+  if (!navigator.mounted) return;
+  await navigator.push(
+    MaterialPageRoute(
+      fullscreenDialog: true,
+      builder: (_) => VideoPlayerFullScreen(file: file),
+    ),
+  );
+}
+
 /// Helper function to show folder context menu
 void showFolderContextMenu({
   required BuildContext context,
@@ -917,8 +1026,8 @@ void showFolderContextMenu({
 }) {
   // Always use popup menu at the provided position, or center of screen if not provided
   final screenSize = MediaQuery.of(context).size;
-  final effectivePosition = globalPosition ?? 
-      Offset(screenSize.width / 2, screenSize.height / 2);
+  final effectivePosition =
+      globalPosition ?? Offset(screenSize.width / 2, screenSize.height / 2);
 
   _showFolderContextMenuDesktop(
     context: context,
@@ -1013,10 +1122,7 @@ void _showFolderContextMenuDesktop({
         );
         break;
       case 'rename':
-        await FileOperationsHandler.showRenameDialog(
-          context: context,
-          entity: folder,
-        );
+        await _renameEntity(context: context, entity: folder);
         break;
       case 'tags':
         if (showAddTagToFileDialog != null) {
@@ -1045,7 +1151,7 @@ void _showFolderPropertiesDialog(BuildContext context, Directory folder) {
   final thumbnailService = FolderThumbnailService();
   Future<String?> customThumbnailFuture =
       thumbnailService.getCustomThumbnailPath(folder.path);
-  
+
   folder.stat().then((stat) {
     if (!context.mounted) return;
 
@@ -1063,9 +1169,11 @@ void _showFolderPropertiesDialog(BuildContext context, Directory folder) {
                 const Divider(),
                 _propertyRow(l10n.filePath, folder.path),
                 const Divider(),
-                _propertyRow(l10n.fileModified, stat.modified.toString().split('.')[0]),
+                _propertyRow(
+                    l10n.fileModified, stat.modified.toString().split('.')[0]),
                 const Divider(),
-                _propertyRow(l10n.fileAccessed, stat.accessed.toString().split('.')[0]),
+                _propertyRow(
+                    l10n.fileAccessed, stat.accessed.toString().split('.')[0]),
                 const Divider(),
                 Text(
                   l10n.folderThumbnail,
@@ -1084,8 +1192,9 @@ void _showFolderPropertiesDialog(BuildContext context, Directory folder) {
                       return Text(l10n.thumbnailAuto);
                     }
 
-                    final displayValue =
-                        value.startsWith('video::') ? value.substring(7) : value;
+                    final displayValue = value.startsWith('video::')
+                        ? value.substring(7)
+                        : value;
                     return Text(displayValue);
                   },
                 ),
@@ -1104,12 +1213,14 @@ void _showFolderPropertiesDialog(BuildContext context, Directory folder) {
                         }
 
                         final isImage = FileTypeUtils.isImageFile(selectedPath);
-                        final isVideo = VideoThumbnailHelper
-                            .isSupportedVideoFormat(selectedPath);
+                        final isVideo =
+                            VideoThumbnailHelper.isSupportedVideoFormat(
+                                selectedPath);
                         if (!isImage && !isVideo) {
                           if (context.mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text(l10n.invalidThumbnailFile)),
+                              SnackBar(
+                                  content: Text(l10n.invalidThumbnailFile)),
                             );
                           }
                           return;
@@ -1122,8 +1233,9 @@ void _showFolderPropertiesDialog(BuildContext context, Directory folder) {
                         );
                         if (dialogContext.mounted) {
                           setState(() {
-                            customThumbnailFuture =
-                                Future.value(isVideo ? 'video::$selectedPath' : selectedPath);
+                            customThumbnailFuture = Future.value(isVideo
+                                ? 'video::$selectedPath'
+                                : selectedPath);
                           });
                         }
                         if (context.mounted) {
@@ -1137,7 +1249,8 @@ void _showFolderPropertiesDialog(BuildContext context, Directory folder) {
                     const SizedBox(width: 8),
                     TextButton(
                       onPressed: () async {
-                        await thumbnailService.clearCustomThumbnail(folder.path);
+                        await thumbnailService
+                            .clearCustomThumbnail(folder.path);
                         if (dialogContext.mounted) {
                           setState(() {
                             customThumbnailFuture = Future.value(null);
@@ -1145,7 +1258,8 @@ void _showFolderPropertiesDialog(BuildContext context, Directory folder) {
                         }
                         if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text(l10n.folderThumbnailCleared)),
+                            SnackBar(
+                                content: Text(l10n.folderThumbnailCleared)),
                           );
                         }
                       },
@@ -1168,7 +1282,8 @@ void _showFolderPropertiesDialog(BuildContext context, Directory folder) {
   }).catchError((error) {
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(l10n.errorGettingFolderProperties(error.toString()))),
+      SnackBar(
+          content: Text(l10n.errorGettingFolderProperties(error.toString()))),
     );
   });
 }
@@ -1219,7 +1334,7 @@ void showMultipleFilesContextMenu({
     Rect.fromPoints(globalPosition, globalPosition),
     Offset.zero & overlay.size,
   );
-  
+
   final l10n = AppLocalizations.of(context)!;
   final count = selectedPaths.length;
 
@@ -1229,7 +1344,8 @@ void showMultipleFilesContextMenu({
     items: [
       PopupMenuItem(
         enabled: false,
-        child: Text(l10n.itemsSelected(count), style: const TextStyle(fontWeight: FontWeight.bold)),
+        child: Text(l10n.itemsSelected(count),
+            style: const TextStyle(fontWeight: FontWeight.bold)),
       ),
       const PopupMenuDivider(),
       PopupMenuItem(
@@ -1246,7 +1362,8 @@ void showMultipleFilesContextMenu({
       ),
       PopupMenuItem(
         value: 'delete',
-        child: _menuRow(l10n.deleteTitle, remix.Remix.delete_bin_2_line, color: Colors.red),
+        child: _menuRow(l10n.deleteTitle, remix.Remix.delete_bin_2_line,
+            color: Colors.red),
       ),
       if (canShowShellMenu) ...[
         const PopupMenuDivider(),
@@ -1266,33 +1383,33 @@ void showMultipleFilesContextMenu({
       );
       return;
     }
-    
+
     final bloc = context.read<FolderListBloc>();
     List<FileSystemEntity> entitiesList = [];
     List<String> files = [];
     List<String> folders = [];
-    
+
     for (var path in selectedPaths) {
-       if (FileSystemEntity.isDirectorySync(path)) {
-         entitiesList.add(Directory(path));
-         folders.add(path);
-       } else {
-         entitiesList.add(File(path));
-         files.add(path);
-       }
+      if (FileSystemEntity.isDirectorySync(path)) {
+        entitiesList.add(Directory(path));
+        folders.add(path);
+      } else {
+        entitiesList.add(File(path));
+        files.add(path);
+      }
     }
 
     switch (value) {
       case 'copy':
         bloc.add(CopyFiles(entitiesList));
         ScaffoldMessenger.of(context).showSnackBar(
-           SnackBar(content: Text(l10n.copiedToClipboard('$count items'))),
+          SnackBar(content: Text(l10n.copiedToClipboard('$count items'))),
         );
         break;
       case 'cut':
         bloc.add(CutFiles(entitiesList));
-         ScaffoldMessenger.of(context).showSnackBar(
-           SnackBar(content: Text(l10n.cutToClipboard('$count items'))),
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l10n.cutToClipboard('$count items'))),
         );
         break;
       case 'tags':

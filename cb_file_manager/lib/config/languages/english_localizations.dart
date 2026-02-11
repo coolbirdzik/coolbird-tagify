@@ -201,13 +201,16 @@ class EnglishLocalizations implements AppLocalizations {
   String get columnTypeDescription => 'Display file type (PDF, Word, etc.)';
 
   @override
-  String get columnDateModifiedDescription => 'Display date and time file was modified';
+  String get columnDateModifiedDescription =>
+      'Display date and time file was modified';
 
   @override
-  String get columnDateCreatedDescription => 'Display date and time file was created';
+  String get columnDateCreatedDescription =>
+      'Display date and time file was created';
 
   @override
-  String get columnAttributesDescription => 'Display file attributes (read/write permissions)';
+  String get columnAttributesDescription =>
+      'Display file attributes (read/write permissions)';
 
   // Column visibility dialog
   @override
@@ -220,8 +223,7 @@ class EnglishLocalizations implements AppLocalizations {
   String gridSizeLabel(int count) => 'Item size level: $count';
 
   @override
-  String get gridSizeInstructions =>
-      'Move the slider to adjust the item size';
+  String get gridSizeInstructions => 'Move the slider to adjust the item size';
 
   // More options menu
   @override
@@ -389,8 +391,7 @@ class EnglishLocalizations implements AppLocalizations {
   @override
   String chooseTagColor(String tag) => 'Choose Color for "$tag"';
   @override
-  String tagColorUpdated(String tag) =>
-      'Color for tag "$tag" has been updated';
+  String tagColorUpdated(String tag) => 'Color for tag "$tag" has been updated';
   @override
   String get allTags => 'All Tags';
   @override
@@ -619,7 +620,28 @@ class EnglishLocalizations implements AppLocalizations {
   @override
   String get videoThumbnails => 'Video Thumbnails';
   @override
+  String get thumbnailMode => 'Generation Mode';
+  @override
+  String get thumbnailModeFast => 'Fast';
+  @override
+  String get thumbnailModeCustom => 'Custom';
+  @override
+  String get thumbnailModeFastDescription =>
+      'Uses OS built-in methods. Faster but position is fixed.';
+  @override
+  String get thumbnailModeCustomDescription =>
+      'Uses FFmpeg to extract at specific position. Slower but more control.';
+  @override
   String get thumbnailPosition => 'Thumbnail position:';
+  @override
+  String get generatingAtPosition => 'Extracting at';
+  @override
+  String get generatingFast => 'Fast mode';
+  @override
+  String get maxConcurrency => 'Max parallel tasks';
+  @override
+  String get maxConcurrencyDescription =>
+      'Higher values generate thumbnails faster but use more CPU';
   @override
   String get percentOfVideo => 'percent of video';
   @override
@@ -736,7 +758,8 @@ class EnglishLocalizations implements AppLocalizations {
   @override
   String get errorLoadingImage => 'Error loading image';
   @override
-  String errorLoadingImageWithError(String error) => 'Error loading image: $error';
+  String errorLoadingImageWithError(String error) =>
+      'Error loading image: $error';
   @override
   String get failedToDisplayImage => 'Failed to display image';
   @override
@@ -1370,8 +1393,7 @@ class EnglishLocalizations implements AppLocalizations {
   @override
   String get trashIsEmpty => 'Trash is empty';
   @override
-  String get itemsDeletedWillAppearHere =>
-      'Items you delete will appear here';
+  String get itemsDeletedWillAppearHere => 'Items you delete will appear here';
   @override
   String originalLocation(String path) => 'Original location: $path';
   @override
@@ -1633,8 +1655,7 @@ class EnglishLocalizations implements AppLocalizations {
   @override
   String get unknownConnection => 'Unknown Connection';
   @override
-  String serviceTypeConnection(String serviceName) =>
-      '$serviceName Connection';
+  String serviceTypeConnection(String serviceName) => '$serviceName Connection';
   @override
   String get noServicesAvailable => 'No services available';
   @override

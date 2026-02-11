@@ -580,11 +580,19 @@ class FileOperations {
   // Getter to check if clipboard operation is cut
   bool get isClipboardItemCut => _isCut;
 
+  // Alias for isClipboardItemCut for more intuitive API
+  bool get isCutOperation => _isCut;
+
+  // Getter for the number of items in clipboard
+  int get clipboardItemCount => _clipboardItems.length;
+
   // Getter for the clipboard items
-  List<FileSystemEntity> get clipboardItems => List.unmodifiable(_clipboardItems);
+  List<FileSystemEntity> get clipboardItems =>
+      List.unmodifiable(_clipboardItems);
 
   // Getter for single clipboard item (for backward compatibility)
-  FileSystemEntity? get clipboardItem => _clipboardItems.isNotEmpty ? _clipboardItems.first : null;
+  FileSystemEntity? get clipboardItem =>
+      _clipboardItems.isNotEmpty ? _clipboardItems.first : null;
 
   // Set clipboard with file or folder
   void copyToClipboard(FileSystemEntity entity) {
@@ -616,11 +624,67 @@ class FileOperations {
     _isCut = false;
   }
 
-  // Paste files or folders from clipboard to destination
-  Future<List<FileSystemEntity>> pasteFromClipboard(String destinationPath) async {
+  // Paste files or folders from clipboard to destination using Windows native operations when available
+  Future<List<FileSystemEntity>> pasteFromClipboard(
+    String destinationPath, {
+    void Function(int completed, int total)? onProgress,
+  }) async {
     if (_clipboardItems.isEmpty) return [];
 
+    // On Windows, try to use native file operations with progress dialog
+    if (Platform.isWindows) {
+      final nativeResult = await _pasteWithWindowsNative(destinationPath);
+      if (nativeResult != null) {
+        // Native operation was used (success or cancelled)
+        if (_isCut && nativeResult) {
+          clearClipboard();
+        }
+        // Return empty list since Windows handles the operation
+        // The files are already copied/moved
+        return [];
+      }
+      // Fall through to Dart implementation if native failed
+    }
+
+    return _pasteWithDart(destinationPath, onProgress: onProgress);
+  }
+
+  // Try Windows native paste operation
+  Future<bool?> _pasteWithWindowsNative(String destinationPath) async {
+    try {
+      // Dynamic import to avoid issues on non-Windows platforms
+      final sources = _clipboardItems.map((e) => e.path).toList();
+
+      // Use process to call the native method channel
+      final channel = const MethodChannel('cb_file_manager/file_operations');
+      final methodName = _isCut ? 'moveItems' : 'copyItems';
+
+      final result = await channel.invokeMethod<bool>(
+        methodName,
+        {
+          'sources': sources,
+          'destination': destinationPath,
+        },
+      );
+
+      return result;
+    } catch (e) {
+      debugPrint('Windows native file operation failed: $e');
+      return null; // null means fallback to Dart implementation
+    }
+  }
+
+  // Dart implementation of paste with progress callback
+  // Dart implementation of paste with progress callback
+  Future<List<FileSystemEntity>> _pasteWithDart(
+    String destinationPath, {
+    void Function(int completed, int total)? onProgress,
+  }) async {
     List<FileSystemEntity> results = [];
+    final total = _clipboardItems.length;
+    int completed = 0;
+
+    onProgress?.call(0, total);
 
     try {
       for (final item in _clipboardItems) {
@@ -660,9 +724,26 @@ class FileOperations {
         if (item is File) {
           final file = item;
 
+          // Check if source file exists
+          if (!await file.exists()) {
+            debugPrint('Source file does not exist: ${file.path}');
+            completed++;
+            onProgress?.call(completed, total);
+            continue;
+          }
+
           if (_isCut) {
-            // Move operation
-            result = await file.rename(uniquePath);
+            // Move operation - try rename first (faster for same drive)
+            try {
+              result = await file.rename(uniquePath);
+            } catch (e) {
+              // rename() fails across different drives/filesystems
+              // Fall back to copy + delete
+              debugPrint('rename() failed, falling back to copy+delete: $e');
+              result =
+                  await File(uniquePath).writeAsBytes(await file.readAsBytes());
+              await file.delete();
+            }
           } else {
             // Copy operation
             result =
@@ -670,6 +751,15 @@ class FileOperations {
           }
         } else if (item is Directory) {
           final directory = item;
+
+          // Check if source directory exists
+          if (!await directory.exists()) {
+            debugPrint('Source directory does not exist: ${directory.path}');
+            completed++;
+            onProgress?.call(completed, total);
+            continue;
+          }
+
           final newDirectory = Directory(uniquePath);
 
           // Create the new directory
@@ -689,7 +779,8 @@ class FileOperations {
               }
 
               // Copy the file
-              await File(newEntityPath).writeAsBytes(await entity.readAsBytes());
+              await File(newEntityPath)
+                  .writeAsBytes(await entity.readAsBytes());
             } else if (entity is Directory) {
               // Create directory
               await Directory(newEntityPath).create(recursive: true);
@@ -700,13 +791,21 @@ class FileOperations {
 
           // If cut operation, delete original directory
           if (_isCut) {
-            await directory.delete(recursive: true);
+            try {
+              await directory.delete(recursive: true);
+            } catch (e) {
+              debugPrint('Failed to delete original directory after move: $e');
+            }
           }
         }
 
         if (result != null) {
           results.add(result);
         }
+
+        // Update progress after each item
+        completed++;
+        onProgress?.call(completed, total);
       }
 
       // Clear clipboard if it was a cut operation
@@ -717,6 +816,7 @@ class FileOperations {
       return results;
     } catch (e) {
       debugPrint('Error during paste operation: $e');
+      onProgress?.call(total, total); // Complete progress on error
       return results; // Return whatever was successfully pasted
     }
   }

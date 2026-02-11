@@ -139,6 +139,8 @@ class _FolderItemState extends State<FolderItem> {
 
   @override
   Widget build(BuildContext context) {
+    final bool isBeingCut = ItemInteractionStyle.isBeingCut(widget.folder.path);
+
     return ValueListenableBuilder<bool>(
       valueListenable: _isHovering,
       builder: (context, isHovering, _) {
@@ -149,83 +151,99 @@ class _FolderItemState extends State<FolderItem> {
           isHovering: isHovering,
         );
 
-        return GestureDetector(
-          onSecondaryTapDown: (details) => _showFolderContextMenu(context, details.globalPosition),
-          child: MouseRegion(
-            onEnter: (_) => _isHovering.value = true,
-            onExit: (_) => _isHovering.value = false,
-            cursor: SystemMouseCursors.click,
-            child: Container(
-              margin: EdgeInsets.symmetric(
-                  horizontal: widget.isDesktopMode ? 8.0 : 0,
-                  vertical: widget.isDesktopMode ? 4.0 : 0),
-              decoration: BoxDecoration(
-                color: backgroundColor,
-                borderRadius: widget.isDesktopMode
-                    ? BorderRadius.circular(12)
-                    : BorderRadius.zero,
-              ),
-              child: Stack(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                        vertical: 12.0, horizontal: 16.0),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 48,
-                          height: 48,
-                          decoration: BoxDecoration(
-                            color: Colors.amber.withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Center(
-                            child: Icon(
-                              remix.Remix.folder_3_line,
-                              color: Colors.amber[600],
-                              size: 28,
+        return Opacity(
+          opacity: isBeingCut ? ItemInteractionStyle.cutOpacity : 1.0,
+          child: GestureDetector(
+            onSecondaryTapDown: (details) =>
+                _showFolderContextMenu(context, details.globalPosition),
+            child: MouseRegion(
+              onEnter: (_) => _isHovering.value = true,
+              onExit: (_) => _isHovering.value = false,
+              cursor: SystemMouseCursors.click,
+              child: Container(
+                margin: EdgeInsets.symmetric(
+                    horizontal: widget.isDesktopMode ? 8.0 : 0,
+                    vertical: widget.isDesktopMode ? 4.0 : 0),
+                decoration: BoxDecoration(
+                  color: backgroundColor,
+                  borderRadius: widget.isDesktopMode
+                      ? BorderRadius.circular(12)
+                      : BorderRadius.zero,
+                ),
+                child: Stack(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 12.0, horizontal: 16.0),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 48,
+                            height: 48,
+                            decoration: BoxDecoration(
+                              color: Colors.amber.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Center(
+                              child: Icon(
+                                remix.Remix.folder_3_line,
+                                color: Colors.amber[600],
+                                size: 28,
+                              ),
                             ),
                           ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                widget.folder.basename(),
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .titleMedium
-                                    ?.copyWith(
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              const SizedBox(height: 4),
-                              FutureBuilder<FileStat>(
-                                future: _folderStatFuture,
-                                builder: (context, snapshot) {
-                                  if (snapshot.hasData) {
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  widget.folder.basename(),
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleMedium
+                                      ?.copyWith(
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 4),
+                                FutureBuilder<FileStat>(
+                                  future: _folderStatFuture,
+                                  builder: (context, snapshot) {
+                                    if (snapshot.hasData) {
+                                      return Text(
+                                        snapshot.data!.modified
+                                            .toString()
+                                            .split('.')[0],
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .bodySmall
+                                            ?.copyWith(
+                                              color: Theme.of(context)
+                                                  .colorScheme
+                                                  .onSurface
+                                                  .withValues(alpha: 0.7),
+                                            ),
+                                      );
+                                    } else if (snapshot.hasError) {
+                                      // For network folders or stat errors
+                                      return Text(
+                                        '—',
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .bodySmall
+                                            ?.copyWith(
+                                              color: Theme.of(context)
+                                                  .colorScheme
+                                                  .onSurface
+                                                  .withValues(alpha: 0.5),
+                                            ),
+                                      );
+                                    }
                                     return Text(
-                                      snapshot.data!.modified
-                                          .toString()
-                                          .split('.')[0],
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .bodySmall
-                                          ?.copyWith(
-                                            color: Theme.of(context)
-                                                .colorScheme
-                                                .onSurface
-                                                .withValues(alpha: 0.7),
-                                          ),
-                                    );
-                                  } else if (snapshot.hasError) {
-                                    // For network folders or stat errors
-                                    return Text(
-                                      '—',
+                                      'Loading...',
                                       style: Theme.of(context)
                                           .textTheme
                                           .bodySmall
@@ -236,94 +254,82 @@ class _FolderItemState extends State<FolderItem> {
                                                 .withValues(alpha: 0.5),
                                           ),
                                     );
-                                  }
-                                  return Text(
-                                    'Loading...',
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .bodySmall
-                                        ?.copyWith(
-                                          color: Theme.of(context)
-                                              .colorScheme
-                                              .onSurface
-                                              .withValues(alpha: 0.5),
-                                        ),
-                                  );
-                                },
-                              ),
-                            ],
+                                  },
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                  // Interactive layer cho icon (select)
-                  Positioned(
-                    left: 0,
-                    top: 0,
-                    bottom: 0,
-                    width: 80, // Vùng icon + padding
-                    child: OptimizedInteractionLayer(
-                      onTap: () {
-                        // Click vào icon sẽ select item
-                        if (widget.toggleFolderSelection != null) {
-                          _handleFolderSelection();
-                        }
-                      },
-                      onLongPress: () {
-                        if (widget.toggleFolderSelection != null) {
-                          _handleFolderSelection();
-                        }
-                      },
-                    ),
-                  ),
-                  // Interactive layer cho tên (navigate)
-                  Positioned(
-                    left: 80,
-                    top: 0,
-                    right: 0,
-                    bottom: 0,
-                    child: OptimizedInteractionLayer(
-                      onTap: () {
-                        if (widget.isDesktopMode &&
-                            widget.toggleFolderSelection != null) {
-                          _handleFolderSelection();
-                          return;
-                        }
-
-                        if (widget.onTap != null) {
-                          widget.onTap!(widget.folder.path);
-                        }
-                      },
-                      onDoubleTap: widget.isDesktopMode
-                          ? () {
-                              if (widget.clearSelectionMode != null) {
-                                widget.clearSelectionMode!();
-                              }
-                              widget.onTap?.call(widget.folder.path);
-                            }
-                          : null,
-                    ),
-                  ),
-                  // Selection indicator
-                  if (widget.isSelected)
+                    // Interactive layer cho icon (select)
                     Positioned(
                       left: 0,
                       top: 0,
                       bottom: 0,
-                      width: 3,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.primary,
-                          borderRadius: widget.isDesktopMode
-                              ? const BorderRadius.horizontal(
-                                  left: Radius.circular(12),
-                                )
-                              : BorderRadius.zero,
-                        ),
+                      width: 80, // Vùng icon + padding
+                      child: OptimizedInteractionLayer(
+                        onTap: () {
+                          // Click vào icon sẽ select item
+                          if (widget.toggleFolderSelection != null) {
+                            _handleFolderSelection();
+                          }
+                        },
+                        onLongPress: () {
+                          if (widget.toggleFolderSelection != null) {
+                            _handleFolderSelection();
+                          }
+                        },
                       ),
                     ),
-                ],
+                    // Interactive layer cho tên (navigate)
+                    Positioned(
+                      left: 80,
+                      top: 0,
+                      right: 0,
+                      bottom: 0,
+                      child: OptimizedInteractionLayer(
+                        onTap: () {
+                          if (widget.isDesktopMode &&
+                              widget.toggleFolderSelection != null) {
+                            _handleFolderSelection();
+                            return;
+                          }
+
+                          if (widget.onTap != null) {
+                            widget.onTap!(widget.folder.path);
+                          }
+                        },
+                        onDoubleTap: widget.isDesktopMode
+                            ? () {
+                                if (widget.clearSelectionMode != null) {
+                                  widget.clearSelectionMode!();
+                                }
+                                widget.onTap?.call(widget.folder.path);
+                              }
+                            : null,
+                      ),
+                    ),
+                    // Selection indicator
+                    if (widget.isSelected)
+                      Positioned(
+                        left: 0,
+                        top: 0,
+                        bottom: 0,
+                        width: 3,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.primary,
+                            borderRadius: widget.isDesktopMode
+                                ? const BorderRadius.horizontal(
+                                    left: Radius.circular(12),
+                                  )
+                                : BorderRadius.zero,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ),
           ),

@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:cb_file_manager/helpers/tags/tag_manager.dart';
+import 'package:cb_file_manager/services/directory_watcher_service.dart';
 import 'package:cb_file_manager/helpers/files/trash_manager.dart'; // Add import for TrashManager
 import 'package:cb_file_manager/helpers/core/filesystem_utils.dart'; // Import for FileOperations
 import 'package:path/path.dart' as pathlib;
@@ -13,6 +14,7 @@ import 'package:cb_file_manager/models/database/database_manager.dart';
 import 'package:cb_file_manager/ui/utils/file_type_utils.dart';
 import 'package:cb_file_manager/services/permission_state_service.dart';
 import 'package:cb_file_manager/helpers/core/filesystem_sorter.dart';
+import 'package:cb_file_manager/utils/app_logger.dart';
 import 'package:cb_file_manager/core/service_locator.dart';
 import 'package:cb_file_manager/ui/controllers/operation_progress_controller.dart';
 
@@ -80,9 +82,13 @@ AppLocalizations _l10nNoContext() {
 class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
   StreamSubscription? _tagChangeSubscription;
   StreamSubscription? _globalTagChangeSubscription;
+  StreamSubscription<String>? _directoryWatcherSubscription;
+  final DirectoryWatcherService _directoryWatcher =
+      DirectoryWatcherService.instance;
 
   static const int _searchResultsPageSize = 200;
   List<FileSystemEntity> _pendingSearchResults = [];
+  int _activeSortRequestId = 0;
 
   FolderListBloc() : super(FolderListState("/")) {
     on<FolderListInit>(_onFolderListInit);
@@ -101,6 +107,18 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
         TagManager.instance.onGlobalTagChanged.listen((filePath) {
       // You may want to add a custom event here if needed.
     });
+
+    // Register for directory file system changes (auto-refresh on file changes)
+    _directoryWatcherSubscription = _directoryWatcher.onDirectoryRefresh.listen(
+      (path) {
+        // Only refresh if the changed path matches our current directory
+        if (path == state.currentPath.path) {
+          debugPrint(
+              '📁 [FolderListBloc] Directory changed, auto-refreshing: $path');
+          add(FolderListRefresh(path));
+        }
+      },
+    );
 
     // Note: AddTagToFile, RemoveTagFromFile, SearchByTag, SearchByTagGlobally,
     // SearchByFileName, and SearchMediaFiles events are now handled directly
@@ -197,6 +215,8 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
     // Cancel all subscriptions when bloc is closed
     _tagChangeSubscription?.cancel();
     _globalTagChangeSubscription?.cancel();
+    _directoryWatcherSubscription?.cancel();
+    _directoryWatcher.stopWatching();
     return super.close();
   }
 
@@ -212,7 +232,13 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
     FolderListLoad event,
     Emitter<FolderListState> emit,
   ) async {
+    // ===== PERFORMANCE LOGGING START =====
+    final totalStopwatch = Stopwatch()..start();
+    final stepStopwatch = Stopwatch();
+
     debugPrint('🟢 [FolderListBloc] Loading path: ${event.path}');
+    AppLogger.perf(
+        '⏱️ [PERF] Starting folder load at ${DateTime.now()} — path=${event.path}');
     emit(state.copyWith(isLoading: true, currentPath: Directory(event.path)));
 
     // Special case for empty path on Windows - this is used for the drive listing view
@@ -220,6 +246,8 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
       emit(
         state.copyWith(isLoading: false, folders: [], files: [], error: null),
       );
+      AppLogger.perf(
+          '⏱️ [PERF] Empty path - total time: ${totalStopwatch.elapsedMilliseconds}ms');
       return;
     }
 
@@ -231,13 +259,24 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
 
     try {
       final directory = Directory(event.path);
-      if (await directory.exists()) {
+
+      stepStopwatch.start();
+      final exists = await directory.exists();
+      AppLogger.perf(
+          '⏱️ [PERF] directory.exists() took: ${stepStopwatch.elapsedMilliseconds}ms');
+      stepStopwatch.reset();
+
+      if (exists) {
         try {
           // Debug: Check permission status
+          stepStopwatch.start();
           final permissionService = PermissionStateService.instance;
           final hasPermission =
               await permissionService.hasStorageOrPhotosPermission();
-          debugPrint('DEBUG: Storage permission status: $hasPermission');
+          AppLogger.perf(
+              '⏱️ [PERF] Permission check took: ${stepStopwatch.elapsedMilliseconds}ms');
+          stepStopwatch.reset();
+          AppLogger.debug('DEBUG: Storage permission status: $hasPermission');
 
           // If no permission, try to request it
           if (!hasPermission) {
@@ -257,6 +296,7 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
           }
 
           // Get folder-specific sort option BEFORE loading (for consistent sorting during batching)
+          stepStopwatch.start();
           final folderSortManager = FolderSortManager();
           SortOption? folderSortOption;
           try {
@@ -267,6 +307,9 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
                 'Error getting folder sort option for ${event.path}: $e');
             folderSortOption = null;
           }
+          AppLogger.perf(
+              '⏱️ [PERF] getFolderSortOption took: ${stepStopwatch.elapsedMilliseconds}ms');
+          stepStopwatch.reset();
           final SortOption sortOptionToUse =
               folderSortOption ?? state.sortOption;
 
@@ -282,6 +325,7 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
           int retryCount = 0;
           const maxRetries = 3;
 
+          stepStopwatch.start();
           while (retryCount < maxRetries) {
             try {
               // Use stream-based loading for progressive display
@@ -346,6 +390,9 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
               }
             }
           }
+          AppLogger.perf(
+              '⏱️ [PERF] directory.list() stream took: ${stepStopwatch.elapsedMilliseconds}ms for ${folders.length + files.length} items');
+          stepStopwatch.reset();
 
           debugPrint(
               'DEBUG: Directory listing found ${folders.length + files.length} items');
@@ -354,6 +401,7 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
               'DEBUG: Final result - ${folders.length} folders, ${files.length} files');
 
           // Final sort for the complete list
+          stepStopwatch.start();
           final sortedFolders = await FileSystemSorter.sortDirectories(
             folders.cast<Directory>(),
             sortOptionToUse,
@@ -362,6 +410,9 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
             files.cast<File>(),
             sortOptionToUse,
           );
+          AppLogger.perf(
+              '⏱️ [PERF] Final sorting took: ${stepStopwatch.elapsedMilliseconds}ms');
+          stepStopwatch.reset();
 
           // Update folders and files with sorted versions
           folders.clear();
@@ -391,20 +442,20 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
             sortOption: folderSortOption ?? state.sortOption,
           ));
 
+          AppLogger.perf(
+              '⏱️ [PERF] 📍 UI READY - Total time to show files: ${totalStopwatch.elapsedMilliseconds}ms');
           debugPrint(
               'DEBUG: Emitting state with ${files.length} files (tags loading async)');
 
           // Load tags asynchronously AFTER showing content
           // This prevents blocking the UI while tags are being loaded
-          Map<String, List<String>> fileTags = {};
-          for (var file in files) {
-            if (file is File) {
-              final tags = await TagManager.getTags(file.path);
-              if (tags.isNotEmpty) {
-                fileTags[file.path] = tags;
-              }
-            }
-          }
+          // OPTIMIZATION: Use batch loading instead of loading one by one
+          stepStopwatch.start();
+          final filePaths = files.whereType<File>().map((f) => f.path).toList();
+          final fileTags = await TagManager.getTagsForFiles(filePaths);
+          AppLogger.perf(
+              '⏱️ [PERF] Batch tag loading for ${files.length} files took: ${stepStopwatch.elapsedMilliseconds}ms');
+          stepStopwatch.reset();
 
           // Update state with loaded tags if any were found
           if (fileTags.isNotEmpty) {
@@ -418,6 +469,13 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
 
           // Prefetch thumbnails for the entire directory in background
           _prefetchThumbnailsForDirectory(files, event.path);
+
+          // Start watching the directory for file system changes (auto-refresh)
+          await _directoryWatcher.startWatching(event.path);
+
+          AppLogger.perf(
+              '⏱️ [PERF] ✅ COMPLETE - Total folder load time: ${totalStopwatch.elapsedMilliseconds}ms');
+          // ===== PERFORMANCE LOGGING END =====
         } catch (e) {
           debugPrint('🔴 [FolderListBloc] ERROR loading directory: $e');
           debugPrint('🔴 [FolderListBloc] Error type: ${e.runtimeType}');
@@ -606,14 +664,10 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
         );
 
         // Load tags asynchronously AFTER showing content
+        // OPTIMIZATION: Use batch loading instead of one-by-one
         TagManager.clearCache();
-        Map<String, List<String>> fileTags = {};
-        for (final file in sortedFiles) {
-          final tags = await TagManager.getTags(file.path);
-          if (tags.isNotEmpty) {
-            fileTags[file.path] = tags;
-          }
-        }
+        final filePaths = sortedFiles.map((f) => f.path).toList();
+        final fileTags = await TagManager.getTagsForFiles(filePaths);
 
         // Update state with loaded tags
         if (fileTags.isNotEmpty) {
@@ -669,17 +723,15 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
     }
   }
 
-  // Prefetch all video thumbnails in a directory without blocking UI
+  // Proactively generate thumbnails for ALL video files in the directory
+  // Priority is based on list position (top items get higher priority)
   void _prefetchThumbnailsForDirectory(
       List<FileSystemEntity> files, String dirPath) {
     try {
       // Skip special/system paths
       if (dirPath.startsWith('#')) return;
 
-      // On mobile, avoid prefetch to keep things lazy and smooth
-      if (Platform.isAndroid || Platform.isIOS) return;
-
-      // Collect video file paths
+      // Collect video file paths in sorted order
       final videoPaths = files
           .whereType<File>()
           .map((f) => f.path)
@@ -691,12 +743,12 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
       // Inform helper about current directory to cancel other queues
       VideoThumbnailHelper.setCurrentDirectory(dirPath);
 
-      // Queue preload with priority batching; do not await
+      // Generate thumbnails for ALL files with priority based on position
+      // Top items get highest priority, decreasing as we go down
       unawaited(
-        VideoThumbnailHelper.optimizedBatchPreload(
+        VideoThumbnailHelper.proactiveGenerateAll(
           videoPaths,
-          maxConcurrent: 2,
-          visibleCount: 30,
+          directoryPath: dirPath,
         ),
       );
     } catch (e) {
@@ -794,9 +846,14 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
     SetSortOption event,
     Emitter<FolderListState> emit,
   ) async {
+    final int sortRequestId = ++_activeSortRequestId;
+    bool isStaleSort() => isClosed || sortRequestId != _activeSortRequestId;
+
     emit(state.copyWith(isLoading: true));
 
     try {
+      final String targetPath = state.currentPath.path;
+
       // Get file stats for sorting
       Map<String, FileStat> fileStatsCache = {};
 
@@ -822,6 +879,8 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
         cacheFileStats(sortedFiles),
         cacheFileStats(sortedFilteredFiles),
       ]);
+      if (isStaleSort()) return;
+
       // Save the sort option to the current folder (with defensive error handling)
       final folderSortManager = FolderSortManager();
       debugPrint(
@@ -851,6 +910,7 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
         savedOption = null; // Continue without saved option if error occurs
       }
       debugPrint('Retrieved sort option after save: ${savedOption?.name}');
+      if (isStaleSort()) return;
 
       // Define the sorting function based on the selected sort option
       int Function(FileSystemEntity, FileSystemEntity) compareFunction;
@@ -1001,11 +1061,34 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
       sortedFolders.sort(compareFunction);
       sortedFiles.sort(compareFunction);
       sortedFilteredFiles.sort(compareFunction);
+      if (isStaleSort()) return;
+
+      // Rebase to latest state if folder load finished while sort was running.
+      final bool hasNewerContent =
+          state.currentPath.path == targetPath &&
+              (state.folders.isNotEmpty || state.files.isNotEmpty) &&
+              sortedFolders.isEmpty &&
+              sortedFiles.isEmpty;
+      if (hasNewerContent) {
+        sortedFolders = List<FileSystemEntity>.from(state.folders);
+        sortedFiles = List<FileSystemEntity>.from(state.files);
+        sortedFilteredFiles = List<FileSystemEntity>.from(state.filteredFiles);
+        await Future.wait([
+          cacheFileStats(sortedFolders),
+          cacheFileStats(sortedFiles),
+          cacheFileStats(sortedFilteredFiles),
+        ]);
+        if (isStaleSort()) return;
+        sortedFolders.sort(compareFunction);
+        sortedFiles.sort(compareFunction);
+        sortedFilteredFiles.sort(compareFunction);
+      }
 
       // Always re-read search results at the end to avoid overwriting newer data.
       List<FileSystemEntity> sortedSearchResults =
           List.from(state.searchResults);
       await cacheFileStats(sortedSearchResults);
+      if (isStaleSort()) return;
 
       final sortedSearchFolders = sortedSearchResults
           .whereType<Directory>()
@@ -1023,6 +1106,7 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
         ...sortedSearchOthers,
         ...sortedSearchFiles,
       ];
+      if (isStaleSort()) return;
 
       // Emit the new state with sorted lists and the updated sort option
       emit(
@@ -1325,6 +1409,7 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
       emit(
         state.copyWith(
           error: null, // Clear any previous errors
+          clipboardRevision: state.clipboardRevision + 1, // Clear cut effect
         ),
       );
     } catch (e) {
@@ -1339,6 +1424,8 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
       emit(
         state.copyWith(
           error: null, // Clear any previous errors
+          clipboardRevision:
+              state.clipboardRevision + 1, // Trigger rebuild for cut effect
         ),
       );
     } catch (e) {
@@ -1349,7 +1436,10 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
   void _onCopyFiles(CopyFiles event, Emitter<FolderListState> emit) {
     try {
       FileOperations().copyFilesToClipboard(event.entities);
-      emit(state.copyWith(error: null));
+      emit(state.copyWith(
+        error: null,
+        clipboardRevision: state.clipboardRevision + 1, // Clear cut effect
+      ));
     } catch (e) {
       emit(state.copyWith(error: 'Error copying files: ${e.toString()}'));
     }
@@ -1358,7 +1448,11 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
   void _onCutFiles(CutFiles event, Emitter<FolderListState> emit) {
     try {
       FileOperations().cutFilesToClipboard(event.entities);
-      emit(state.copyWith(error: null));
+      emit(state.copyWith(
+        error: null,
+        clipboardRevision:
+            state.clipboardRevision + 1, // Trigger rebuild for cut effect
+      ));
     } catch (e) {
       emit(state.copyWith(error: 'Error cutting files: ${e.toString()}'));
     }
@@ -1372,13 +1466,50 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
 
     emit(state.copyWith(isLoading: true));
 
+    // Get the progress controller
+    final progressController = locator<OperationProgressController>();
+
+    // Determine operation type for display
+    final isCutOperation = FileOperations().isCutOperation;
+    final operationType = isCutOperation ? 'Moving' : 'Copying';
+    final itemCount = FileOperations().clipboardItemCount;
+
+    // Start progress tracking (for non-Windows or when native fails)
+    final progressId = progressController.begin(
+      title: '$operationType $itemCount item${itemCount > 1 ? 's' : ''}...',
+      total: itemCount,
+    );
+
     try {
       // Use the FileOperations singleton to paste the file
-      await FileOperations().pasteFromClipboard(event.destinationPath);
+      await FileOperations().pasteFromClipboard(
+        event.destinationPath,
+        onProgress: (completed, total) {
+          // Update progress
+          progressController.update(
+            progressId,
+            completed: completed,
+            detail: '$operationType file $completed of $total',
+          );
+        },
+      );
+
+      // Mark operation as successful
+      progressController.succeed(
+        progressId,
+        detail:
+            '${isCutOperation ? 'Moved' : 'Copied'} $itemCount item${itemCount > 1 ? 's' : ''}',
+      );
+
+      // Increment clipboard revision to clear cut effect after paste
+      emit(state.copyWith(
+        clipboardRevision: state.clipboardRevision + 1,
+      ));
 
       // Refresh the current directory to show the new file/folder
       add(FolderListLoad(state.currentPath.path));
     } catch (e) {
+      progressController.fail(progressId, detail: 'Error: ${e.toString()}');
       emit(
         state.copyWith(
           isLoading: false,
@@ -1392,21 +1523,118 @@ class FolderListBloc extends Bloc<FolderListEvent, FolderListState> {
     RenameFileOrFolder event,
     Emitter<FolderListState> emit,
   ) async {
-    emit(state.copyWith(isLoading: true));
+    // OPTIMIZATION: Use optimistic update instead of full folder reload
+    // This prevents full grid/list re-render when renaming a single item
+
+    final oldPath = event.entity.path;
+    final newPath = pathlib.join(pathlib.dirname(oldPath), event.newName);
+    final isFile = event.entity is File;
+
+    // Temporarily stop directory watcher to avoid triggering refresh
+    // when rename causes file system events
+    await _directoryWatcher.stopWatching();
 
     try {
-      // Use the FileOperations singleton to rename the file or folder
+      // Perform the actual rename operation
       await FileOperations().rename(event.entity, event.newName);
 
-      // Refresh the current directory to show the renamed file/folder
-      add(FolderListLoad(state.currentPath.path));
+      // OPTIMISTIC UPDATE: Update only the affected item in state
+      final List<FileSystemEntity> updatedFiles = List.from(state.files);
+      final List<FileSystemEntity> updatedFolders = List.from(state.folders);
+      final List<FileSystemEntity> updatedSearchResults =
+          List.from(state.searchResults);
+      final List<FileSystemEntity> updatedFilteredFiles =
+          List.from(state.filteredFiles);
+
+      if (isFile) {
+        // Update in files list
+        final index = updatedFiles.indexWhere((f) => f.path == oldPath);
+        if (index >= 0) {
+          updatedFiles[index] = File(newPath);
+        }
+
+        // Update in search results if present
+        final searchIndex =
+            updatedSearchResults.indexWhere((f) => f.path == oldPath);
+        if (searchIndex >= 0) {
+          updatedSearchResults[searchIndex] = File(newPath);
+        }
+
+        // Update in filtered files if present
+        final filteredIndex =
+            updatedFilteredFiles.indexWhere((f) => f.path == oldPath);
+        if (filteredIndex >= 0) {
+          updatedFilteredFiles[filteredIndex] = File(newPath);
+        }
+      } else {
+        // Update in folders list
+        final index = updatedFolders.indexWhere((f) => f.path == oldPath);
+        if (index >= 0) {
+          updatedFolders[index] = Directory(newPath);
+        }
+
+        // Update in search results if present
+        final searchIndex =
+            updatedSearchResults.indexWhere((f) => f.path == oldPath);
+        if (searchIndex >= 0) {
+          updatedSearchResults[searchIndex] = Directory(newPath);
+        }
+      }
+
+      // Update tags map if the file had tags
+      final Map<String, List<String>> updatedFileTags =
+          Map.from(state.fileTags);
+      if (updatedFileTags.containsKey(oldPath)) {
+        final tags = updatedFileTags.remove(oldPath);
+        if (tags != null) {
+          updatedFileTags[newPath] = tags;
+        }
+      }
+
+      // Update file stats cache
+      final Map<String, FileStat> updatedFileStatsCache =
+          Map.from(state.fileStatsCache);
+      if (updatedFileStatsCache.containsKey(oldPath)) {
+        final stats = updatedFileStatsCache.remove(oldPath);
+        if (stats != null) {
+          updatedFileStatsCache[newPath] = stats;
+        }
+      }
+
+      // Re-sort the updated lists to maintain proper order
+      final sortedFiles = await FileSystemSorter.sortFiles(
+        updatedFiles.cast<File>(),
+        state.sortOption,
+      );
+      final sortedFolders = await FileSystemSorter.sortDirectories(
+        updatedFolders.cast<Directory>(),
+        state.sortOption,
+      );
+
+      // Emit the updated state WITHOUT triggering a full reload
+      emit(
+        state.copyWith(
+          files: sortedFiles,
+          folders: sortedFolders,
+          searchResults: updatedSearchResults,
+          filteredFiles: updatedFilteredFiles,
+          fileTags: updatedFileTags,
+          fileStatsCache: updatedFileStatsCache,
+          error: null,
+        ),
+      );
+
+      // Restart directory watcher after rename is complete
+      await _directoryWatcher.startWatching(state.currentPath.path);
     } catch (e) {
       emit(
         state.copyWith(
-          isLoading: false,
           error: 'Error renaming file/folder: ${e.toString()}',
         ),
       );
+
+      // Make sure to restart watcher even if rename fails
+      await _directoryWatcher.startWatching(state.currentPath.path);
     }
   }
 

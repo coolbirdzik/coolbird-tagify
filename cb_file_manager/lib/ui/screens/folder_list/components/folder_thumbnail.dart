@@ -36,6 +36,7 @@ class _FolderThumbnailState extends State<FolderThumbnail> {
   Timer? _videoThumbnailDelay;
   StreamSubscription<String>? _thumbnailChangedSubscription;
   StreamSubscription<String>? _videoThumbnailReadySubscription;
+  StreamSubscription<void>? _cacheChangedSubscription;
 
   // Cache for this specific widget instance
   static final Map<String, String> _folderThumbnailPathCache = {};
@@ -51,6 +52,26 @@ class _FolderThumbnailState extends State<FolderThumbnail> {
         _loadThumbnail();
       }
     });
+
+    _cacheChangedSubscription = VideoThumbnailHelper.onCacheChanged.listen((_) {
+      if (_disposed) return;
+      _folderThumbnailPathCache.remove(widget.folder.path);
+      if (mounted) {
+        setState(() {
+          _cachedVideoThumbnailPath = null;
+          if (_videoPath != null) {
+            _isVideoThumbnailLoading = true;
+          }
+        });
+
+        if (_videoPath != null) {
+          _scheduleVideoThumbnailGeneration(_videoPath!);
+        } else {
+          _loadThumbnail();
+        }
+      }
+    });
+
     _loadFromCacheOrFetch();
     _videoThumbnailReadySubscription =
         VideoThumbnailHelper.onThumbnailReady.listen((readyVideoPath) async {
@@ -88,6 +109,7 @@ class _FolderThumbnailState extends State<FolderThumbnail> {
     _disposed = true;
     _thumbnailChangedSubscription?.cancel();
     _videoThumbnailReadySubscription?.cancel();
+    _cacheChangedSubscription?.cancel();
     _videoThumbnailDelay?.cancel();
     super.dispose();
   }
@@ -95,7 +117,9 @@ class _FolderThumbnailState extends State<FolderThumbnail> {
   void _loadFromCacheOrFetch() {
     final cached = _folderThumbnailPathCache[widget.folder.path];
     if (cached != null && _isCachedPathValid(cached)) {
-      unawaited(_applyFolderThumbnailPath(cached));
+      // Apply immediately without awaiting for faster display
+      _isLoading = false;
+      _applyFolderThumbnailPath(cached);
       return;
     }
     if (cached != null) {
@@ -167,10 +191,13 @@ class _FolderThumbnailState extends State<FolderThumbnail> {
   Future<void> _loadThumbnail() async {
     if (_disposed) return;
 
-    setState(() {
-      _isLoading = true;
-      _loadFailed = false;
-    });
+    // Only show loading if we don't already have a thumbnail
+    if (_thumbnailPath == null) {
+      setState(() {
+        _isLoading = true;
+        _loadFailed = false;
+      });
+    }
 
     try {
       final path =
@@ -305,6 +332,15 @@ class _FolderThumbnailState extends State<FolderThumbnail> {
                   height: double.infinity,
                   fit: BoxFit.cover,
                   filterQuality: FilterQuality.medium,
+                  errorBuilder: (context, error, stackTrace) {
+                    debugPrint('Error loading folder video thumbnail: $error');
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted && _cachedVideoThumbnailPath == cachedPath) {
+                        _reloadThumbnailAfterInvalidCache();
+                      }
+                    });
+                    return _buildFolderIcon();
+                  },
                 )
               else if (_isVideoThumbnailLoading)
                 ShimmerBox(
@@ -342,17 +378,19 @@ class _FolderThumbnailState extends State<FolderThumbnail> {
         }
 
         final bool isMobile = Platform.isAndroid || Platform.isIOS;
-        
+
         return Container(
           width: double.infinity,
           height: double.infinity,
           margin: const EdgeInsets.all(1),
           decoration: BoxDecoration(
             // Only show border on desktop
-            border: isMobile ? null : Border.all(
-              color: Colors.amber[600]!,
-              width: 1.5,
-            ),
+            border: isMobile
+                ? null
+                : Border.all(
+                    color: Colors.amber[600]!,
+                    width: 1.5,
+                  ),
           ),
           child: ThumbnailLoader(
             filePath: thumbnailPath,
@@ -418,7 +456,8 @@ class _FolderThumbnailState extends State<FolderThumbnail> {
     _videoThumbnailRequested = true;
 
     _videoThumbnailDelay?.cancel();
-    _videoThumbnailDelay = Timer(const Duration(milliseconds: 40), () {
+    // Reduced delay for faster thumbnail generation
+    _videoThumbnailDelay = Timer(const Duration(milliseconds: 5), () {
       if (_disposed) return;
       _startVideoThumbnailGeneration(videoPath);
     });

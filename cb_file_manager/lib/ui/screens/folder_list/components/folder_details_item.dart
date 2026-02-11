@@ -124,6 +124,7 @@ class _FolderDetailsItemState extends State<FolderDetailsItem> {
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
+    final bool isBeingCut = ItemInteractionStyle.isBeingCut(widget.folder.path);
 
     // Calculate colors based on selection state
     final Color itemBackgroundColor = ItemInteractionStyle.backgroundColor(
@@ -141,141 +142,144 @@ class _FolderDetailsItemState extends State<FolderDetailsItem> {
             color: itemBackgroundColor,
           );
 
-    return GestureDetector(
-      onSecondaryTapDown: (details) =>
-          _showFolderContextMenu(context, details.globalPosition),
-      child: MouseRegion(
-        onEnter: (_) => setState(() => _isHovering = true),
-        onExit: (_) => setState(() => _isHovering = false),
-        cursor: SystemMouseCursors.click,
-        child: Stack(
-          children: [
-            Container(
-              decoration: boxDecoration,
-              child: Row(
-                children: [
-                  // Name column (always visible)
-                  Expanded(
-                    flex: 3,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12.0, vertical: 10.0),
-                      child: Row(
-                        children: [
-                          const Icon(remix.Remix.folder_3_line,
-                              color: Colors.amber),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: _buildNameWidget(context),
+    return Opacity(
+      opacity: isBeingCut ? ItemInteractionStyle.cutOpacity : 1.0,
+      child: GestureDetector(
+        onSecondaryTapDown: (details) =>
+            _showFolderContextMenu(context, details.globalPosition),
+        child: MouseRegion(
+          onEnter: (_) => setState(() => _isHovering = true),
+          onExit: (_) => setState(() => _isHovering = false),
+          cursor: SystemMouseCursors.click,
+          child: Stack(
+            children: [
+              Container(
+                decoration: boxDecoration,
+                child: Row(
+                  children: [
+                    // Name column (always visible)
+                    Expanded(
+                      flex: 3,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12.0, vertical: 10.0),
+                        child: Row(
+                          children: [
+                            const Icon(remix.Remix.folder_3_line,
+                                color: Colors.amber),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _buildNameWidget(context),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    // Type column
+                    if (widget.columnVisibility.type)
+                      Expanded(
+                        flex: 2,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12.0, vertical: 10.0),
+                          child: const Text(
+                            'Thư mục',
+                            overflow: TextOverflow.ellipsis,
                           ),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                  // Type column
-                  if (widget.columnVisibility.type)
-                    Expanded(
-                      flex: 2,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12.0, vertical: 10.0),
-                        child: const Text(
-                          'Thư mục',
-                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                    ),
 
-                  // Size column
-                  if (widget.columnVisibility.size)
-                    Expanded(
-                      flex: 1,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12.0, vertical: 10.0),
-                        child: const Text(
-                          '', // Folders don't typically show size in explorer
-                          overflow: TextOverflow.ellipsis,
+                    // Size column
+                    if (widget.columnVisibility.size)
+                      Expanded(
+                        flex: 1,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12.0, vertical: 10.0),
+                          child: const Text(
+                            '', // Folders don't typically show size in explorer
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       ),
-                    ),
 
-                  // Date modified column
-                  if (widget.columnVisibility.dateModified)
-                    Expanded(
-                      flex: 2,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12.0, vertical: 10.0),
-                        child: Text(
-                          _fileStat != null
-                              ? _fileStat!.modified.toString().split('.')[0]
-                              : 'Loading...',
-                          overflow: TextOverflow.ellipsis,
+                    // Date modified column
+                    if (widget.columnVisibility.dateModified)
+                      Expanded(
+                        flex: 2,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12.0, vertical: 10.0),
+                          child: Text(
+                            _fileStat != null
+                                ? _fileStat!.modified.toString().split('.')[0]
+                                : 'Loading...',
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       ),
-                    ),
 
-                  // Date created column
-                  if (widget.columnVisibility.dateCreated)
-                    Expanded(
-                      flex: 2,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12.0, vertical: 10.0),
-                        child: Text(
-                          _fileStat != null
-                              ? _fileStat!.changed.toString().split('.')[0]
-                              : 'Loading...',
-                          overflow: TextOverflow.ellipsis,
+                    // Date created column
+                    if (widget.columnVisibility.dateCreated)
+                      Expanded(
+                        flex: 2,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12.0, vertical: 10.0),
+                          child: Text(
+                            _fileStat != null
+                                ? _fileStat!.changed.toString().split('.')[0]
+                                : 'Loading...',
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       ),
-                    ),
 
-                  // Attributes column
-                  if (widget.columnVisibility.attributes)
-                    Expanded(
-                      flex: 1,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12.0, vertical: 10.0),
-                        child: Text(
-                          _getAttributes(_fileStat),
-                          overflow: TextOverflow.ellipsis,
+                    // Attributes column
+                    if (widget.columnVisibility.attributes)
+                      Expanded(
+                        flex: 1,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12.0, vertical: 10.0),
+                          child: Text(
+                            _getAttributes(_fileStat),
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
-            ),
-            // Replace with optimized interaction layer
-            Positioned.fill(
-              child: OptimizedInteractionLayer(
-                onTap: () {
-                  if (widget.isDesktopMode &&
-                      widget.toggleFolderSelection != null) {
-                    _handleFolderSelection();
-                  } else if (widget.onTap != null) {
-                    widget.onTap!(widget.folder.path);
-                  }
-                },
-                onDoubleTap: () {
-                  if (widget.clearSelectionMode != null) {
-                    widget.clearSelectionMode!();
-                  }
-                  if (widget.onTap != null) {
-                    widget.onTap!(widget.folder.path);
-                  }
-                },
-                onLongPress: () {
-                  if (widget.toggleFolderSelection != null) {
-                    _handleFolderSelection();
-                  }
-                },
+              // Replace with optimized interaction layer
+              Positioned.fill(
+                child: OptimizedInteractionLayer(
+                  onTap: () {
+                    if (widget.isDesktopMode &&
+                        widget.toggleFolderSelection != null) {
+                      _handleFolderSelection();
+                    } else if (widget.onTap != null) {
+                      widget.onTap!(widget.folder.path);
+                    }
+                  },
+                  onDoubleTap: () {
+                    if (widget.clearSelectionMode != null) {
+                      widget.clearSelectionMode!();
+                    }
+                    if (widget.onTap != null) {
+                      widget.onTap!(widget.folder.path);
+                    }
+                  },
+                  onLongPress: () {
+                    if (widget.toggleFolderSelection != null) {
+                      _handleFolderSelection();
+                    }
+                  },
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

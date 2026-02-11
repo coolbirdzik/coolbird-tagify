@@ -33,6 +33,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // Video thumbnail percentage value
   late int _videoThumbnailPercentage;
 
+  // Thumbnail generation mode ('fast' or 'custom')
+  late String _thumbnailMode;
+
+  // Max concurrent thumbnail generation tasks
+  late int _maxConcurrency;
+
   // Show file tags setting
   late bool _showFileTags;
 
@@ -67,8 +73,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       await _preferences.init();
       final theme = await _preferences.getThemePreference();
       final percentage = await _preferences.getVideoThumbnailPercentage();
+      final thumbnailMode = await _preferences.getThumbnailMode();
+      final maxConcurrency = await _preferences.getMaxThumbnailConcurrency();
       final showFileTags = await _preferences.getShowFileTags();
-      final useSystemDefaultForVideo = await _preferences.getUseSystemDefaultForVideo();
+      final useSystemDefaultForVideo =
+          await _preferences.getUseSystemDefaultForVideo();
       _preferences.isUsingObjectBox();
 
       if (mounted) {
@@ -76,6 +85,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _themePreference = theme;
           _currentLanguageCode = _languageController.currentLocale.languageCode;
           _videoThumbnailPercentage = percentage;
+          _thumbnailMode = thumbnailMode;
+          _maxConcurrency = maxConcurrency;
           _showFileTags = showFileTags;
           _useSystemDefaultForVideo = useSystemDefaultForVideo;
           _isLoading = false;
@@ -113,7 +124,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           duration: const Duration(seconds: 1),
           behavior: SnackBarBehavior.floating,
           width: 200,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         ),
       );
     }
@@ -131,14 +143,50 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ScaffoldMessenger.of(context).clearSnackBars();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('${AppLocalizations.of(context)!.thumbnailPositionUpdated}$percentage%'),
+          content: Text(
+              '${AppLocalizations.of(context)!.thumbnailPositionUpdated}$percentage%'),
           duration: const Duration(seconds: 1),
           behavior: SnackBarBehavior.floating,
           width: 320,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         ),
       );
     }
+  }
+
+  Future<void> _updateThumbnailMode(String mode) async {
+    await _preferences.setThumbnailMode(mode);
+    setState(() {
+      _thumbnailMode = mode;
+    });
+
+    await VideoThumbnailHelper.refreshThumbnailMode();
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).clearSnackBars();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(mode == 'fast'
+              ? AppLocalizations.of(context)!.thumbnailModeFast
+              : AppLocalizations.of(context)!.thumbnailModeCustom),
+          duration: const Duration(seconds: 1),
+          behavior: SnackBarBehavior.floating,
+          width: 200,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+      );
+    }
+  }
+
+  Future<void> _updateMaxConcurrency(int concurrency) async {
+    await _preferences.setMaxThumbnailConcurrency(concurrency);
+    setState(() {
+      _maxConcurrency = concurrency;
+    });
+
+    await VideoThumbnailHelper.refreshMaxConcurrency();
   }
 
   Future<void> _updateShowFileTags(bool showTags) async {
@@ -157,7 +205,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           duration: const Duration(seconds: 1),
           behavior: SnackBarBehavior.floating,
           width: 200,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         ),
       );
     }
@@ -176,7 +225,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           duration: const Duration(seconds: 1),
           behavior: SnackBarBehavior.floating,
           width: 280,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         ),
       );
     }
@@ -253,10 +303,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       setState(() {
         _cacheRootPath = root.path;
 
-        _networkThumbnailBytes =
-            (networkStats['totalSize'] as int?) ?? 0;
-        _networkThumbnailFiles =
-            (networkStats['fileCount'] as int?) ?? 0;
+        _networkThumbnailBytes = (networkStats['totalSize'] as int?) ?? 0;
+        _networkThumbnailFiles = (networkStats['fileCount'] as int?) ?? 0;
 
         _videoThumbnailBytes = videoStats.totalBytes;
         _videoThumbnailFiles = videoStats.fileCount;
@@ -283,7 +331,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
       int totalBytes = 0;
       int fileCount = 0;
-      await for (final entity in dir.list(recursive: true, followLinks: false)) {
+      await for (final entity
+          in dir.list(recursive: true, followLinks: false)) {
         if (entity is File) {
           try {
             totalBytes += await entity.length();
@@ -367,13 +416,114 @@ class _SettingsScreenState extends State<SettingsScreen> {
       children: [
         _buildCompactSettingTile(
           title: AppLocalizations.of(context)!.useSystemDefaultForVideo,
-          subtitle: AppLocalizations.of(context)!.useSystemDefaultForVideoDescription,
+          subtitle:
+              AppLocalizations.of(context)!.useSystemDefaultForVideoDescription,
           icon: remix.Remix.external_link_line,
           trailing: Switch(
             value: _useSystemDefaultForVideo,
             onChanged: _updateUseSystemDefaultForVideo,
           ),
         ),
+        // Thumbnail Mode Selection
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                AppLocalizations.of(context)!.thumbnailMode,
+                style: const TextStyle(fontWeight: FontWeight.w500),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildModeCard(
+                      title: AppLocalizations.of(context)!.thumbnailModeFast,
+                      description: AppLocalizations.of(context)!
+                          .thumbnailModeFastDescription,
+                      icon: remix.Remix.flashlight_line,
+                      isSelected: _thumbnailMode == 'fast',
+                      onTap: () => _updateThumbnailMode('fast'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _buildModeCard(
+                      title: AppLocalizations.of(context)!.thumbnailModeCustom,
+                      description: AppLocalizations.of(context)!
+                          .thumbnailModeCustomDescription,
+                      icon: remix.Remix.settings_3_line,
+                      isSelected: _thumbnailMode == 'custom',
+                      onTap: () => _updateThumbnailMode('custom'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        // Show position slider only in custom mode
+        if (_thumbnailMode == 'custom')
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      AppLocalizations.of(context)!.thumbnailPosition,
+                      style: const TextStyle(fontWeight: FontWeight.w500),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context)
+                            .primaryColor
+                            .withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        '$_videoThumbnailPercentage%',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).primaryColor,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Slider(
+                  value: _videoThumbnailPercentage.toDouble(),
+                  min: UserPreferences.minVideoThumbnailPercentage.toDouble(),
+                  max: UserPreferences.maxVideoThumbnailPercentage.toDouble(),
+                  divisions: 20,
+                  onChanged: (value) {
+                    setState(() {
+                      _videoThumbnailPercentage = value.round();
+                    });
+                  },
+                  onChangeEnd: (value) {
+                    _updateVideoThumbnailPercentage(value.round());
+                  },
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  AppLocalizations.of(context)!.thumbnailDescription,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey[600],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        // Max concurrency slider
         Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -383,18 +533,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    AppLocalizations.of(context)!.thumbnailPosition,
+                    AppLocalizations.of(context)!.maxConcurrency,
                     style: const TextStyle(fontWeight: FontWeight.w500),
                   ),
                   Container(
                     padding:
                         const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                     decoration: BoxDecoration(
-                      color: Theme.of(context).primaryColor.withValues(alpha: 0.1),
+                      color:
+                          Theme.of(context).primaryColor.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
-                      '$_videoThumbnailPercentage%',
+                      '$_maxConcurrency',
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         color: Theme.of(context).primaryColor,
@@ -406,22 +557,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               const SizedBox(height: 12),
               Slider(
-                value: _videoThumbnailPercentage.toDouble(),
-                min: UserPreferences.minVideoThumbnailPercentage.toDouble(),
-                max: UserPreferences.maxVideoThumbnailPercentage.toDouble(),
-                divisions: 20,
+                value: _maxConcurrency.toDouble(),
+                min: UserPreferences.minThumbnailConcurrency.toDouble(),
+                max: UserPreferences.maxThumbnailConcurrency.toDouble(),
+                divisions: 31,
                 onChanged: (value) {
                   setState(() {
-                    _videoThumbnailPercentage = value.round();
+                    _maxConcurrency = value.round();
                   });
                 },
                 onChangeEnd: (value) {
-                  _updateVideoThumbnailPercentage(value.round());
+                  _updateMaxConcurrency(value.round());
                 },
               ),
               const SizedBox(height: 8),
               Text(
-                AppLocalizations.of(context)!.thumbnailDescription,
+                AppLocalizations.of(context)!.maxConcurrencyDescription,
                 style: TextStyle(
                   fontSize: 12,
                   color: Colors.grey[600],
@@ -431,6 +582,74 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildModeCard({
+    required String title,
+    required String description,
+    required IconData icon,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    final theme = Theme.of(context);
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? theme.primaryColor.withValues(alpha: 0.1)
+              : theme.colorScheme.surfaceContainerHighest
+                  .withValues(alpha: 0.3),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? theme.primaryColor : Colors.transparent,
+            width: 2,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  icon,
+                  size: 20,
+                  color:
+                      isSelected ? theme.primaryColor : theme.iconTheme.color,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: isSelected ? theme.primaryColor : null,
+                    ),
+                  ),
+                ),
+                if (isSelected)
+                  Icon(
+                    remix.Remix.checkbox_circle_fill,
+                    size: 18,
+                    color: theme.primaryColor,
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              description,
+              style: TextStyle(
+                fontSize: 11,
+                color: Colors.grey[600],
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -444,8 +663,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           margin: const EdgeInsets.all(16),
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color:
-                Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+            color: Theme.of(context)
+                .colorScheme
+                .surfaceContainerHighest
+                .withValues(alpha: 0.3),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Row(
@@ -488,17 +709,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   const SizedBox(width: 8),
                   OutlinedButton.icon(
-                    onPressed: _isLoadingCacheInfo ? null : () async {
-                      await _loadCacheInfo();
-                      if (!mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content:
-                              Text(AppLocalizations.of(context)!.cacheInfoUpdated),
-                          behavior: SnackBarBehavior.floating,
-                        ),
-                      );
-                    },
+                    onPressed: _isLoadingCacheInfo
+                        ? null
+                        : () async {
+                            await _loadCacheInfo();
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(AppLocalizations.of(context)!
+                                    .cacheInfoUpdated),
+                                behavior: SnackBarBehavior.floating,
+                              ),
+                            );
+                          },
                     icon: const Icon(remix.Remix.refresh_line, size: 14),
                     label: Text(
                       AppLocalizations.of(context)!.refreshCacheInfo,
@@ -519,7 +742,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
-                  _cacheRootPath ?? AppLocalizations.of(context)!.notInitialized,
+                  _cacheRootPath ??
+                      AppLocalizations.of(context)!.notInitialized,
                   style: TextStyle(
                     fontSize: 12,
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -675,7 +899,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: Theme.of(context).primaryColor.withValues(alpha: 0.1),
+                    color:
+                        Theme.of(context).primaryColor.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Icon(
@@ -1070,8 +1295,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final sizeText = bytes == null
         ? AppLocalizations.of(context)!.notInitialized
         : FormatUtils.formatFileSize(bytes);
-    final fileCountText =
-        files == null ? '' : (files > 0 ? ' • $files' : '');
+    final fileCountText = files == null ? '' : (files > 0 ? ' • $files' : '');
 
     return Row(
       children: [

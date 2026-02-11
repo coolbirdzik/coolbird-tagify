@@ -6,14 +6,18 @@
 #include "fc_native_video_thumbnail_plugin.h"
 #include "app_icon_plugin.h"
 #include "shell_context_menu_plugin.h"
+#include "file_operations_plugin.h"
+#include "window_utils_plugin.h"
 
-FlutterWindow::FlutterWindow(const flutter::DartProject& project)
+FlutterWindow::FlutterWindow(const flutter::DartProject &project)
     : project_(project) {}
 
 FlutterWindow::~FlutterWindow() {}
 
-bool FlutterWindow::OnCreate() {
-  if (!Win32Window::OnCreate()) {
+bool FlutterWindow::OnCreate()
+{
+  if (!Win32Window::OnCreate())
+  {
     return false;
   }
 
@@ -24,17 +28,18 @@ bool FlutterWindow::OnCreate() {
   flutter_controller_ = std::make_unique<flutter::FlutterViewController>(
       frame.right - frame.left, frame.bottom - frame.top, project_);
   // Ensure that basic setup of the controller was successful.
-if (!flutter_controller_->engine() || !flutter_controller_->view()) {
+  if (!flutter_controller_->engine() || !flutter_controller_->view())
+  {
     return false;
   }
   RegisterPlugins(flutter_controller_->engine());
-  
+
   // Manually register FC Native Video Thumbnail plugin
   auto registrar = flutter_controller_->engine()->GetRegistrarForPlugin("FcNativeVideoThumbnailPlugin");
   fc_native_video_thumbnail::FcNativeVideoThumbnailPlugin::RegisterWithRegistrar(
       flutter::PluginRegistrarManager::GetInstance()
           ->GetRegistrar<flutter::PluginRegistrarWindows>(registrar));
-  
+
   // Manually register App Icon plugin
   auto icon_registrar = flutter_controller_->engine()->GetRegistrarForPlugin("AppIconPlugin");
   AppIconPlugin::RegisterWithRegistrar(
@@ -47,23 +52,33 @@ if (!flutter_controller_->engine() || !flutter_controller_->view()) {
   ShellContextMenuPlugin::RegisterWithRegistrar(
       flutter::PluginRegistrarManager::GetInstance()
           ->GetRegistrar<flutter::PluginRegistrarWindows>(shell_menu_registrar));
-  
+
+  // Manually register File Operations plugin
+  auto file_ops_registrar =
+      flutter_controller_->engine()->GetRegistrarForPlugin("FileOperationsPlugin");
+  file_operations_plugin::RegisterWithRegistrar(
+      flutter::PluginRegistrarManager::GetInstance()
+          ->GetRegistrar<flutter::PluginRegistrarWindows>(file_ops_registrar));
+
+  // Manually register Window Utils plugin (runner-side utility channel)
+  auto window_utils_registrar =
+      flutter_controller_->engine()->GetRegistrarForPlugin("WindowUtilsPlugin");
+  WindowUtilsPlugin::RegisterWithRegistrar(
+      flutter::PluginRegistrarManager::GetInstance()
+          ->GetRegistrar<flutter::PluginRegistrarWindows>(window_utils_registrar));
+
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
-  flutter_controller_->engine()->SetNextFrameCallback([&]() {
-    this->Show();
-  });
-
-  // Flutter can complete the first frame before the "show window" callback is
-  // registered. The following call ensures a frame is pending to ensure the
-  // window is shown. It is a no-op if the first frame hasn't completed yet.
-  flutter_controller_->ForceRedraw();
-
+  // Window visibility is managed by Dart via the window_manager package.
+  // This avoids startup flicker from multiple show/maximize transitions on
+  // Windows when window options (e.g. hidden title bar) are applied.
   return true;
 }
 
-void FlutterWindow::OnDestroy() {
-  if (flutter_controller_) {
+void FlutterWindow::OnDestroy()
+{
+  if (flutter_controller_)
+  {
     flutter_controller_ = nullptr;
   }
 
@@ -73,21 +88,25 @@ void FlutterWindow::OnDestroy() {
 LRESULT
 FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
                               WPARAM const wparam,
-                              LPARAM const lparam) noexcept {
+                              LPARAM const lparam) noexcept
+{
   // Give Flutter, including plugins, an opportunity to handle window messages.
-  if (flutter_controller_) {
+  if (flutter_controller_)
+  {
     std::optional<LRESULT> result =
         flutter_controller_->HandleTopLevelWindowProc(hwnd, message, wparam,
                                                       lparam);
-    if (result) {
+    if (result)
+    {
       return *result;
     }
   }
 
-  switch (message) {
-    case WM_FONTCHANGE:
-      flutter_controller_->engine()->ReloadSystemFonts();
-      break;
+  switch (message)
+  {
+  case WM_FONTCHANGE:
+    flutter_controller_->engine()->ReloadSystemFonts();
+    break;
   }
 
   return Win32Window::MessageHandler(hwnd, message, wparam, lparam);

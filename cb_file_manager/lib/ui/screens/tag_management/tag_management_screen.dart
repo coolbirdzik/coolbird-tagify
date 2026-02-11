@@ -577,6 +577,7 @@ class _TagManagementScreenState extends State<TagManagementScreen> {
                   : _buildFilesByTagList(),
       floatingActionButton: _selectedTag == null
           ? FloatingActionButton(
+              heroTag: null, // Disable hero animation to avoid conflicts
               onPressed: _showCreateTagDialog,
               backgroundColor: Theme.of(context).primaryColor,
               tooltip: AppLocalizations.of(context)!.newTagTooltip,

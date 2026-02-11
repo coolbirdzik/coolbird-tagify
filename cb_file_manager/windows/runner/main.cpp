@@ -82,26 +82,6 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   }
   window.SetQuitOnClose(true);
 
-  if (pip_mode)
-  {
-    // Show the window immediately in PiP mode (non-maximized).
-    // Background is forced black in Win32 to avoid white flash.
-    window.Show();
-  }
-  else
-  {
-    // Use ShowMaximized to properly maximize the window for the main app
-    window.ShowMaximized();
-  }
-
-  // Get the window handle
-  HWND hwnd = window.GetHandle();
-  if (hwnd != nullptr)
-  {
-    // Ensure the window is the topmost window
-    SetForegroundWindow(hwnd);
-  }
-
   ::MSG msg;
   while (::GetMessage(&msg, nullptr, 0, 0))
   {

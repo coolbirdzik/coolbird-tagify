@@ -1,6 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:cb_file_manager/helpers/core/filesystem_utils.dart';
 
 class ItemInteractionStyle {
+  /// Check if a file/folder is in the cut clipboard (should appear dimmed)
+  static bool isBeingCut(String path) {
+    final ops = FileOperations();
+    if (!ops.isCutOperation) return false;
+    return ops.clipboardItems.any((item) => item.path == path);
+  }
+
+  /// The opacity to apply when an item is being cut
+  static const double cutOpacity = 0.5;
+
   static Color backgroundColor({
     required ThemeData theme,
     required bool isDesktopMode,
@@ -38,4 +49,3 @@ class ItemInteractionStyle {
     return Colors.transparent;
   }
 }
-

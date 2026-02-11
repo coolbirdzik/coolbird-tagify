@@ -58,8 +58,13 @@ class UserPreferences {
   static const String _columnVisibilityKey = 'column_visibility';
   static const String _showFileTagsKey = 'show_file_tags';
   static const String _previewPaneVisibleKey = 'preview_pane_visible';
+  static const String _thumbnailModeKey = 'thumbnail_mode';
+  static const String _maxThumbnailConcurrencyKey = 'max_thumbnail_concurrency';
   static const String _previewPaneWidthKey = 'preview_pane_width';
-  static const String _useSystemDefaultForVideoKey = 'use_system_default_for_video';
+  static const String _useSystemDefaultForVideoKey =
+      'use_system_default_for_video';
+  static const String _preferredVideoPlayerAppKey =
+      'preferred_video_player_app';
   static const String _recentPathsKey = 'recent_paths';
 
   // Constants for grid zoom level
@@ -83,6 +88,16 @@ class UserPreferences {
       10; // 10% of video duration
   static const int minVideoThumbnailPercentage = 0; // Start of video
   static const int maxVideoThumbnailPercentage = 100; // End of video
+
+  // Constants for thumbnail generation mode
+  // 'fast' = use OS built-in methods (Windows shell, Android/iOS MediaStore)
+  // 'custom' = use FFmpeg with user-configurable timestamp
+  static const String defaultThumbnailMode = 'custom';
+
+  // Constants for thumbnail generation concurrency
+  static const int minThumbnailConcurrency = 1;
+  static const int maxThumbnailConcurrency = 32;
+  static const int defaultThumbnailConcurrency = 8;
 
   // Constants for recent paths
   static const int maxRecentPaths = 20;
@@ -212,8 +227,8 @@ class UserPreferences {
 
         // Preview pane settings
         final previewPaneVisible = await getPreviewPaneVisible();
-        await _databaseManager!.saveBoolPreference(
-            _previewPaneVisibleKey, previewPaneVisible);
+        await _databaseManager!
+            .saveBoolPreference(_previewPaneVisibleKey, previewPaneVisible);
         final previewPaneWidth = await getPreviewPaneWidth();
         await _databaseManager!
             .saveDoublePreference(_previewPaneWidthKey, previewPaneWidth);
@@ -384,7 +399,8 @@ class UserPreferences {
   Future<bool> setImageGalleryThumbnailSize(double size) async {
     // Ensure the size is within bounds
     double validSize = size.clamp(minThumbnailSize, maxThumbnailSize);
-    return await _savePreference<double>(_imageGalleryThumbnailSizeKey, validSize);
+    return await _savePreference<double>(
+        _imageGalleryThumbnailSizeKey, validSize);
   }
 
   /// Get video gallery thumbnail size (as grid count - higher means smaller thumbnails)
@@ -400,7 +416,8 @@ class UserPreferences {
   Future<bool> setVideoGalleryThumbnailSize(double size) async {
     // Ensure the size is within bounds
     double validSize = size.clamp(minThumbnailSize, maxThumbnailSize);
-    return await _savePreference<double>(_videoGalleryThumbnailSizeKey, validSize);
+    return await _savePreference<double>(
+        _videoGalleryThumbnailSizeKey, validSize);
   }
 
   /// Get the last accessed folder path with validation
@@ -654,7 +671,8 @@ class UserPreferences {
 
   /// Save theme preference and notify listeners
   Future<bool> setThemePreference(ThemePreference preference) async {
-    bool result = await _savePreference<int>(_themePreferenceKey, preference.index);
+    bool result =
+        await _savePreference<int>(_themePreferenceKey, preference.index);
 
     if (result) {
       // Notify listeners about the theme change
@@ -678,7 +696,8 @@ class UserPreferences {
     // Ensure the timestamp is within bounds
     final validTimestamp =
         seconds.clamp(minVideoThumbnailTimestamp, maxVideoThumbnailTimestamp);
-    return await _savePreference<int>(_videoThumbnailTimestampKey, validTimestamp);
+    return await _savePreference<int>(
+        _videoThumbnailTimestampKey, validTimestamp);
   }
 
   /// Get video thumbnail position preference (as percentage of video duration)
@@ -695,7 +714,44 @@ class UserPreferences {
     // Ensure the percentage is within bounds
     final validPercentage = percentage.clamp(
         minVideoThumbnailPercentage, maxVideoThumbnailPercentage);
-    return await _savePreference<int>(_videoThumbnailPercentageKey, validPercentage);
+    return await _savePreference<int>(
+        _videoThumbnailPercentageKey, validPercentage);
+  }
+
+  /// Get thumbnail generation mode preference
+  /// Returns 'fast' for OS built-in methods, 'custom' for FFmpeg with timestamp
+  Future<String> getThumbnailMode() async {
+    return await _getPreference<String>(
+          _thumbnailModeKey,
+          defaultValue: defaultThumbnailMode,
+        ) ??
+        defaultThumbnailMode;
+  }
+
+  /// Save thumbnail generation mode preference
+  /// mode: 'fast' for OS built-in, 'custom' for FFmpeg with user timestamp
+  Future<bool> setThumbnailMode(String mode) async {
+    // Validate mode value
+    final validMode =
+        (mode == 'fast' || mode == 'custom') ? mode : defaultThumbnailMode;
+    return await _savePreference<String>(_thumbnailModeKey, validMode);
+  }
+
+  /// Get max thumbnail generation concurrency
+  Future<int> getMaxThumbnailConcurrency() async {
+    return await _getPreference<int>(
+          _maxThumbnailConcurrencyKey,
+          defaultValue: defaultThumbnailConcurrency,
+        ) ??
+        defaultThumbnailConcurrency;
+  }
+
+  /// Save max thumbnail generation concurrency
+  Future<bool> setMaxThumbnailConcurrency(int concurrency) async {
+    final validConcurrency =
+        concurrency.clamp(minThumbnailConcurrency, maxThumbnailConcurrency);
+    return await _savePreference<int>(
+        _maxThumbnailConcurrencyKey, validConcurrency);
   }
 
   /// Search tip shown preference
@@ -1000,7 +1056,8 @@ class UserPreferences {
 
   /// Get column visibility settings for details view
   Future<ColumnVisibility> getColumnVisibility() async {
-    String? columnVisibilityJson = await _getPreference<String>(_columnVisibilityKey);
+    String? columnVisibilityJson =
+        await _getPreference<String>(_columnVisibilityKey);
 
     if (columnVisibilityJson == null) {
       return const ColumnVisibility(); // Use default
@@ -1046,6 +1103,31 @@ class UserPreferences {
 
   Future<bool> setUseSystemDefaultForVideo(bool value) async {
     return await _savePreference<bool>(_useSystemDefaultForVideoKey, value);
+  }
+
+  /// Preferred external app identifier for video playback.
+  /// Android: package name, Windows: executable path, null/empty: no override.
+  Future<String?> getPreferredVideoPlayerApp() async {
+    final value = await _getPreference<String>(_preferredVideoPlayerAppKey);
+    if (value == null) return null;
+    final normalized = value.trim();
+    if (normalized.isEmpty) return null;
+    return normalized;
+  }
+
+  Future<bool> setPreferredVideoPlayerApp(String appIdentifier) async {
+    final normalized = appIdentifier.trim();
+    if (normalized.isEmpty) {
+      return await _deletePreference(_preferredVideoPlayerAppKey);
+    }
+    return await _savePreference<String>(
+      _preferredVideoPlayerAppKey,
+      normalized,
+    );
+  }
+
+  Future<bool> clearPreferredVideoPlayerApp() async {
+    return await _deletePreference(_preferredVideoPlayerAppKey);
   }
 
   /// Get preview pane visibility

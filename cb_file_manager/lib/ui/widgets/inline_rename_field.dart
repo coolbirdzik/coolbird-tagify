@@ -80,27 +80,48 @@ class _InlineRenameFieldState extends State<InlineRenameField> {
         }
         return KeyEventResult.ignored;
       },
-      child: Container(
-        decoration: BoxDecoration(
-          border: Border.all(
-            color: theme.colorScheme.primary,
-            width: 1,
+      // Use TextField instead of EditableText for full text selection support
+      // TextField automatically handles drag-to-select gestures
+      child: TextField(
+        controller: widget.controller.textController!,
+        focusNode: widget.controller.focusNode!,
+        style: widget.textStyle ??
+            theme.textTheme.bodySmall!.copyWith(fontSize: 12),
+        textAlign: widget.textAlign,
+        maxLines: widget.maxLines,
+        autofocus: true,
+        decoration: InputDecoration(
+          border: OutlineInputBorder(
+            borderSide: BorderSide(
+              color: theme.colorScheme.primary,
+              width: 2,
+            ),
+            borderRadius: BorderRadius.circular(2),
           ),
-          borderRadius: BorderRadius.circular(2),
+          enabledBorder: OutlineInputBorder(
+            borderSide: BorderSide(
+              color: theme.colorScheme.primary,
+              width: 2,
+            ),
+            borderRadius: BorderRadius.circular(2),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderSide: BorderSide(
+              color: theme.colorScheme.primary,
+              width: 2,
+            ),
+            borderRadius: BorderRadius.circular(2),
+          ),
+          filled: true,
+          fillColor: theme.colorScheme.surface,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 4,
+            vertical: 2,
+          ),
+          isDense: true,
         ),
-        child: EditableText(
-          controller: widget.controller.textController!,
-          focusNode: widget.controller.focusNode!,
-          style: widget.textStyle ??
-              theme.textTheme.bodySmall!.copyWith(fontSize: 12),
-          textAlign: widget.textAlign,
-          maxLines: widget.maxLines,
-          cursorColor: theme.colorScheme.primary,
-          backgroundCursorColor:
-              theme.colorScheme.onSurface.withValues(alpha: 0.1),
-          selectionColor: theme.colorScheme.primary.withValues(alpha: 0.3),
-          onSubmitted: (_) => widget.onCommit(),
-        ),
+        cursorColor: theme.colorScheme.primary,
+        onSubmitted: (_) => widget.onCommit(),
       ),
     );
   }

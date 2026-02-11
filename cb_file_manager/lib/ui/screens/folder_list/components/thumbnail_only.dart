@@ -4,6 +4,7 @@ import 'package:cb_file_manager/ui/widgets/thumbnail_loader.dart';
 import 'package:cb_file_manager/helpers/files/file_type_registry.dart';
 import 'package:cb_file_manager/helpers/files/file_icon_helper.dart';
 import 'package:path/path.dart' as p;
+import 'package:remixicon/remixicon.dart' as remix;
 
 /// A widget that displays only the thumbnail of a file item.
 /// This widget is designed to be constant and not rebuild on selection changes.
@@ -25,8 +26,9 @@ class _ThumbnailOnlyState extends State<ThumbnailOnly>
     with AutomaticKeepAliveClientMixin {
   late Future<Widget> _iconFuture;
 
+  // PERFORMANCE: Changed to false to reduce memory pressure during scrolling
   @override
-  bool get wantKeepAlive => true;
+  bool get wantKeepAlive => false; // Changed from true
 
   @override
   void initState() {
@@ -110,14 +112,26 @@ class _ThumbnailOnlyState extends State<ThumbnailOnly>
         width: double.infinity,
         height: double.infinity,
         fit: BoxFit.cover,
-        isPriority: true,
+        isPriority:
+            false, // Don't mark all as priority to reduce concurrent loads
         borderRadius: BorderRadius.circular(8.0),
         showLoadingIndicator: true,
-        fallbackBuilder: () => Icon(
-          genericIcon,
-          size: widget.iconSize,
-          color: Theme.of(context).colorScheme.secondary,
-        ),
+        fallbackBuilder: () => isVideo
+            ? Container(
+                color: Colors.black26,
+                child: const Center(
+                  child: Icon(
+                    remix.Remix.play_circle_line,
+                    size: 48,
+                    color: Colors.white70,
+                  ),
+                ),
+              )
+            : Icon(
+                genericIcon,
+                size: widget.iconSize,
+                color: Theme.of(context).colorScheme.secondary,
+              ),
       ),
     );
   }
