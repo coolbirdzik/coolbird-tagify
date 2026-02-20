@@ -303,7 +303,7 @@ class DatabaseManager implements IDatabaseProvider {
         final directory = await getApplicationDocumentsDirectory();
         final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
         filePath =
-            path.join(directory.path, 'coolbird_db_export_$timestamp.json');
+            path.join(directory.path, 'cb_file_hub_db_export_$timestamp.json');
       }
 
       final file = File(filePath);

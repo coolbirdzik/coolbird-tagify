@@ -1,4 +1,4 @@
-# Makefile for CoolBird Tagify
+# Makefile for CB File Hub
 # Cross-platform build system for Flutter application
 # Works on: Windows (Git Bash/WSL/MinGW), Linux, macOS
 
@@ -26,7 +26,7 @@ NC := \033[0m # No Color
 # Help target
 help:
 	@echo "$(BLUE)╔════════════════════════════════════════════════╗$(NC)"
-	@echo "$(BLUE)║     CoolBird Tagify - Build System v$(VERSION)    ║$(NC)"
+	@echo "$(BLUE)║     CB File Hub - Build System v$(VERSION)    ║$(NC)"
 	@echo "$(BLUE)╚════════════════════════════════════════════════╝$(NC)"
 	@echo ""
 	@echo "$(GREEN)📦 Build Targets:$(NC)"
@@ -145,16 +145,16 @@ build-windows-portable: deps
 	@echo "$(BLUE)Creating ZIP package...$(NC)"
 	@mkdir -p $(BUILD_DIR)/windows/portable
 	@if command -v zip >/dev/null 2>&1; then \
-		cd $(BUILD_DIR)/windows/x64/runner/Release && zip -r ../../portable/CoolBirdTagify-Portable.zip ./*; \
+		cd $(BUILD_DIR)/windows/x64/runner/Release && zip -r ../../portable/CBFileHub-Portable.zip ./*; \
 	elif command -v 7z >/dev/null 2>&1; then \
-		cd $(BUILD_DIR)/windows/x64/runner/Release && 7z a -tzip ../../portable/CoolBirdTagify-Portable.zip ./*; \
+		cd $(BUILD_DIR)/windows/x64/runner/Release && 7z a -tzip ../../portable/CBFileHub-Portable.zip ./*; \
 	elif command -v powershell.exe >/dev/null 2>&1; then \
-		powershell.exe -Command "Compress-Archive -Path '$(BUILD_DIR)/windows/x64/runner/Release/*' -DestinationPath '$(BUILD_DIR)/windows/portable/CoolBirdTagify-Portable.zip' -Force"; \
+		powershell.exe -Command "Compress-Archive -Path '$(BUILD_DIR)/windows/x64/runner/Release/*' -DestinationPath '$(BUILD_DIR)/windows/portable/CBFileHub-Portable.zip' -Force"; \
 	else \
 		echo "$(YELLOW)No ZIP tool found. Files available at: $(BUILD_DIR)/windows/x64/runner/Release/$(NC)"; \
 	fi
 	@echo "$(GREEN)Windows Portable build completed!$(NC)"
-	@echo "Output: $(BUILD_DIR)/windows/portable/CoolBirdTagify-Portable.zip"
+	@echo "Output: $(BUILD_DIR)/windows/portable/CBFileHub-Portable.zip"
 
 # Build Windows EXE Installer
 build-windows-exe: build-windows-portable
@@ -166,7 +166,7 @@ build-windows-exe: build-windows-portable
 	@mkdir -p $(BUILD_DIR)/windows/installer
 	iscc.exe installer/windows/installer.iss || iscc installer/windows/installer.iss
 	@echo "$(GREEN)Windows EXE Installer build completed!$(NC)"
-	@echo "Output: $(BUILD_DIR)/windows/installer/CoolBirdTagify-Setup.exe"
+	@echo "Output: $(BUILD_DIR)/windows/installer/CBFileHub-Setup.exe"
 
 # Build Windows MSI Installer
 build-windows-msi: build-windows-portable
@@ -175,33 +175,33 @@ build-windows-msi: build-windows-portable
 	@# Check for WiX v4+ (wix.exe) or v3 (candle.exe)
 	@if command -v wix.exe >/dev/null 2>&1; then \
 		echo "$(BLUE)Using WiX v4+ (wix build)...$(NC)"; \
-		wix.exe build installer/windows/installer.wxs -d "SourceDir=$(BUILD_DIR)/windows/x64/runner/Release" -ext WixToolset.UI.wixext -o "$(BUILD_DIR)/windows/installer/CoolBirdTagify-Setup.msi"; \
+		wix.exe build installer/windows/installer.wxs -d "SourceDir=$(BUILD_DIR)/windows/x64/runner/Release" -ext WixToolset.UI.wixext -o "$(BUILD_DIR)/windows/installer/CBFileHub-Setup.msi"; \
 	elif command -v wix >/dev/null 2>&1; then \
 		echo "$(BLUE)Using WiX v4+ (wix build)...$(NC)"; \
-		wix build installer/windows/installer.wxs -d "SourceDir=$(BUILD_DIR)/windows/x64/runner/Release" -ext WixToolset.UI.wixext -o "$(BUILD_DIR)/windows/installer/CoolBirdTagify-Setup.msi"; \
+		wix build installer/windows/installer.wxs -d "SourceDir=$(BUILD_DIR)/windows/x64/runner/Release" -ext WixToolset.UI.wixext -o "$(BUILD_DIR)/windows/installer/CBFileHub-Setup.msi"; \
 	elif [ -f "/c/Program Files/WiX Toolset v7.0/bin/wix.exe" ]; then \
 		echo "$(BLUE)Using WiX v7 (wix build)...$(NC)"; \
-		"/c/Program Files/WiX Toolset v7.0/bin/wix.exe" build installer/windows/installer.wxs -d "SourceDir=$(BUILD_DIR)/windows/x64/runner/Release" -ext WixToolset.UI.wixext -o "$(BUILD_DIR)/windows/installer/CoolBirdTagify-Setup.msi"; \
+		"/c/Program Files/WiX Toolset v7.0/bin/wix.exe" build installer/windows/installer.wxs -d "SourceDir=$(BUILD_DIR)/windows/x64/runner/Release" -ext WixToolset.UI.wixext -o "$(BUILD_DIR)/windows/installer/CBFileHub-Setup.msi"; \
 	elif [ -f "/c/Program Files/WiX Toolset v5.0/bin/wix.exe" ]; then \
 		echo "$(BLUE)Using WiX v5 (wix build)...$(NC)"; \
-		"/c/Program Files/WiX Toolset v5.0/bin/wix.exe" build installer/windows/installer.wxs -d "SourceDir=$(BUILD_DIR)/windows/x64/runner/Release" -ext WixToolset.UI.wixext -o "$(BUILD_DIR)/windows/installer/CoolBirdTagify-Setup.msi"; \
+		"/c/Program Files/WiX Toolset v5.0/bin/wix.exe" build installer/windows/installer.wxs -d "SourceDir=$(BUILD_DIR)/windows/x64/runner/Release" -ext WixToolset.UI.wixext -o "$(BUILD_DIR)/windows/installer/CBFileHub-Setup.msi"; \
 	elif [ -f "/c/Program Files/WiX Toolset v4.0/bin/wix.exe" ]; then \
 		echo "$(BLUE)Using WiX v4 (wix build)...$(NC)"; \
-		"/c/Program Files/WiX Toolset v4.0/bin/wix.exe" build installer/windows/installer.wxs -d "SourceDir=$(BUILD_DIR)/windows/x64/runner/Release" -ext WixToolset.UI.wixext -o "$(BUILD_DIR)/windows/installer/CoolBirdTagify-Setup.msi"; \
+		"/c/Program Files/WiX Toolset v4.0/bin/wix.exe" build installer/windows/installer.wxs -d "SourceDir=$(BUILD_DIR)/windows/x64/runner/Release" -ext WixToolset.UI.wixext -o "$(BUILD_DIR)/windows/installer/CBFileHub-Setup.msi"; \
 	elif command -v candle.exe >/dev/null 2>&1; then \
 		echo "$(BLUE)Using WiX v3 (candle/light)...$(NC)"; \
 		candle.exe -dSourceDir="$(BUILD_DIR)/windows/x64/runner/Release" -out "$(BUILD_DIR)/windows/installer/installer.wixobj" installer/windows/installer.wxs; \
-		light.exe -out "$(BUILD_DIR)/windows/installer/CoolBirdTagify-Setup.msi" "$(BUILD_DIR)/windows/installer/installer.wixobj" -ext WixUIExtension -sval; \
+		light.exe -out "$(BUILD_DIR)/windows/installer/CBFileHub-Setup.msi" "$(BUILD_DIR)/windows/installer/installer.wixobj" -ext WixUIExtension -sval; \
 	elif command -v candle >/dev/null 2>&1; then \
 		echo "$(BLUE)Using WiX v3 (candle/light)...$(NC)"; \
 		candle -dSourceDir="$(BUILD_DIR)/windows/x64/runner/Release" -out "$(BUILD_DIR)/windows/installer/installer.wixobj" installer/windows/installer.wxs; \
-		light -out "$(BUILD_DIR)/windows/installer/CoolBirdTagify-Setup.msi" "$(BUILD_DIR)/windows/installer/installer.wixobj" -ext WixUIExtension -sval; \
+		light -out "$(BUILD_DIR)/windows/installer/CBFileHub-Setup.msi" "$(BUILD_DIR)/windows/installer/installer.wixobj" -ext WixUIExtension -sval; \
 	else \
 		echo "$(YELLOW)WiX Toolset not found. Install from: https://wixtoolset.org/releases/$(NC)"; \
 		exit 1; \
 	fi
 	@echo "$(GREEN)Windows MSI Installer build completed!$(NC)"
-	@echo "Output: $(BUILD_DIR)/windows/installer/CoolBirdTagify-Setup.msi"
+	@echo "Output: $(BUILD_DIR)/windows/installer/CBFileHub-Setup.msi"
 
 # Build Android APK
 build-android-apk: clean deps
@@ -223,9 +223,9 @@ build-linux: clean deps
 	cd $(PROJECT_DIR) && $(FLUTTER) build linux --release
 	@echo "$(BLUE)Creating tar.gz package...$(NC)"
 	@mkdir -p $(BUILD_DIR)/linux/portable
-	cd $(BUILD_DIR)/linux/x64/release && tar -czf ../portable/CoolBirdTagify-Linux.tar.gz bundle/
+	cd $(BUILD_DIR)/linux/x64/release && tar -czf ../portable/CBFileHub-Linux.tar.gz bundle/
 	@echo "$(GREEN)Linux build completed!$(NC)"
-	@echo "Output: $(BUILD_DIR)/linux/portable/CoolBirdTagify-Linux.tar.gz"
+	@echo "Output: $(BUILD_DIR)/linux/portable/CBFileHub-Linux.tar.gz"
 
 # Build macOS
 build-macos: clean deps
@@ -237,9 +237,9 @@ build-macos: clean deps
 	cd $(PROJECT_DIR) && $(FLUTTER) build macos --release
 	@echo "$(BLUE)Creating ZIP package...$(NC)"
 	@mkdir -p $(BUILD_DIR)/macos/portable
-	cd $(BUILD_DIR)/macos/Build/Products/Release && zip -r ../../../portable/CoolBirdTagify-macOS.zip coolbird_tagify.app
+	cd $(BUILD_DIR)/macos/Build/Products/Release && zip -r ../../../portable/CBFileHub-macOS.zip coolbird_tagify.app
 	@echo "$(GREEN)macOS build completed!$(NC)"
-	@echo "Output: $(BUILD_DIR)/macos/portable/CoolBirdTagify-macOS.zip"
+	@echo "Output: $(BUILD_DIR)/macos/portable/CBFileHub-macOS.zip"
 
 # Build iOS
 build-ios: clean deps

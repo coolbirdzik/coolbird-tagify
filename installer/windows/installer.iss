@@ -1,7 +1,7 @@
-; Inno Setup Script for CoolBird Tagify
+; Inno Setup Script for CB File Hub
 ; Creates a single .exe installer
 
-#define MyAppName "CoolBird Tagify"
+#define MyAppName "CB File Hub"
 #define MyAppVersion "1.0.0"
 #define MyAppPublisher "COOLBIRDZIK"
 #define MyAppURL "https://github.com/nth-zik/coolbird-tagify"
@@ -22,7 +22,7 @@ DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
 LicenseFile=assets\LicenseAgreement.txt
 OutputDir=..\..\cb_file_manager\build\windows\installer
-OutputBaseFilename=CoolBirdTagify-Setup
+OutputBaseFilename=CBFileHub-Setup
 SetupIconFile=..\..\cb_file_manager\windows\runner\resources\app_icon.ico
 Compression=lzma
 SolidCompression=yes

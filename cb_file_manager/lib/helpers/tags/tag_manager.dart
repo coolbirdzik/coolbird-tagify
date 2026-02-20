@@ -21,7 +21,7 @@ class TagManager {
   static final Map<String, List<String>> _tagsCache = {};
 
   // Global tags file name
-  static const String globalTagsFilename = 'coolbird_global_tags.json';
+  static const String globalTagsFilename = 'cb_file_hub_global_tags.json';
 
   // Path to the global tags file (initialized lazily)
   static String? _globalTagsPath;
@@ -162,14 +162,14 @@ class TagManager {
 
         // Initialize JSON storage
         final appDir = await getApplicationDocumentsDirectory();
-        final coolbirdDir = Directory('${appDir.path}/coolbird');
+        final cbFileHubDir = Directory('${appDir.path}/cb_file_hub');
 
         // Create the directory if it doesn't exist
-        if (!await coolbirdDir.exists()) {
-          await coolbirdDir.create(recursive: true);
+        if (!await cbFileHubDir.exists()) {
+          await cbFileHubDir.create(recursive: true);
         }
 
-        _globalTagsPath = '${coolbirdDir.path}/$globalTagsFilename';
+        _globalTagsPath = '${cbFileHubDir.path}/$globalTagsFilename';
       }
     } catch (e) {
       _useObjectBox = false;
@@ -224,10 +224,10 @@ class TagManager {
           Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'];
       if (home != null && home.isNotEmpty) {
         candidates.add('$home/$globalTagsFilename');
-        candidates.add('$home/coolbird/$globalTagsFilename');
+        candidates.add('$home/cb_file_hub/$globalTagsFilename');
       }
 
-      // 2) App documents directory without the "coolbird" subfolder (older layout)
+      // 2) App documents directory without the "cb_file_hub" subfolder (older layout)
       try {
         final appDir = await getApplicationDocumentsDirectory();
         candidates.add('${appDir.path}/$globalTagsFilename');

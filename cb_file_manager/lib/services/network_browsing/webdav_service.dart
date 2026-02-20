@@ -559,7 +559,7 @@ class WebDAVService implements NetworkServiceBase {
       }
 
       // Add WebDAV headers
-      request.headers.set('User-Agent', 'CoolBird Tagify WebDAV Client');
+      request.headers.set('User-Agent', 'CB File Hub WebDAV Client');
 
       if (depth != null) {
         request.headers.set('Depth', depth);

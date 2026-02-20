@@ -1295,7 +1295,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       String? saveLocation = await FilePicker.platform.saveFile(
         dialogTitle: AppLocalizations.of(context)!.saveSettingsExport,
         fileName:
-            'coolbird_preferences_${DateFormat('yyyyMMdd_HHmmss').format(DateTime.now())}.json',
+            'cb_file_hub_preferences_${DateFormat('yyyyMMdd_HHmmss').format(DateTime.now())}.json',
         type: FileType.custom,
         allowedExtensions: ['json'],
       );

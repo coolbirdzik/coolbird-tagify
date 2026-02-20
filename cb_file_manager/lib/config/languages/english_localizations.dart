@@ -2,7 +2,7 @@ import 'app_localizations.dart';
 
 class EnglishLocalizations implements AppLocalizations {
   @override
-  String get appTitle => 'CoolBird Tagify';
+  String get appTitle => 'CB File Hub';
 
   // Common actions
   @override
@@ -48,10 +48,10 @@ class EnglishLocalizations implements AppLocalizations {
   String get chooseDefaultApp => 'Choose default app';
   @override
   String get setCoolBirdAsDefaultForVideos =>
-      'Set CoolBird Tagify as default for video files';
+      'Set CB File Hub as default for video files';
   @override
   String get setCoolBirdAsDefaultForVideosAndroidHint =>
-      'Opening Settings. In "Open by default", enable CoolBird Tagify for video files.';
+      'Opening Settings. In "Open by default", enable CB File Hub for video files.';
   @override
   String get openFolder => 'Open Folder';
   @override
@@ -1076,7 +1076,7 @@ class EnglishLocalizations implements AppLocalizations {
 
   @override
   String get storagePermissionRequiredMessage =>
-      'Access to all files is required to view folder contents. Please go to Settings > Apps > CoolBird Tagify > Permissions and enable "All files access".';
+      'Access to all files is required to view folder contents. Please go to Settings > Apps > CB File Hub > Permissions and enable "All files access".';
 
   @override
   String get storagePhotosPermission => 'Storage/Photos Permission';
@@ -1133,7 +1133,7 @@ class EnglishLocalizations implements AppLocalizations {
 
   // Home screen
   @override
-  String get welcomeToFileManager => 'Welcome to CoolBird Tagify';
+  String get welcomeToFileManager => 'Welcome to CB File Hub';
 
   @override
   String get welcomeDescription => 'Your powerful file management companion';
@@ -1906,7 +1906,7 @@ class EnglishLocalizations implements AppLocalizations {
 
   // Home screen
   @override
-  String get welcomeTitle => 'Welcome to CoolBird Tagify';
+  String get welcomeTitle => 'Welcome to CB File Hub';
 
   @override
   String get welcomeSubtitle => 'Your powerful file management companion';

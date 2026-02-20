@@ -76,7 +76,7 @@ class DesktopWindowingService {
   TabManagerBloc? _tabBloc;
   StreamSubscription<TabManagerState>? _tabStateSub;
 
-  String _lastTitle = 'CoolBird Tagify';
+  String _lastTitle = 'CB File Hub';
 
   String get windowId => _windowId;
 
@@ -622,7 +622,7 @@ class DesktopWindowingService {
     if (bloc == null) return;
     _tabStateSub = bloc.stream.listen((state) {
       final title = state.activeTab?.name.trim();
-      _lastTitle = (title == null || title.isEmpty) ? 'CoolBird Tagify' : title;
+      _lastTitle = (title == null || title.isEmpty) ? 'CB File Hub' : title;
 
       unawaited(_updateWindowTitle());
       unawaited(_registerSelf());
@@ -632,7 +632,7 @@ class DesktopWindowingService {
   Future<void> _updateWindowTitle() async {
     if (!isDesktop) return;
     try {
-      await windowManager.setTitle('CoolBird Tagify - $_lastTitle');
+      await windowManager.setTitle('CB File Hub - $_lastTitle');
     } catch (_) {}
   }
 

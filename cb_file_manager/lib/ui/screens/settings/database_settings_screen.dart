@@ -483,7 +483,7 @@ class _DatabaseSettingsScreenState extends State<DatabaseSettingsScreen> {
                 String? saveLocation = await FilePicker.platform.saveFile(
                   dialogTitle: context.tr.saveDatabaseExport,
                   fileName:
-                      'coolbird_db_export_${DateFormat('yyyyMMdd_HHmmss').format(DateTime.now())}.json',
+                      'cb_file_hub_db_export_${DateFormat('yyyyMMdd_HHmmss').format(DateTime.now())}.json',
                   type: FileType.custom,
                   allowedExtensions: ['json'],
                 );

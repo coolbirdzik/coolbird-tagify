@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# CoolBird Tagify - Interactive Build Script
+# CB File Hub - Interactive Build Script
 # Cross-platform build system with CLI menu
 # Works on: Windows (Git Bash/WSL), Linux, macOS
 
@@ -24,7 +24,7 @@ NC='\033[0m' # No Color
 # Print functions
 print_header() {
     echo -e "${CYAN}╔════════════════════════════════════════════════╗${NC}"
-    echo -e "${CYAN}║     CoolBird Tagify - Build System            ║${NC}"
+    echo -e "${CYAN}║     CB File Hub - Build System            ║${NC}"
     echo -e "${CYAN}╚════════════════════════════════════════════════╝${NC}"
 }
 
@@ -345,7 +345,7 @@ build_windows_portable() {
         mkdir -p "$PORTABLE_DIR"
         
         local RELEASE_DIR="$BUILD_DIR/windows/x64/runner/Release"
-        local OUTPUT_ZIP="$PORTABLE_DIR/CoolBirdTagify-Portable.zip"
+        local OUTPUT_ZIP="$PORTABLE_DIR/CBFileHub-Portable.zip"
 
         if ! verify_windows_release_bundle "$RELEASE_DIR"; then
             cd ..
@@ -428,7 +428,7 @@ build_windows_exe() {
     
     if [ $? -eq 0 ]; then
         print_success "Windows EXE Installer created!"
-        print_info "Output: $BUILD_DIR/windows/installer/CoolBirdTagify-Setup.exe"
+        print_info "Output: $BUILD_DIR/windows/installer/CBFileHub-Setup.exe"
     else
         print_error "EXE installer creation failed!"
         return 1
@@ -511,10 +511,10 @@ build_windows_msi() {
         print_info "Using WiX v3 (candle/light)..."
         if [ "$WIX_CMD" = "candle" ]; then
             candle.exe -dSourceDir="$BUILD_PATH_WIN" -dProductVersion="$VERSION_MSI" -dProductDisplayVersion="$VERSION_DISPLAY" -out "$OUTPUT_DIR_WIN\\installer.wixobj" "$INSTALLER_DIR_WIN\\installer.wxs"
-            light.exe -out "$OUTPUT_DIR_WIN\\CoolBirdTagify-Setup.msi" "$OUTPUT_DIR_WIN\\installer.wixobj" -ext WixUIExtension -sval
+            light.exe -out "$OUTPUT_DIR_WIN\\CBFileHub-Setup.msi" "$OUTPUT_DIR_WIN\\installer.wixobj" -ext WixUIExtension -sval
         else
             "$WIX_CMD/candle.exe" -dSourceDir="$BUILD_PATH_WIN" -dProductVersion="$VERSION_MSI" -dProductDisplayVersion="$VERSION_DISPLAY" -out "$OUTPUT_DIR_WIN\\installer.wixobj" "$INSTALLER_DIR_WIN\\installer.wxs"
-            "$WIX_CMD/light.exe" -out "$OUTPUT_DIR_WIN\\CoolBirdTagify-Setup.msi" "$OUTPUT_DIR_WIN\\installer.wixobj" -ext WixUIExtension -sval
+            "$WIX_CMD/light.exe" -out "$OUTPUT_DIR_WIN\\CBFileHub-Setup.msi" "$OUTPUT_DIR_WIN\\installer.wixobj" -ext WixUIExtension -sval
         fi
     else
         # WiX v4+: Use wix.exe build command
@@ -523,12 +523,12 @@ build_windows_msi() {
         # -ext adds extensions (WixUIExtension for UI dialogs)
         print_info "Using WiX $WIX_VERSION (wix build)..."
         "$WIX_CMD" eula accept wix7 >/dev/null 2>&1 || true
-        "$WIX_CMD" build "$INSTALLER_DIR_WIN\\installer.wxs" -d "SourceDir=$BUILD_PATH_WIN" -d "ProductVersion=$VERSION_MSI" -d "ProductDisplayVersion=$VERSION_DISPLAY" -ext WixToolset.UI.wixext -o "$OUTPUT_DIR_WIN\\CoolBirdTagify-Setup.msi"
+        "$WIX_CMD" build "$INSTALLER_DIR_WIN\\installer.wxs" -d "SourceDir=$BUILD_PATH_WIN" -d "ProductVersion=$VERSION_MSI" -d "ProductDisplayVersion=$VERSION_DISPLAY" -ext WixToolset.UI.wixext -o "$OUTPUT_DIR_WIN\\CBFileHub-Setup.msi"
     fi
     
     if [ $? -eq 0 ]; then
         print_success "Windows MSI Installer created!"
-        print_info "Output: $OUTPUT_DIR/CoolBirdTagify-Setup.msi"
+        print_info "Output: $OUTPUT_DIR/CBFileHub-Setup.msi"
     else
         print_error "MSI installer creation failed!"
         return 1
@@ -603,11 +603,11 @@ build_linux() {
         print_info "Creating tar.gz package..."
         mkdir -p "$BUILD_DIR/linux/portable"
         cd "$BUILD_DIR/linux/x64/release"
-        tar -czf "../portable/CoolBirdTagify-Linux.tar.gz" bundle/
+        tar -czf "../portable/CBFileHub-Linux.tar.gz" bundle/
         cd ../../../../..
         
         print_success "Linux build completed!"
-        print_info "Output: $BUILD_DIR/linux/portable/CoolBirdTagify-Linux.tar.gz"
+        print_info "Output: $BUILD_DIR/linux/portable/CBFileHub-Linux.tar.gz"
     else
         print_error "Linux build failed!"
         cd ..
@@ -639,11 +639,11 @@ build_macos() {
         print_info "Creating ZIP package..."
         mkdir -p "$BUILD_DIR/macos/portable"
         cd "$BUILD_DIR/macos/Build/Products/Release"
-        zip -r "../../../portable/CoolBirdTagify-macOS.zip" coolbird_tagify.app
+        zip -r "../../../portable/CBFileHub-macOS.zip" coolbird_tagify.app
         cd ../../../../../..
         
         print_success "macOS build completed!"
-        print_info "Output: $BUILD_DIR/macos/portable/CoolBirdTagify-macOS.zip"
+        print_info "Output: $BUILD_DIR/macos/portable/CBFileHub-macOS.zip"
     else
         print_error "macOS build failed!"
         cd ..

@@ -1,4 +1,4 @@
-# CoolBird Tagify
+# CB File Hub
 
 [![Build and Test](https://github.com/nth-zik/coolbird-tagify/actions/workflows/build-test.yml/badge.svg)](https://github.com/nth-zik/coolbird-tagify/actions/workflows/build-test.yml)
 [![Release](https://github.com/nth-zik/coolbird-tagify/actions/workflows/release.yml/badge.svg)](https://github.com/nth-zik/coolbird-tagify/actions/workflows/release.yml)
@@ -49,21 +49,21 @@ Download the latest release for your platform:
 
 **Option 1: MSI Installer (Recommended)**
 
-1. Download `CoolBirdTagify-Setup-vX.X.X.msi`
+1. Download `CBFileHub-Setup-vX.X.X.msi`
 2. Run the installer
 3. Launch from Start Menu or Desktop shortcut
 
 **Option 2: Portable**
 
-1. Download `CoolBirdTagify-vX.X.X-windows.zip`
+1. Download `CBFileHub-vX.X.X-windows.zip`
 2. Extract to any folder
-3. Run `coolbird_tagify.exe`
+3. Run `cb_file_hub.exe`
 
 **Note:** On Windows, you can run scripts using Git Bash (comes with Git for Windows)
 
 ### Android
 
-1. Download `CoolBirdTagify-vX.X.X-arm64-v8a.apk`
+1. Download `CBFileHub-vX.X.X-arm64-v8a.apk`
 2. Enable "Install from Unknown Sources" in Settings
 3. Install and launch
 
@@ -71,16 +71,16 @@ Download the latest release for your platform:
 
 ```bash
 # Extract
-tar -xzf CoolBirdTagify-vX.X.X-linux.tar.gz
+tar -xzf CBFileHub-vX.X.X-linux.tar.gz
 
 # Run
 cd bundle
-./coolbird_tagify
+./cb_file_hub
 ```
 
 ### macOS
 
-1. Download `CoolBirdTagify-vX.X.X-macos.zip`
+1. Download `CBFileHub-vX.X.X-macos.zip`
 2. Extract and move to Applications
 3. Right-click and select "Open" (first time only)
 
@@ -294,4 +294,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-Made with ❤️ by the CoolBird Tagify team
+Made with ❤️ by the CB File Hub team

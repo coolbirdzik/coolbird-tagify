@@ -2,7 +2,7 @@
 
 ## Overview
 
-We have implemented FTP file browsing support for the CoolBird Tagify application using the `ftpconnect` Flutter package. This allows users to connect to FTP servers, browse directories, upload and download files.
+We have implemented FTP file browsing support for the CB File Hub application using the `ftpconnect` Flutter package. This allows users to connect to FTP servers, browse directories, upload and download files.
 
 ## Implementation Details
 

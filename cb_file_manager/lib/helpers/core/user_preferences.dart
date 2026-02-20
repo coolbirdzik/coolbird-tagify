@@ -1115,7 +1115,7 @@ class UserPreferences {
         final directory = await getApplicationDocumentsDirectory();
         final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
         filePath =
-            path.join(directory.path, 'coolbird_preferences_$timestamp.json');
+            path.join(directory.path, 'cb_file_hub_preferences_$timestamp.json');
       }
 
       // Write to file
@@ -1175,7 +1175,7 @@ class UserPreferences {
 
       // Create a directory to store all export files
       final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-      final exportDirName = 'coolbird_export_$timestamp';
+      final exportDirName = 'cb_file_hub_export_$timestamp';
       final exportDir = Directory(path.join(customDir, exportDirName));
 
       // Create the directory if it doesn't exist

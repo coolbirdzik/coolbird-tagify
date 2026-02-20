@@ -1,5 +1,5 @@
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
-  <?define ProductName = "CoolBird Tagify"?>
+  <?define ProductName = "CB File Hub"?>
   <?ifndef ProductVersion?>
   <?define ProductVersion = "1.0.0"?>
   <?endif?>
@@ -21,7 +21,7 @@
       AllowSameVersionUpgrades="yes" />
     <MediaTemplate EmbedCab="yes" />
 
-    <Feature Id="ProductFeature" Title="CoolBird Tagify" Level="1">
+    <Feature Id="ProductFeature" Title="CB File Hub" Level="1">
       <ComponentGroupRef Id="ProductComponents" />
       <ComponentRef Id="ApplicationShortcut" />
       <ComponentRef Id="DesktopShortcut" />
@@ -41,14 +41,14 @@
 
   <Fragment>
     <StandardDirectory Id="ProgramFiles64Folder">
-      <Directory Id="INSTALLFOLDER" Name="CoolBird Tagify">
+      <Directory Id="INSTALLFOLDER" Name="CB File Hub">
         <Directory Id="DataFolder" Name="data" />
       </Directory>
     </StandardDirectory>
 
     <!-- Start Menu -->
     <StandardDirectory Id="ProgramMenuFolder">
-      <Directory Id="ApplicationProgramsFolder" Name="CoolBird Tagify" />
+      <Directory Id="ApplicationProgramsFolder" Name="CB File Hub" />
     </StandardDirectory>
 
     <!-- Desktop -->
@@ -64,8 +64,8 @@
     <!-- Start Menu Shortcut -->
     <DirectoryRef Id="ApplicationProgramsFolder">
       <Component Id="ApplicationShortcut">
-        <Shortcut Id="ApplicationStartMenuShortcut" Name="CoolBird Tagify"
-          Description="Launch CoolBird Tagify" Target="[INSTALLFOLDER]coolbird_tagify.exe"
+        <Shortcut Id="ApplicationStartMenuShortcut" Name="CB File Hub"
+          Description="Launch CB File Hub" Target="[INSTALLFOLDER]coolbird_tagify.exe"
           WorkingDirectory="INSTALLFOLDER" Icon="AppIcon" />
         <RemoveFolder Id="CleanUpShortCut" Directory="ApplicationProgramsFolder" On="uninstall" />
         <RegistryValue Root="HKCU" Key="Software\[Manufacturer]\[ProductName]" Name="installed"
@@ -76,8 +76,8 @@
     <!-- Desktop Shortcut -->
     <StandardDirectory Id="DesktopFolder">
       <Component Id="DesktopShortcut">
-        <Shortcut Id="ApplicationDesktopShortcut" Name="CoolBird Tagify"
-          Description="Launch CoolBird Tagify" Target="[INSTALLFOLDER]coolbird_tagify.exe"
+        <Shortcut Id="ApplicationDesktopShortcut" Name="CB File Hub"
+          Description="Launch CB File Hub" Target="[INSTALLFOLDER]coolbird_tagify.exe"
           WorkingDirectory="INSTALLFOLDER" Icon="AppIcon" />
         <RegistryValue Root="HKCU" Key="Software\[Manufacturer]\[ProductName]"
           Name="desktopShortcut" Type="integer" Value="1" KeyPath="yes" />

@@ -2,7 +2,7 @@ import 'app_localizations.dart';
 
 class VietnameseLocalizations implements AppLocalizations {
   @override
-  String get appTitle => 'CoolBird Tagify';
+  String get appTitle => 'CB File Hub';
 
   // Common actions
   @override
@@ -48,10 +48,10 @@ class VietnameseLocalizations implements AppLocalizations {
   String get chooseDefaultApp => 'Chọn ứng dụng mặc định';
   @override
   String get setCoolBirdAsDefaultForVideos =>
-      'Đặt CoolBird Tagify làm mặc định cho file video';
+      'Đặt CB File Hub làm mặc định cho file video';
   @override
   String get setCoolBirdAsDefaultForVideosAndroidHint =>
-      'Đang mở Cài đặt. Trong "Mở theo mặc định", bật CoolBird Tagify cho file video.';
+      'Đang mở Cài đặt. Trong "Mở theo mặc định", bật CB File Hub cho file video.';
   @override
   String get openFolder => 'Mở thư mục';
   @override
@@ -759,7 +759,7 @@ class VietnameseLocalizations implements AppLocalizations {
   @override
   String get version => 'Phiên bản: 1.0.0';
   @override
-  String get developer => 'Phát triển bởi CoolBird - ngtanhung41@gmail.com';
+  String get developer => 'Phát triển bởi CB File Hub - ngtanhung41@gmail.com';
 
   // Empty state
   @override
@@ -1079,7 +1079,7 @@ class VietnameseLocalizations implements AppLocalizations {
 
   @override
   String get storagePermissionRequiredMessage =>
-      'Cần cấp quyền truy cập tất cả files để xem đầy đủ nội dung thư mục. Vui lòng vào Settings > Apps > CoolBird Tagify > Permissions và bật "All files access".';
+      'Cần cấp quyền truy cập tất cả files để xem đầy đủ nội dung thư mục. Vui lòng vào Settings > Apps > CB File Hub > Permissions và bật "All files access".';
 
   @override
   String get storagePhotosPermission => 'Quyền lưu trữ/ảnh';
@@ -1136,7 +1136,7 @@ class VietnameseLocalizations implements AppLocalizations {
 
   // Home screen
   @override
-  String get welcomeToFileManager => 'Chào mừng đến với CoolBird Tagify';
+  String get welcomeToFileManager => 'Chào mừng đến với CB File Hub';
 
   @override
   String get welcomeDescription => 'Trợ lý quản lý tệp mạnh mẽ của bạn';
@@ -1903,7 +1903,7 @@ class VietnameseLocalizations implements AppLocalizations {
 
   // Home screen
   @override
-  String get welcomeTitle => 'Chào mừng đến với CoolBird Tagify';
+  String get welcomeTitle => 'Chào mừng đến với CB File Hub';
 
   @override
   String get welcomeSubtitle => 'Trợ lý quản lý tệp mạnh mẽ của bạn';

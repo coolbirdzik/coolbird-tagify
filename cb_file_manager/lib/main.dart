@@ -475,7 +475,7 @@ class _CBFileAppState extends State<CBFileApp> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     return SafeNavigationWrapper(
       child: MaterialApp(
-        title: 'CoolBird Tagify',
+        title: 'CB File Hub',
         // Always start at main; we'll push explainer modally if needed
         home: TabMainScreen(startupPayload: widget.startupPayload),
         navigatorKey: navigatorKey, // Add navigator key for global access

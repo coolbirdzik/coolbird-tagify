@@ -1,5 +1,5 @@
 END USER LICENSE AGREEMENT (EULA)
-CoolBird Tagify
+CB File Hub
 Version 1.0.0
 
 IMPORTANT: PLEASE READ THIS AGREEMENT CAREFULLY BEFORE INSTALLING OR USING THE SOFTWARE.
@@ -7,7 +7,7 @@ BY INSTALLING, COPYING, OR USING THE SOFTWARE, YOU AGREE TO BE BOUND BY THIS AGR
 IF YOU DO NOT AGREE, DO NOT INSTALL OR USE THE SOFTWARE.
 
 1. Parties
-This End User License Agreement ("Agreement") is a legal agreement between you ("User") and the software publisher identified as "COOLBIRDZIK" ("Licensor") for the software product "CoolBird Tagify" and related documentation ("Software").
+This End User License Agreement ("Agreement") is a legal agreement between you ("User") and the software publisher identified as "COOLBIRDZIK" ("Licensor") for the software product "CB File Hub" and related documentation ("Software").
 
 2. License Grant
 Licensor grants you a limited, non-exclusive, non-transferable, revocable license to install and use the Software on devices you own or control, strictly in accordance with this Agreement.

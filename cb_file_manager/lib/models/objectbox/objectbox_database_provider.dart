@@ -35,7 +35,7 @@ class ObjectBoxDatabaseProvider implements IDatabaseProvider {
 
     try {
       final dir = await getApplicationDocumentsDirectory();
-      final dbDir = Directory(path.join(dir.path, 'CoolBirdTagify_v2'));
+      final dbDir = Directory(path.join(dir.path, 'CBFileHub_v2'));
 
       if (!dbDir.existsSync()) {
         dbDir.createSync(recursive: true);

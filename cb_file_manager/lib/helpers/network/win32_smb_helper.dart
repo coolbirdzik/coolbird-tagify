@@ -61,7 +61,7 @@ class Win32SmbHelper {
         _tempFileCache.remove(uncPath);
       }
 
-      // Create temp directory bên trong coobird_tagify/temp_files
+      // Create temp directory bên trong cb_file_hub/temp_files
       final tempDir = await AppPathHelper.getTempFilesDir();
       final fileName = p.basename(uncPath);
       final tempFilePath = p.join(tempDir.path,

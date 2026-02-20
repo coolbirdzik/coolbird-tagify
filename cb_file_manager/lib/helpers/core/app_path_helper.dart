@@ -1,5 +1,5 @@
 /// Helper to manage application cache/temp directories under a single root
-/// path called "coobird_tagify" across all platforms.
+/// path called "cb_file_hub" across all platforms.
 ///
 /// Usage:
 ///   final root = await AppPathHelper.getRootDir();
@@ -30,12 +30,12 @@ class AppPathHelper {
     return await getTemporaryDirectory();
   }
 
-  /// Get/create the root directory: <base>/coobird_tagify
+  /// Get/create the root directory: <base>/cb_file_hub
   static Future<Directory> getRootDir() async {
     if (_rootDirectory != null) return _rootDirectory!;
 
     final baseDir = await _getPlatformCacheBase();
-    final rootPath = p.join(baseDir.path, 'coobird_tagify');
+    final rootPath = p.join(baseDir.path, 'cb_file_hub');
     final rootDir = Directory(rootPath);
     if (!await rootDir.exists()) {
       await rootDir.create(recursive: true);

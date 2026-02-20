@@ -365,7 +365,7 @@ class _CBDrawerContentState extends State<_CBDrawerContent> {
             },
           ),
           Text(
-            '© CoolBird',
+            '© CoolBirdZik',
             style: TextStyle(
               color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.7),
               fontSize: 12,

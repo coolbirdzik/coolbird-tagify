@@ -1,6 +1,6 @@
-# FTP Service for CoolBird Tagify
+# FTP Service for CB File Hub
 
-This implementation uses the `ftpconnect` package to provide FTP functionality for the CoolBird Tagify.
+This implementation uses the `ftpconnect` package to provide FTP functionality for the CB File Hub.
 
 ## Dependencies
 
@@ -71,4 +71,4 @@ The FTP service provides detailed error messages for common issues:
 
 ## Implementation Notes
 
-This service implements the `NetworkServiceBase` interface, allowing it to be used interchangeably with other network services like SMB or WebDAV in the CoolBird Tagify.
+This service implements the `NetworkServiceBase` interface, allowing it to be used interchangeably with other network services like SMB or WebDAV in the CB File Hub.
